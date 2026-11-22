@@ -160,3 +160,5 @@ jobs:
       - run: node_modules/.bin/tailwindcss -i style/tailwind.css -o style/desk.css --minify
       - name: desk.css is up to date
         run: git diff --exit-code -- style/desk.css
+
+# Registered on the default branch after the split.
