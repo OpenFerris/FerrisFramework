@@ -8,7 +8,7 @@
 /* The component library lives in a sibling crate; without this every class in
    ferris-web-ui is missing from the build and the overlay primitives that hide
    themselves (`.data-[state=closed]:opacity-0`) render visible forever. */
-@source "../../ferris-web-ui/src";
+@source "../../../FerrisCore/ferris-web-ui/src";
 
 /*
   Design tokens — the single source of colour truth (F1).
