@@ -100,6 +100,9 @@ flamegraph.svg
 *.key
 !*.example.key
 !*.example.pem
+# Throwaway TLS test material: the fixtures README documents that these keys
+# are committed so `ferris-server`'s TLS/mTLS tests are hermetic.
+!ferris-server/tests/fixtures/tls/*.key
 
 # Misc
 *.pid
