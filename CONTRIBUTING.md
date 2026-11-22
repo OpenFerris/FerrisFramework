@@ -9,7 +9,14 @@ Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md) to ensure a wel
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/Stdg001/ferris.git`
+2. Clone your fork and its sibling: `FerrisFramework` references
+   `../FerrisCore` by path, so the two checkouts must sit side by side:
+
+   ```bash
+   git clone https://github.com/<you>/FerrisFramework.git
+   git clone https://github.com/<you>/FerrisCore.git
+   ```
+
 3. Create a new branch: `git checkout -b feature/your-feature-name`
 4. Make your changes
 5. Run the gates inside the development container:
@@ -31,26 +38,24 @@ artifacts the container cannot reuse.
 
 ### Documentation
 
-The public documentation is the Astro + Starlight site in [`docs-site/`](docs-site).
-It is written in Spanish, but code, identifiers and commands keep their real
-spelling. Every page has `title`/`description` frontmatter, lives under
-`src/content/docs/`, and must be linked from the explicit `sidebar` in
-`astro.config.mjs`.
+The public documentation is the separate [`FerrisDocs`](https://github.com/OpenFerris/FerrisDocs)
+repository (Astro + Starlight). It is written in Spanish, but code, identifiers
+and commands keep their real spelling. Every page has `title`/`description`
+frontmatter, lives under `src/content/docs/`, and must be linked from the
+explicit `sidebar` in `astro.config.mjs`.
 
 ```bash
-# inside the development container
-docker compose run --rm -p 4321:4321 ferris sh -lc 'cd docs-site && npm ci && npm run dev'
-
-# or on the host with Node.js 22.23.4+
-cd docs-site
+git clone https://github.com/OpenFerris/FerrisDocs.git
+cd FerrisDocs
 npm ci            # installs the pinned package-lock.json
 npm run dev       # http://localhost:4321
 npm run build     # validate the static build
 ```
 
 If a change alters a public command, flag, endpoint, config key, DocType,
-fieldtype, WIT signature or feature gate, update the matching page in the same
-PR. `AGENTS.md` §2 “Documentation site” has the full rules.
+fieldtype, WIT signature or feature gate, update the matching page in
+`FerrisDocs` in the same change. That repository's `AGENTS.md` has the full
+rules.
 
 ### Code Style
 

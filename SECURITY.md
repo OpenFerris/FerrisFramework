@@ -21,7 +21,7 @@ If you discover a security vulnerability in Ferris, please report it responsibly
 **Do not** open a public GitHub issue for security vulnerabilities.
 
 Instead, report it privately through
-[GitHub Security Advisories](https://github.com/Stdg001/ferris/security/advisories/new).
+[GitHub Security Advisories](https://github.com/OpenFerris/FerrisFramework/security/advisories/new).
 If advisories are unavailable, email the maintainer at
 <holasoybarbiequetal1090@gmail.com> with `[SECURITY]` in the subject.
 

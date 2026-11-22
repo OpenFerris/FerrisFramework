@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, develop]
   pull_request:
-    branches: [master, main]
+    branches: [master, develop]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,9 @@ env:
   CARGO_INCREMENTAL: 0
 
 # FerrisFramework is not standalone: its crates reference ../../FerrisCore.
-# Every Rust job checks the sibling repository out to that path.
+# GitHub only allows checkouts inside $GITHUB_WORKSPACE, so the repository is
+# checked out at ./framework and FerrisCore at ./FerrisCore. From
+# framework/ferris-<crate>, `../../FerrisCore` resolves to ./FerrisCore.
 jobs:
   fmt:
     name: Format
@@ -27,11 +29,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: framework
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/FerrisCore
+          path: FerrisCore
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.98.1
           components: rustfmt
       - run: cargo fmt --all -- --check
+        working-directory: framework
 
   check:
     name: Check
@@ -39,21 +48,29 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: framework
       - uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/FerrisCore
-          path: ../FerrisCore
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: FerrisCore
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.98.1
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
       - run: cargo check --all-targets
+        working-directory: framework
       - run: cargo check-cli
+        working-directory: framework
       - run: cargo clippy --all-targets -- -D clippy::correctness
+        working-directory: framework
       - run: cargo check -p ferris-cli --no-default-features --features api
+        working-directory: framework
       - run: cargo check -p ferris-cli --features full
+        working-directory: framework
 
   wasm:
     name: Wasm (hydrate + ssr)
@@ -61,19 +78,25 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: framework
       - uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/FerrisCore
-          path: ../FerrisCore
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: FerrisCore
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.98.1
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
       - run: cargo check -p ferris-web --features hydrate --target wasm32-unknown-unknown
+        working-directory: framework
       - run: cargo check -p ferris-web --features ssr
+        working-directory: framework
       - run: cargo check -p ferris-web --bin ferris-web-ssr --features ssr,wasm-runtime
+        working-directory: framework
 
   test:
     name: Test
@@ -104,16 +127,20 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: framework
       - uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/FerrisCore
-          path: ../FerrisCore
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: FerrisCore
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.98.1
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
       - run: cargo test --workspace -j 2 -- --test-threads=1
+        working-directory: framework
 
   style:
     name: Tailwind
