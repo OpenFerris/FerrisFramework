@@ -119,7 +119,11 @@ ferris-core = { path = "../../FerrisCore/ferris-core" }
   `.../ferris/FerrisFramework`.
 - `compose.yaml` mounts `../FerrisCore` at `/FerrisCore`; inside the container
   `/workspace/ferris-server/../../FerrisCore` resolves correctly.
-- CI checks out `FerrisCore` at `../FerrisCore` in every Rust job.
+- CI checks the framework repository out at `framework/` and `FerrisCore` at
+  `FerrisCore`; from `framework/ferris-<crate>`, `../../FerrisCore` resolves to
+  that sibling. Every Rust job checks out both repositories, and so does the
+  `Tailwind` job (it builds `ferris-web/style/desk.css` from the Core UI
+  sources).
 - **Framework depends on Core, never the reverse.** A primitive belongs in Core;
   a vertical-specific piece stays here.
 
@@ -290,8 +294,9 @@ Notes:
 | `release/*` | Freeze before publishing; merged into `master` and back into `develop`. |
 | `hotfix/*` | Urgent patch from `master`; merged into `master` and `develop`. |
 
-- Protected branches: direct pushes to `master` and `develop` are disabled; a PR
-  and the `CI` workflow are required.
+- Protected branches: direct pushes to `master` and `develop` are disabled; a
+  PR and the `CI` workflow are required. The required checks are `Format`,
+  `Check`, `Wasm (hydrate + ssr)`, `Test` and `Tailwind`.
 - Commit subjects: `feat(scope): …`, `fix(scope): …`, `refactor(…): …`,
   `docs(…): …`, `wip: …`. The body states what changed and why.
 - `Cargo.lock` is **tracked** and updated by `cargo`, never by hand.

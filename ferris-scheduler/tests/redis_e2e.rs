@@ -10,6 +10,7 @@
 // once per unreferenced dependency.
 #![allow(unused_crate_dependencies)]
 
+use ferris_core::SchedulerConfig;
 use ferris_db::memory_db;
 use ferris_jobs::{JobQueue, QueueConfig};
 use ferris_scheduler::{Schedule, ScheduleConfig, Scheduler, SchedulerHandle};
@@ -47,9 +48,18 @@ async fn redis_scheduler_boots_cron_fires_and_persists_next_run() {
     queue.init().await.expect("queue init");
 
     let scheduler = Arc::new(
-        Scheduler::new(queue.clone(), db.clone())
-            .await
-            .expect("scheduler"),
+        // The default tick is 60s: a per-second cron would not fire inside this
+        // test's 5s window. Set the cadence the schedule expects.
+        Scheduler::with_config(
+            queue.clone(),
+            db.clone(),
+            &SchedulerConfig {
+                tick_interval_secs: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("scheduler"),
     );
     scheduler.start().await.expect("scheduler start");
     let handle = SchedulerHandle::new(scheduler);

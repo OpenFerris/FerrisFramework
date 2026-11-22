@@ -148,15 +148,23 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: ferris-web
+        working-directory: framework/ferris-web
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: framework
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/FerrisCore
+          path: FerrisCore
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: ferris-web/package-lock.json
+          cache-dependency-path: framework/ferris-web/package-lock.json
       - run: npm ci
       - run: node_modules/.bin/tailwindcss -i style/tailwind.css -o style/desk.css --minify
       - name: desk.css is up to date
         run: git diff --exit-code -- style/desk.css
+
+# Registered on the default branch after the split.
