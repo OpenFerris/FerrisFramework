@@ -1644,7 +1644,12 @@ fn mirror_wit_is_byte_identical() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/wit/ferris.wit");
     let mirror = concat!(env!("CARGO_MANIFEST_DIR"), "/../test/wit/ferris.wit");
     let source = std::fs::read_to_string(path).expect("the wit file is readable");
-    let mirror_source = std::fs::read_to_string(mirror).expect("the mirror wit is readable");
+    // `test/` is git-ignored (it is the generated `ferris new` scaffold), so a
+    // clean clone does not carry it. When it exists, it must match exactly.
+    let Ok(mirror_source) = std::fs::read_to_string(mirror) else {
+        eprintln!("skipping: {mirror} is absent (the scaffold is not part of the repository)");
+        return;
+    };
     assert_eq!(
         declared_package(&mirror_source),
         Some(PACKAGE),

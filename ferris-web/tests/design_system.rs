@@ -487,14 +487,17 @@ fn no_raw_colour_literals_outside_allowlist() {
     // same empty allowlist: a component expresses colour through a `.ferris-*`
     // class or a semantic token utility.
     let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    let roots = [
-        crate_root.join("ferris-web-ui/src"),
-        crate_root.join("ferris-web/src/desk"),
-    ];
+    // `ferris-web-ui` lives in the sibling FerrisCore checkout; the Desk chrome
+    // stays in this repository. Each tree is walked relative to its own root so
+    // the reported paths stay stable.
+    let core_root = crate_root.join("../FerrisCore");
     let mut files = Vec::new();
-    for root in &roots {
-        collect_rs(root, &crate_root, &mut files);
-    }
+    collect_rs(&core_root.join("ferris-web-ui/src"), &core_root, &mut files);
+    collect_rs(
+        &crate_root.join("ferris-web/src/desk"),
+        &crate_root,
+        &mut files,
+    );
     assert!(
         files.len() > 50,
         "walked only {} sources — did the path move?",
