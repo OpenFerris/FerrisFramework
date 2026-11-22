@@ -1,0 +1,58 @@
+[package]
+name = "ferris-email"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "Email service for Ferris framework"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Declarative native module: DocTypes + Desk workspace. The transport stays in
+# this crate; the host composes the module.
+module = ["dep:ferris-api"]
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-schema = { path = "../../FerrisCore/ferris-schema" }
+ferris-api = { path = "../../FerrisCore/ferris-api", optional = true }
+# Inbound mail writes the `Inbound Email` and `Notification` rows through the
+# same document engine every other producer uses (permissions, ownership,
+# hook fan-out), instead of a private SQL path.
+ferris-db = { path = "../../FerrisCore/ferris-db" }
+ferris-document = { path = "../../FerrisCore/ferris-document" }
+base64 = { workspace = true }
+ferris-jobs = { path = "../ferris-jobs" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+# Outbound SMTP. `rustls` (via `tokio1-rustls-tls`) instead of the historical
+# `native-tls` features: the latter dragged OpenSSL into the image next to the
+# `ring` stack the workspace pins. IMAP uses the same backend through
+# `tokio-rustls`.
+lettre = { version = "0.11", default-features = false, features = [
+    "builder",
+    "hostname",
+    "pool",
+    "serde",
+    "smtp-transport",
+    "tokio1",
+    "tokio1-rustls-tls",
+] }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+webpki-roots = { workspace = true }
+mail-parser = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -1,0 +1,40 @@
+[package]
+name = "ferris-report"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "Reporting and analytics for Ferris framework"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# HTTP adapter: the native `Module` contract. The query engine stays usable
+# without axum or the host API.
+http = [
+    "dep:ferris-api",
+    "dep:ferris-auth",
+    "dep:ferris-document",
+    "dep:axum",
+]
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-db = { path = "../../FerrisCore/ferris-db" }
+ferris-api = { path = "../../FerrisCore/ferris-api", optional = true }
+ferris-auth = { path = "../../FerrisCore/ferris-auth", optional = true }
+ferris-document = { path = "../../FerrisCore/ferris-document", optional = true }
+axum = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+# The HTTP adapter tests build fixture DocTypes.
+ferris-schema = { path = "../../FerrisCore/ferris-schema" }

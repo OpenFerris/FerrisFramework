@@ -1,0 +1,4 @@
+base_color = "olive"
+color_theme = "default"
+base_path_components = "src/components"
+rtl = true

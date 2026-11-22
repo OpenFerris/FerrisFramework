@@ -1,0 +1,45 @@
+[package]
+name = "ferris-scheduler"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "Cron scheduler for Ferris framework"
+
+[lints]
+workspace = true
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-db = { path = "../../FerrisCore/ferris-db" }
+ferris-jobs = { path = "../ferris-jobs" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+# The cron expression is wall-clock time in `scheduler.timezone`; the tick loop
+# resolves each occurrence with `chrono_tz::Tz` and persists the UTC instant, so
+# DST keeps the local hour (SCHED-02). Already in the tree as a dependency of
+# `tokio-cron-scheduler` (0.15), so this adds no new crate or second TLS stack —
+# only the direct edge the scheduler needs to name the type.
+chrono-tz = { workspace = true }
+# Default features (`[]`): the `signal` feature only gates the crate's
+# `shutdown_on_signal`/`shutdown_on_ctrl_c` helpers, which this crate never
+# calls, and `postgres-native-tls` pulled a second TLS stack
+# (`tokio-postgres` + `native-tls` -> OpenSSL) into a crate that never opens a
+# Postgres connection of its own (SCH dependency audit).
+tokio-cron-scheduler = "0.15"
+# Pinned to the version `tokio-cron-scheduler` fires with: the deadline we
+# persist (`next_occurrence`) and the moment the engine fires must come from one
+# parser (SCH10).
+croner = "3.0.1"
+
+[dev-dependencies]
+ferris-db = { path = "../../FerrisCore/ferris-db" }
+ferris-jobs = { path = "../ferris-jobs" }
+redis = { workspace = true }
+uuid = { workspace = true }

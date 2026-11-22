@@ -1,0 +1,31 @@
+#!/bin/sh
+# Bundle hidratado de ferris-web + binario del host.
+#
+# El perfil del wasm y la ruta que lee `wasm-bindgen` tienen que coincidir: si
+# se compila sin `--release`, el artefacto vive en `debug/` y no en `release/`.
+# Ese desajuste era el `failed reading
+# 'target/wasm32-unknown-unknown/release/ferris_web.wasm'`.
+#
+#   sh ./build                 # perfil debug (iteración rápida)
+#   PROFILE=release sh ./build # bundle de release (más pequeño)
+set -eu
+
+profile="${PROFILE:-debug}"
+target="wasm32-unknown-unknown"
+bundle="ferris-web/pkg"
+wasm="target/$target/$profile/ferris_web.wasm"
+
+release_flag=""
+if [ "$profile" = "release" ]; then
+    release_flag="--release"
+fi
+
+rm -rf "$bundle"
+# --locked: the bundle must come from the committed Cargo.lock, never from a
+# freshly resolved dependency graph. $release_flag stays unquoted on purpose
+# (it expands to one word, or to nothing in the debug profile).
+cargo build --locked -p ferris-web --lib $release_flag --no-default-features --features hydrate --target "$target"
+wasm-bindgen --target web --out-dir "$bundle" --out-name ferris-web "$wasm"
+# The host binary follows the same profile as the bundle: a "release" bundle
+# carrying a debug server was DX-16.
+cargo build --locked -p ferris-cli --bin ferris $release_flag --features full

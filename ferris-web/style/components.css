@@ -1,0 +1,795 @@
+/*
+  Ferris component class catalog
+  ==============================
+
+  Every visual component in `ferris-web-ui` (and the Desk chrome) emits a
+  stable `.ferris-*` class defined here. The Rust side keeps only structural
+  and formatting Tailwind utilities; all colour, radius and shadow decisions
+  live in this file, expressed with `var(--token)`.
+
+  Why a class layer instead of inline colour utilities:
+
+    * General theming — a theme (built-in or registered by a plugin through
+      `describe().themes`) overrides tokens on `:root`, and every component
+      follows.
+    * Specific theming — a plugin ships a CSS asset (`/plugins/{name}/asset/…`)
+      that targets these classes, e.g.
+
+          .ferris-sidebar { background: var(--sidebar); }
+          .ferris-button--primary { background: var(--brand); }
+
+      Plugin CSS is injected unlayered, so it wins over this `@layer
+      components` block and over Tailwind's `@layer utilities`.
+
+  Naming (BEM-ish):
+
+    .ferris-<component>                    root
+    .ferris-<component>--<variant|size>    variant / size modifier
+    .ferris-<component>__<part>            structural part
+    .is-<state> / [data-state=…]           runtime state (shared utilities)
+
+  Rules:
+
+    * No literal colours here — always a token. If a colour has no token,
+      add it to `tailwind.css` (in `:root`, `.dark` and `@theme inline`)
+      first.
+    * Never style these classes from Rust; reference the class name, not the
+      declarations.
+    * The catalog is mirrored in `ferris-web-ui` as constants (see
+      `ferris_web_ui::catalog`) and guarded by tests in `ferris-web`.
+*/
+
+@layer components {
+  /* Scrim shared by dialog, sheet, drawer and command overlays. */
+  .ferris-overlay {
+    background-color: var(--overlay);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Button — `.ferris-button` + one `--<variant>` modifier.
+   *
+   * Structure, size and interaction (cursor, active scale, svg sizing)
+   * stay in Rust as utility classes; every colour decision lives here so a
+   * theme token or a plugin rule can retheme it. Opacity modifiers of the
+   * old utility classes (`bg-primary/90`) become `color-mix`.
+   * ------------------------------------------------------------------ */
+  .ferris-button {
+    transition:
+      color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .ferris-button:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  .ferris-button[aria-invalid="true"] {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent);
+  }
+
+  .ferris-button--default {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .ferris-button--default:hover {
+    background-color: color-mix(in oklab, var(--primary) 90%, transparent);
+  }
+
+  .ferris-button--destructive {
+    background-color: var(--destructive);
+    color: var(--destructive-foreground);
+  }
+  .ferris-button--destructive:hover {
+    background-color: color-mix(in oklab, var(--destructive) 90%, transparent);
+  }
+
+  .ferris-button--outline {
+    background-color: var(--background);
+    border-color: var(--input);
+  }
+  .ferris-button--outline:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  .ferris-button--secondary {
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+  }
+  .ferris-button--secondary:hover {
+    background-color: color-mix(in oklab, var(--secondary) 80%, transparent);
+  }
+
+  .ferris-button--ghost {
+    background-color: transparent;
+  }
+  .ferris-button--ghost:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  .ferris-button--accent {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+  .ferris-button--accent:hover {
+    background-color: color-mix(in oklab, var(--accent) 80%, transparent);
+  }
+
+  .ferris-button--link {
+    background-color: transparent;
+    color: var(--primary);
+  }
+
+  .ferris-button--warning {
+    background-color: var(--warning);
+    color: var(--warning-foreground);
+  }
+  .ferris-button--warning:hover {
+    background-color: color-mix(in oklab, var(--warning) 90%, transparent);
+  }
+
+  .ferris-button--success {
+    background-color: var(--success);
+    color: var(--success-foreground);
+  }
+  .ferris-button--success:hover {
+    background-color: color-mix(in oklab, var(--success) 90%, transparent);
+  }
+
+  .ferris-button--bordered {
+    background-color: transparent;
+    border-color: var(--border);
+    color: var(--muted-foreground);
+  }
+  .ferris-button-action__progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background-color: color-mix(in oklab, var(--foreground) 25%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Badge
+   * ------------------------------------------------------------------ */
+  .ferris-badge {
+    border-color: var(--border);
+  }
+  .ferris-badge:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .ferris-badge--default {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    border-color: transparent;
+  }
+  .ferris-badge--default:hover {
+    background-color: color-mix(in oklab, var(--primary) 80%, transparent);
+  }
+  .ferris-badge--secondary {
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+    border-color: transparent;
+  }
+  .ferris-badge--secondary:hover {
+    background-color: color-mix(in oklab, var(--secondary) 80%, transparent);
+  }
+  .ferris-badge--accent {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+    border-color: transparent;
+  }
+  .ferris-badge--accent:hover {
+    background-color: color-mix(in oklab, var(--accent) 80%, transparent);
+  }
+  .ferris-badge--muted {
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+    border-color: transparent;
+  }
+  .ferris-badge--muted:hover {
+    background-color: color-mix(in oklab, var(--muted) 80%, transparent);
+  }
+  .ferris-badge--destructive {
+    background-color: var(--destructive);
+    color: var(--destructive-foreground);
+    border-color: transparent;
+  }
+  .ferris-badge--destructive:hover {
+    background-color: color-mix(in oklab, var(--destructive) 80%, transparent);
+  }
+  .ferris-badge--outline {
+    color: var(--foreground);
+  }
+  .ferris-badge--success {
+    background-color: color-mix(in oklab, var(--success) 15%, transparent);
+    color: var(--success);
+    border-color: transparent;
+  }
+  .ferris-badge--success:hover {
+    background-color: color-mix(in oklab, var(--success) 25%, transparent);
+  }
+  .ferris-badge--warning {
+    background-color: color-mix(in oklab, var(--warning) 15%, transparent);
+    color: var(--warning);
+    border-color: transparent;
+  }
+  .ferris-badge--warning:hover {
+    background-color: color-mix(in oklab, var(--warning) 25%, transparent);
+  }
+  .ferris-badge--info {
+    background-color: color-mix(in oklab, var(--info) 15%, transparent);
+    color: var(--info);
+    border-color: transparent;
+  }
+  .ferris-badge--info:hover {
+    background-color: color-mix(in oklab, var(--info) 25%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Card
+   * ------------------------------------------------------------------ */
+  .ferris-card {
+    background-color: var(--card);
+    color: var(--card-foreground);
+    border-color: var(--border);
+  }
+  .ferris-card__description {
+    color: var(--muted-foreground);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Alert
+   * ------------------------------------------------------------------ */
+  .ferris-alert {
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Callout
+   * ------------------------------------------------------------------ */
+  .ferris-callout {
+    background-color: var(--surface);
+    color: var(--surface-foreground);
+    border-color: var(--border);
+  }
+  .ferris-callout code {
+    background-color: color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+  .ferris-callout--default {
+    background-color: var(--surface);
+    color: var(--surface-foreground);
+    border-color: var(--border);
+  }
+  .ferris-callout--info {
+    background-color: color-mix(in oklab, var(--info) 15%, transparent);
+    border-color: color-mix(in oklab, var(--info) 50%, transparent);
+  }
+  .ferris-callout--warning {
+    background-color: color-mix(in oklab, var(--warning) 15%, transparent);
+    border-color: color-mix(in oklab, var(--warning) 50%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Status indicator
+   * ------------------------------------------------------------------ */
+  .ferris-status-indicator--default {
+    background-color: var(--muted-foreground);
+  }
+  .ferris-status-indicator--active {
+    background-color: var(--success);
+  }
+  .ferris-status-indicator--inactive {
+    background-color: var(--warning);
+  }
+  .ferris-status-indicator--normal {
+    background-color: var(--info);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Surfaces — bento grid, card carousel, drag & drop
+   * ------------------------------------------------------------------ */
+  .ferris-bento__cell {
+    background-color: var(--muted);
+  }
+  .ferris-card-carousel {
+    background-color: var(--muted);
+  }
+  .ferris-card-carousel__indicator {
+    background-color: var(--background);
+  }
+  .ferris-draggable__zone {
+    background-color: var(--muted);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Form controls — input, textarea, label, checkbox, switch
+   * ------------------------------------------------------------------ */
+  /* One metadata field: label + control + error/description. The wrapper owns
+     the invalid state so every fieldtype (native input, custom select, link
+     picker, date pair…) shows it without each widget re-implementing it. */
+  .ferris-field[data-invalid="true"] .ferris-input,
+  .ferris-field[data-invalid="true"] .ferris-textarea,
+  .ferris-field[data-invalid="true"] select,
+  .ferris-field[data-invalid="true"] [role="combobox"] {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent);
+  }
+
+  .ferris-input,
+  .ferris-textarea {
+    color: var(--foreground);
+    border-color: var(--input);
+    background-color: transparent;
+  }
+  .ferris-input::placeholder,
+  .ferris-textarea::placeholder {
+    color: var(--muted-foreground);
+  }
+  .ferris-input::file-selector-button {
+    color: var(--foreground);
+  }
+  .ferris-input::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .ferris-input:focus-visible,
+  .ferris-textarea:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  .ferris-input[aria-invalid="true"],
+  .ferris-textarea[aria-invalid="true"] {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent);
+  }
+  /* A read-only control reads as "not editable" with the muted surface. Only
+     `input`/`textarea` can be editable, so a `<select>` (which always matches
+     `:read-only`) keeps its normal surface instead of looking disabled. */
+  input.ferris-input:read-only,
+  textarea.ferris-textarea:read-only {
+    background-color: var(--muted);
+  }
+
+  .ferris-label {
+    color: var(--foreground);
+  }
+
+  .ferris-checkbox {
+    color: var(--foreground);
+    border-color: var(--input);
+    background-color: transparent;
+  }
+  .ferris-checkbox[data-state="checked"] {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+  }
+  .ferris-checkbox:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  .ferris-checkbox[aria-invalid="true"] {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent);
+  }
+
+  .ferris-switch {
+    background-color: var(--input);
+  }
+  .ferris-switch[data-state="checked"] {
+    background-color: var(--primary);
+  }
+  .ferris-switch:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px var(--ring);
+  }
+  .ferris-switch__thumb {
+    background-color: var(--background);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Overlays — dialog, sheet, drawer panels
+   * ------------------------------------------------------------------ */
+  .ferris-dialog__content {
+    background-color: var(--background);
+  }
+  .ferris-dialog__description {
+    color: var(--muted-foreground);
+  }
+  .ferris-dialog__close:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  .ferris-sheet__content {
+    background-color: var(--card);
+  }
+  .ferris-sheet__description {
+    color: var(--muted-foreground);
+  }
+  .ferris-sheet__close:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  .ferris-drawer__content {
+    background-color: var(--background);
+  }
+  .ferris-drawer__description {
+    color: var(--muted-foreground);
+  }
+  .ferris-drawer__handle {
+    background-color: var(--border);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Desk chrome — top bar, login gate, internal sidebar, folder accents
+   * ------------------------------------------------------------------ */
+  .ferris-topbar {
+    background-color: var(--topbar);
+    color: var(--topbar-foreground);
+    border-bottom-color: var(--topbar-border);
+  }
+  /* Login gate: the brand mark and the primary action are one accent, the
+     validation banner wears the destructive status tokens. */
+  .ferris-login__logo {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .ferris-login__error {
+    background-color: color-mix(in oklab, var(--destructive) 10%, transparent);
+    border-color: color-mix(in oklab, var(--destructive) 40%, transparent);
+    color: var(--destructive);
+  }
+  .ferris-login__submit {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .ferris-login__submit:hover {
+    background-color: color-mix(in oklab, var(--primary) 90%, transparent);
+  }
+  .ferris-login__submit:disabled {
+    opacity: 0.6;
+  }
+
+  /* Internal desk sidebar: the panel and its rows follow the `sidebar` token
+     family, so a theme can repaint the whole chrome from one place. */
+  .ferris-desk-sidebar__panel {
+    background-color: var(--sidebar);
+    color: var(--sidebar-foreground);
+    border-color: var(--sidebar-border);
+  }
+  .ferris-desk-sidebar__item {
+    color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
+  }
+  .ferris-desk-sidebar__item:hover {
+    background-color: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+  }
+  .ferris-desk-sidebar__item--active {
+    background-color: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+    font-weight: 600;
+  }
+
+  /* Desk folder accents. Each class paints a folder tile *and* the swatch in
+     the folder form, so the two can never drift apart. The tint comes from the
+     accent itself, which is what keeps one class per colour enough. */
+  .ferris-desk-folder--default {
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+  }
+  .ferris-desk-folder--slate {
+    background-color: color-mix(in oklab, var(--folder-slate) 15%, transparent);
+    color: var(--folder-slate);
+  }
+  .ferris-desk-folder--blue {
+    background-color: color-mix(in oklab, var(--folder-blue) 15%, transparent);
+    color: var(--folder-blue);
+  }
+  .ferris-desk-folder--emerald {
+    background-color: color-mix(in oklab, var(--folder-emerald) 15%, transparent);
+    color: var(--folder-emerald);
+  }
+  .ferris-desk-folder--amber {
+    background-color: color-mix(in oklab, var(--folder-amber) 15%, transparent);
+    color: var(--folder-amber);
+  }
+  .ferris-desk-folder--rose {
+    background-color: color-mix(in oklab, var(--folder-rose) 15%, transparent);
+    color: var(--folder-rose);
+  }
+  .ferris-desk-folder--violet {
+    background-color: color-mix(in oklab, var(--folder-violet) 15%, transparent);
+    color: var(--folder-violet);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Command palette
+   * ------------------------------------------------------------------ */
+  .ferris-command {
+    color: var(--popover-foreground);
+    background-color: transparent;
+  }
+  .ferris-command__dialog {
+    background-color: var(--background);
+    border-color: var(--border);
+    --tw-ring-color: color-mix(in oklab, var(--border) 80%, transparent);
+  }
+  .ferris-command__input {
+    background-color: transparent;
+  }
+  .ferris-command__input::placeholder {
+    color: var(--muted-foreground);
+  }
+  .ferris-command__group {
+    color: var(--foreground);
+  }
+  .ferris-command__group-label {
+    color: var(--muted-foreground);
+  }
+  .ferris-command__description {
+    color: var(--muted-foreground);
+  }
+  .ferris-command__footer {
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+    border-top-color: var(--border);
+  }
+  .ferris-command__item:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+  .ferris-command__item-check {
+    color: var(--muted-foreground);
+  }
+  .ferris-command__item[aria-selected="true"],
+  .ferris-command__item-link[aria-selected="true"] {
+    background-color: var(--muted);
+  }
+  .ferris-command__item-link {
+    color: var(--foreground);
+    border-color: transparent;
+  }
+  .ferris-command__item-link:hover {
+    background-color: var(--muted);
+  }
+  .ferris-command__item-link[data-selected="true"] {
+    background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+    border-color: var(--input);
+    color: var(--accent-foreground);
+  }
+  .ferris-command__item-link > svg {
+    color: var(--muted-foreground);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Table
+   * ------------------------------------------------------------------ */
+  .ferris-table {
+    color: var(--foreground);
+  }
+  .ferris-table__caption {
+    color: var(--muted-foreground);
+  }
+  .ferris-table__header {
+    background-color: var(--card);
+  }
+  .ferris-table__row:hover {
+    background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+  }
+  .ferris-table__row[data-state="selected"] {
+    background-color: var(--muted);
+  }
+  .ferris-table__head {
+    color: var(--muted-foreground);
+  }
+  .ferris-table__footer {
+    background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Sidenav
+   * ------------------------------------------------------------------ */
+  .ferris-sidenav,
+  .ferris-sidenav__inner {
+    background-color: var(--sidebar);
+    color: var(--sidebar-foreground);
+  }
+  .ferris-sidenav-wrapper:has([data-variant="Inset"]) {
+    background-color: var(--sidebar);
+  }
+  .ferris-sidenav__inset {
+    background-color: var(--background);
+  }
+  .ferris-sidenav__inset[data-variant="Inset"],
+  .ferris-sidenav__inner[data-variant="Floating"],
+  .ferris-sidenav__container,
+  .ferris-sidenav__menu-sub {
+    border-color: var(--sidebar-border);
+  }
+  .ferris-sidenav__group-label {
+    color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
+  }
+  .ferris-sidenav__group-label,
+  .ferris-sidenav__link,
+  .ferris-sidenav__menu-button,
+  .ferris-sidenav__menu-sub-button,
+  .ferris-sidenav__menu-action {
+    --tw-ring-color: var(--sidebar-ring);
+  }
+  .ferris-sidenav__link:is(:hover, :active),
+  .ferris-sidenav__menu-button:is(:hover, :active),
+  .ferris-sidenav__link[aria-current="page"],
+  .ferris-sidenav__link[data-state="open"]:hover,
+  .ferris-sidenav__menu-button[aria-current="page"],
+  .ferris-sidenav__menu-button[data-state="open"]:hover,
+  .ferris-sidenav__menu-button--outline:hover {
+    background-color: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+  }
+  .ferris-sidenav__link[aria-current="page"] {
+    font-weight: 600;
+  }
+  .ferris-sidenav__menu-button--outline {
+    background-color: var(--background);
+    box-shadow: 0 0 0 1px var(--sidebar-border);
+  }
+  .ferris-sidenav__menu-button--outline:hover {
+    box-shadow: 0 0 0 1px var(--sidebar-accent);
+  }
+  .ferris-sidenav__menu-sub-button,
+  .ferris-sidenav__menu-action {
+    color: var(--sidebar-foreground);
+  }
+  .ferris-sidenav__menu-sub-button:is(:hover, :active, [aria-current="page"]) {
+    background-color: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+  }
+  .ferris-sidenav__menu-action:hover {
+    background-color: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+  }
+  .peer\/menu-button:hover ~ .ferris-sidenav__menu-action,
+  .peer\/menu-button[data-active="true"] ~ .ferris-sidenav__menu-action {
+    color: var(--sidebar-accent-foreground);
+  }
+  .ferris-sidenav__trigger:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+  .ferris-sidenav__trigger:focus-visible {
+    border-color: var(--ring);
+    --tw-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  .ferris-sidenav__trigger[aria-invalid="true"] {
+    border-color: var(--destructive);
+    --tw-ring-color: color-mix(in oklab, var(--destructive) 20%, transparent);
+  }
+  .ferris-sidenav__toggle-rail:hover::after {
+    background-color: var(--sidebar-border);
+  }
+  .group[data-collapsible="Offcanvas"] .ferris-sidenav__toggle-rail:hover {
+    background-color: var(--sidebar);
+  }
+  .ferris-sidenav__input {
+    background-color: var(--background);
+    border-color: var(--input);
+    color: var(--foreground);
+  }
+  .ferris-sidenav__input::placeholder {
+    color: var(--muted-foreground);
+  }
+  .ferris-sidenav__input::file-selector-button {
+    background-color: transparent;
+    color: var(--foreground);
+  }
+  .ferris-sidenav__input::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .ferris-sidenav__input:focus-visible {
+    border-color: var(--ring);
+    --tw-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  .ferris-sidenav__input[aria-invalid="true"] {
+    border-color: var(--destructive);
+    --tw-ring-color: color-mix(in oklab, var(--destructive) 20%, transparent);
+  }
+  .ferris-sidenav__input:read-only {
+    background-color: var(--muted);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Dashboard board and tiles.                                          *
+   * The box (left/top/width/height) is inline style — a data-dependent  *
+   * geometry cannot be a class — so the *motion* of that geometry lives *
+   * here: tiles glide when a gesture re-places them, the tile in flight *
+   * follows the pointer without lag (`data-dragging`), a fresh tile     *
+   * fades in, and `prefers-reduced-motion` below opts out of all of it. *
+   *                                                                     *
+   * The configured appearance rides the same inline style, but only as  *
+   * custom properties (`--ferris-tile-*`, `--ferris-board-*`): tokens    *
+   * and free-form colours never become class names or literal          *
+   * declarations in the markup. Every rule falls back to the Desk's own *
+   * surface, so a board that configures nothing looks as it always did. *
+   * ------------------------------------------------------------------ */
+  .ferris-dashboard-board {
+    background-color: var(--ferris-board-bg, transparent);
+    border-radius: var(--ferris-board-radius, 0);
+    padding: var(--ferris-board-padding, 0);
+  }
+
+  .ferris-dashboard-tile {
+    background-color: var(--ferris-tile-bg, transparent);
+    border-style: solid;
+    border-width: var(--ferris-tile-border-width, 0);
+    border-color: var(--ferris-tile-border-color, transparent);
+    border-radius: var(--ferris-tile-radius, var(--radius-md));
+    box-shadow: var(--ferris-tile-shadow, none);
+    padding: var(--ferris-tile-padding, 0);
+    transition-property: left, top, width, height;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    animation: ferris-tile-in 180ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* Editing adds no surface of its own: the tile keeps exactly the background,
+     border, radius and shadow its configuration declares, so the builder does
+     not repaint the board. The only change is the seam for the header strip:
+     the top edge and its two corners go away while the chrome is attached. */
+  .ferris-dashboard-tile--editing {
+    border-top-width: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  .ferris-dashboard-tile[data-dragging] {
+    transition-property: none;
+  }
+
+  .ferris-dashboard-tile__chrome {
+    background-color: color-mix(in oklab, var(--muted) 40%, transparent);
+  }
+
+  .ferris-dashboard-tile__resize {
+    background-color: color-mix(in oklab, var(--muted) 60%, transparent);
+  }
+
+  /* A tile that declares a background, border or shadow owns the surface: a
+     `.ferris-card` a body still renders must not paint a second one over it.
+     The host's native bodies (stat/trend/table) no longer use `Card`; this is
+     the safety net for a body that still does. Its `shadow-sm` is a Tailwind
+     utility, which outranks this layer — hence the one deliberate
+     `!important` here. Plugin bodies are custom elements with no host card of
+     their own; the tile is their only frame. */
+  .ferris-dashboard-tile[data-surface] .ferris-card {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none !important;
+  }
+
+  @keyframes ferris-tile-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ferris-dashboard-tile {
+      animation: none;
+      transition: none;
+    }
+  }
+}

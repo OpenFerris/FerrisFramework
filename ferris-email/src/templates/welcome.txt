@@ -1,0 +1,7 @@
+Welcome to {{ app_name }}!
+
+Hi {{ user_name }},
+
+Your account is ready. You can sign in here: {{ login_url }}
+
+-- The {{ app_name }} Team

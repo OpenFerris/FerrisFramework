@@ -1,0 +1,207 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # Default members: the framework without the wasmtime/cranelift stack.
+      # `--locked` keeps CI on the committed Cargo.lock instead of silently
+      # regenerating it.
+      - run: cargo check --all-targets --locked
+      # Heavy crates live outside `default-members` on purpose (AGENTS §2).
+      - run: cargo check-cli --locked
+      # The workspace lints are a historical pedantic/nursery baseline that is
+      # not clean enough for a global `-D warnings`; the hard gate is the
+      # correctness group, and a touched crate must not add warnings of any
+      # group (`cargo clippy -p <crate> --all-targets -- -D warnings` locally).
+      - run: cargo clippy --all-targets --locked -- -D clippy::correctness
+      # Both ends of the compile-time feature matrix.
+      - run: cargo check -p ferris-cli --no-default-features --features api --locked
+      - run: cargo check -p ferris-cli --features full --locked
+
+  wasm:
+    name: Wasm (hydrate + ssr)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked -p ferris-web --features hydrate --target wasm32-unknown-unknown
+      - run: cargo check --locked -p ferris-web --features ssr
+      # The SSR binary needs `ssr,wasm-runtime` and is not covered by
+      # `--all-targets`; `PluginErrorKind` broke there once already (AGENTS §3).
+      - run: cargo check --locked -p ferris-web --bin ferris-web-ssr --features ssr,wasm-runtime
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # The workspace compiles wasmtime/cranelift and the full Leptos stack.
+    timeout-minutes: 300
+    services:
+      postgres:
+        # Same major as compose.yaml, so dev and CI cannot diverge (DX-17).
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: ferris_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports: ["5432:5432"]
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports: ["6379:6379"]
+    env:
+      # Link two test binaries at a time and drop debug info: a GitHub runner
+      # has less RAM than the 15 GiB the workspace assumes (AGENTS §3).
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked -j 2 -- --test-threads=1
+
+  mysql:
+    name: MySQL (dialect)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: ferris_test
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -utest -ptest"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        ports: ["3306:3306"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - uses: Swatinem/rust-cache@v2
+      # No integration harness connects to MySQL yet (AGENTS §4); this job
+      # keeps the third dialect in the matrix against a live server so a
+      # regression cannot hide behind dev-only land.
+      - run: cargo test --locked -p ferris-db --lib
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-audit --version 0.23.0 --locked
+      # Informational while the 0.3 baseline is established: the advisory
+      # database moves independently of this repository, so a new advisory
+      # must not block an unrelated pull request. Remove `continue-on-error`
+      # once the baseline is triaged.
+      - name: cargo audit
+        run: cargo audit
+        continue-on-error: true
+
+  docs:
+    name: Docs site
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      # Informational only: the npm advisory feed changes outside this repo.
+      - name: npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  style:
+    name: Tailwind
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ferris-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ferris-web/package-lock.json
+      - run: npm ci
+      - run: node_modules/.bin/tailwindcss -i style/tailwind.css -o style/desk.css --minify
+      # The generated stylesheet is committed next to the classes it serves.
+      - name: desk.css is up to date
+        run: git diff --exit-code -- style/desk.css
+      # Informational only: the npm advisory feed changes outside this repo.
+      - name: npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true

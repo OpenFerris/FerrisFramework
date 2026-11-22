@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 100" role="img" aria-label="Vista previa de un widget de gráfico">
+  <rect width="160" height="100" rx="8" fill="#fafafa"/>
+  <rect x="14" y="12" width="52" height="6" rx="3" fill="#a1a1aa"/>
+  <path d="M18 84h128M18 84V24" stroke="#e4e4e7" stroke-width="2" stroke-linecap="round"/>
+  <rect x="30" y="56" width="14" height="28" rx="2" fill="#bfdbfe"/>
+  <rect x="54" y="44" width="14" height="40" rx="2" fill="#93c5fd"/>
+  <rect x="78" y="50" width="14" height="34" rx="2" fill="#bfdbfe"/>
+  <rect x="102" y="32" width="14" height="52" rx="2" fill="#60a5fa"/>
+  <rect x="126" y="22" width="14" height="62" rx="2" fill="#3b82f6"/>
+</svg>

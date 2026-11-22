@@ -1,0 +1,154 @@
+[package]
+name = "ferris-server"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "Ferris unified server (API + web desk + realtime)"
+
+[lints]
+workspace = true
+
+# One feature per subsystem, plus `api` as the always-on base and `full` as a
+# convenience alias. `default` = every vertical the framework shipped before
+#
+# The dependency graph follows the same split: a subsystem's crate is optional
+# and only the feature pulls it in, so `--no-default-features --features api`
+# links neither Leptos nor wasmtime nor the verticals. `scheduler` and `email`
+# imply `jobs` because both run on the job queue.
+[features]
+default = [
+    "api",
+    "web",
+    "realtime",
+    "jobs",
+    "scheduler",
+    "email",
+    "files",
+    "print",
+    "report",
+    "integrations",
+    "wasm",
+]
+api = []
+web = [
+    "dep:ferris-web",
+    "dep:leptos",
+    "dep:leptos_axum",
+    "dep:leptos_config",
+    "dep:any_spawner",
+    "dep:serde",
+]
+realtime = ["dep:ferris-realtime", "dep:socketioxide"]
+jobs = ["dep:ferris-jobs", "dep:redis", "dep:async-trait"]
+scheduler = ["jobs", "dep:ferris-scheduler"]
+email = ["jobs", "dep:ferris-email"]
+files = ["dep:ferris-files"]
+print = ["dep:ferris-print"]
+report = ["dep:ferris-report"]
+integrations = ["dep:ferris-integrations"]
+wasm = [
+    "dep:ferris-wasm",
+    "dep:socket2",
+    "dep:async-trait",
+    "dep:futures-util",
+    "dep:parking_lot",
+    "dep:serde",
+    "dep:tokio-tungstenite",
+    "dep:tokio-stream",
+]
+full = [
+    "api",
+    "web",
+    "realtime",
+    "jobs",
+    "scheduler",
+    "email",
+    "files",
+    "print",
+    "report",
+    "integrations",
+    "wasm",
+]
+
+[dependencies]
+# Base: always compiled. `api` is the REST façade and the four crates under it
+# (db, schema, auth, document) are what it needs to answer a request at all.
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-db = { path = "../../FerrisCore/ferris-db" }
+ferris-schema = { path = "../../FerrisCore/ferris-schema" }
+ferris-api = { path = "../../FerrisCore/ferris-api" }
+ferris-auth = { path = "../../FerrisCore/ferris-auth" }
+ferris-document = { path = "../../FerrisCore/ferris-document" }
+
+# Verticals: each one optional, pulled in only by its own feature.
+ferris-files = { path = "../ferris-files", features = ["http"], optional = true }
+ferris-realtime = { path = "../ferris-realtime", optional = true }
+ferris-web = { path = "../ferris-web", features = ["ssr"], optional = true }
+ferris-jobs = { path = "../ferris-jobs", optional = true }
+ferris-scheduler = { path = "../ferris-scheduler", optional = true }
+ferris-email = { path = "../ferris-email", features = ["module"], optional = true }
+ferris-print = { path = "../ferris-print", features = ["http"], optional = true }
+ferris-report = { path = "../ferris-report", features = ["http"], optional = true }
+ferris-integrations = { path = "../ferris-integrations", features = ["runtime", "module"], optional = true }
+ferris-wasm = { path = "../ferris-wasm", optional = true }
+
+# Optional dependencies that exist only for one optional subsystem: keeping them
+# non-optional would either fail `unused_crate_dependencies` in an `api`-only
+# build or link a stack (socketioxide, tungstenite, a second executor) nobody
+# asked for.
+async-trait = { workspace = true, optional = true }
+any_spawner = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+leptos = { workspace = true, features = ["ssr"], optional = true }
+leptos_axum = { workspace = true, optional = true }
+leptos_config = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+redis = { workspace = true, optional = true }
+socketioxide = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+socket2 = { workspace = true, optional = true }
+
+# Always-on infrastructure.
+anyhow = { workspace = true }
+axum = { workspace = true }
+base64 = { workspace = true }
+rcgen = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+x509-parser = { workspace = true }
+
+[dev-dependencies]
+wat = { workspace = true }
+wasmtime = { workspace = true }
+tower = { workspace = true }
+
+# Integration tests that drive the plugin host (a wasm guest, the app's
+# sockets) need the `wasm` feature; declaring it here keeps
+# `--no-default-features --features api` from trying to build them.
+[[test]]
+name = "declared_routes"
+path = "tests/declared_routes.rs"
+required-features = ["wasm"]
+
+[[test]]
+name = "pki"
+path = "tests/pki.rs"
+required-features = ["wasm"]
+
+[[test]]
+name = "plugin_net"
+path = "tests/plugin_net/main.rs"
+required-features = ["wasm"]

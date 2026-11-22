@@ -1,0 +1,5 @@
+{{ title }}
+
+{{ message }}
+
+{{ action_label }}: {{ action_url }}

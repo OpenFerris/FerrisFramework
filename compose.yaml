@@ -1,0 +1,81 @@
+# Ferris development stack.
+#
+#   docker compose run --rm ferris cargo check
+#   docker compose run --rm ferris cargo run -p ferris-cli -- doctor
+#   docker compose up -d postgres redis
+#
+# The repository is bind-mounted at /workspace, so edits on the host are
+# visible immediately. Build artifacts stay in the host's target/ through the
+# same mount (or in a named volume if you prefer isolation; see below).
+#
+# Before running `ferris serve`/`ferris run`, copy `.env.example` to `.env` and
+# set a real `FERRIS_JWT_SECRET` (`openssl rand -base64 48`). Compose forwards
+# it; when it is unset the variable reaches the container empty, which the CLI
+# treats as "not configured" and the server refuses to boot. There is no default
+# secret on purpose (DX-18).
+#
+# Images are pinned by tag *and* digest (DX-17). The digest is the OCI image
+# index, so both amd64 and arm64 resolve; bump tag and digest together.
+
+name: ferris
+
+services:
+  ferris:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    image: ferris-dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      # Framework crate paths point at ../../FerrisCore; keep the sibling visible.
+      - ../FerrisCore:/FerrisCore
+    ports:
+      # Loopback only: the dev server has no TLS and no client certificate, so
+      # it must never be reachable from the local network.
+      - "127.0.0.1:8000:8000" # ferris serve / dev
+      - "127.0.0.1:4321:4321" # documentation site (Astro)
+    environment:
+      # Forwarded from the shell or `.env`, never defaulted: see the header.
+      FERRIS_JWT_SECRET: ${FERRIS_JWT_SECRET:-}
+      RUST_BACKTRACE: "1"
+    tty: true
+    stdin_open: true
+    command: bash
+
+  postgres:
+    image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+    environment:
+      POSTGRES_USER: ferris
+      POSTGRES_PASSWORD: ferris
+      POSTGRES_DB: ferris
+    ports:
+      # The credentials above are the documented example defaults. Binding to
+      # loopback keeps them out of the host's network interfaces; a deployment
+      # outside this stack needs its own secret and no published port.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ferris"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      # No password: loopback only, same reasoning as PostgreSQL.
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

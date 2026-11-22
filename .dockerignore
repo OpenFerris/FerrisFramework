@@ -1,0 +1,23 @@
+target/
+.ferris/
+.git/
+.gitignore
+.vscode/
+.idea/
+**/node_modules/
+**/dist/
+**/.astro/
+test.db
+**/*.db
+plugins/
+ferris-files/tus_uploads/
+# Secrets and key material must never enter the build context, even when the
+# Dockerfile does not COPY them (DX-34).
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+*.p8
+*.crt

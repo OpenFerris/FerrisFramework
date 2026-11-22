@@ -1,0 +1,31 @@
+[package]
+name = "ferris-realtime"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "Realtime WebSocket server for Ferris framework"
+
+[lints]
+workspace = true
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-auth = { path = "../../FerrisCore/ferris-auth" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+socketioxide = { version = "0.10", features = ["extensions", "state", "tracing"] }
+uuid = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+
+[dev-dependencies]
+# Implementing `ferris_auth::middleware::UserValidator` in the handshake tests
+# needs the same proc-macro the trait is declared with (already a workspace dep).
+async-trait = { workspace = true }

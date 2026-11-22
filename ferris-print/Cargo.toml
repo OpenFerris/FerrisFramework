@@ -1,0 +1,52 @@
+[package]
+name = "ferris-print"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "PDF generation for Ferris framework"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# HTTP adapter: the native `Module` contract. Kept off by default so a caller
+# that only renders PDFs does not pull `ferris-api` or axum.
+http = [
+    "dep:ferris-api",
+    "dep:ferris-auth",
+    "dep:ferris-document",
+    "dep:axum",
+    "dep:tokio",
+    "dep:async-trait",
+    "dep:base64",
+]
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-schema = { path = "../../FerrisCore/ferris-schema" }
+ferris-api = { path = "../../FerrisCore/ferris-api", optional = true }
+ferris-auth = { path = "../../FerrisCore/ferris-auth", optional = true }
+ferris-document = { path = "../../FerrisCore/ferris-document", optional = true }
+axum = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true }
+minijinja = { workspace = true }
+typst = { version = "0.13", features = [] }
+typst-pdf = { version = "0.13" }
+typst-render = { version = "0.13" }
+typst-svg = { version = "0.13" }
+typst-html = { version = "0.13" }
+typst-assets = { version = "0.13", features = ["fonts"] }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+[dev-dependencies]
+# Only the HTTP adapter tests need a real Db.
+ferris-db = { path = "../../FerrisCore/ferris-db" }

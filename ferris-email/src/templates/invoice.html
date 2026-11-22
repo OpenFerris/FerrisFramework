@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Invoice {{ invoice_number }}</title></head>
+<body>
+  <h1>Invoice {{ invoice_number }}</h1>
+  <p>Dear {{ customer_name }},</p>
+  <p>Please find your invoice for {{ amount }}, due on {{ due_date }}.</p>
+  <p><a href="{{ pdf_url }}">Download PDF</a></p>
+</body>
+</html>

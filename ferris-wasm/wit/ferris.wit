@@ -1,0 +1,1432 @@
+// ferris:framework@0.3.0 — the app contract.
+//
+// A component imports six interfaces — `types` (wire and policy vocabulary),
+// `data`, `schema`, `io`, `platform` and `descriptor` — and exports the
+// `ferris-app` world: `describe`, `handle-request`, `doctype-event`,
+// `handle-stream`, `handle-stream-event`, `handle-datagram`, `handle-job`,
+// `ui-asset` and `ui-widget`.
+//
+// The contract is static. A host may be compiled without a vertical (realtime,
+// jobs, email…), and `platform::features()` reports what the running binary
+// actually contains; a call into an absent surface fails with the typed
+// `unsupported` error instead of a fabricated success.
+//
+// Capabilities are either primordial or specific. The primordial set is always
+// granted and never configured: the app's own world (its files, blobs and
+// `secrets/.env`), its routes including HTTPS, outbound HTTP under policy, the
+// document store, config, schema, the scheduler, notifications and pubsub. The
+// specific set is granted by declaring it — the egress privileges that widen a
+// host boundary (`http-unrestricted`, `tls-client`, `tls-server`, `streams`,
+// `streams-listen`, `udp`, `raw-sockets`, `dns-server`, `process`, `threads`,
+// `pki`) plus `overrides`. There is no operator grant table and no
+// `trust-profile`: declaring a capability is the request and the grant, and any
+// call outside the resulting set fails with `permission-denied`.
+// The host owns every socket, certificate, child process and SQL statement: an
+// app may ask for its own listeners, TLS material, datagram sockets, DNS zone
+// and programs and get them, but the guest never performs a handshake, resolves
+// a name or forks on the host's behalf.
+//
+// Ports and bind addresses are never configured per app by the operator: `io`
+// takes `address`/`port` per call, `none`/`0` means inferred, and the effective
+// pair is reported by `stream-describe`. The same rule covers datagram sockets
+// and the DNS listener, and no descriptor field exists to ask the operator for a
+// per-app limit — the host's global caps apply to every app alike.
+//
+// The guest is mounted on its own `plugins/<app>/` directory at `/world`
+// (read-write), so its files, settings and exported customizations live in one
+// place it owns. The mount is the whole sandbox: `..`, absolute paths outside
+// the root and a symlinked world root are refused, and an app never sees
+// another app's world.
+//
+// APIs are inheritable: a declared `method` may override an existing one (a
+// framework base or another app's), the host resolves an ordered chain and
+// `data::call-method` is the explicit `super`. An app owns
+// `/api/plugins/<app>/*` and `/desk/<app>/*` and routes freely inside them; a
+// declared root path still goes through the host's validated, fail-closed route
+// table.
+
+
+package ferris:framework@0.3.0;
+
+/// Wire types and the policy vocabulary every other interface shares.
+interface types {
+    /// A classified failure; the host maps the kind to a status without parsing text: 404, 403,
+    /// 422, 409, 429, 504, 500.
+    variant error {
+        not-found(string),
+        /// An ungranted capability always reports this variant, naming it (403).
+        permission-denied(string),
+        validation-failed(string),
+        conflict(string),
+        /// Payload is the retry-after delay in seconds (429).
+        rate-limited(u32),
+        timeout(string),
+        internal(string),
+    }
+
+    /// Facts about the client certificate that terminated TLS, when the host verified one;
+    /// mapping them to a device or enrolment is the plugin's concern. `none` on a plain
+    /// connection or a client without a certificate. `fingerprint` is the lowercase hex SHA-256
+    /// of the DER certificate, so it doubles as the revocation key.
+    record client-identity {
+        subject: string,
+        common-name: option<string>,
+        fingerprint: string,
+        issuer: string,
+    }
+
+    /// Ordered header pairs; the host lowercases names on the way in.
+    type headers = list<tuple<string, string>>;
+
+    /// An inbound HTTP request. `path` is what follows the app prefix (`/` for the prefix
+    /// itself), handed over verbatim once a route prefix matched; parsing the rest is the
+    /// plugin's job. `query` arrives without `?`, `body` is raw bytes capped by the route's
+    /// `body-limit`.
+    record http-request {
+        method: string,
+        path: string,
+        query: string,
+        headers: headers,
+        body: list<u8>,
+        client-identity: option<client-identity>,
+    }
+
+    /// What an app may reach. Capabilities are either **primordial** (always granted:
+    /// `routes`, `http`, `docstore-read`, `docstore-write`, `filesystem`, `config`,
+    /// `schema`, `scheduler`, `notifications`, `pubsub`) or **specific** (granted when
+    /// the app declares them). A capability is a grant on the app, not a check on a
+    /// user; `platform::grants` reports the effective set and everything outside it
+    /// fails with `permission-denied`.
+    enum capability {
+        /// Declare routes and receive them in `handle-request`.
+        routes,
+        /// Outbound HTTP under `http-policy` and the host's caps.
+        http,
+        /// Outbound HTTP ignoring `allowed-hosts`/`allow-private`, keeping the size, timeout
+        /// and redirect caps. Specific: declare it to widen the host's policy.
+        http-unrestricted,
+        /// Outbound TLS with client certificate, custom CA, SNI and ALPN.
+        tls-client,
+        /// Serve TLS/mTLS with the app's own certificate material.
+        tls-server,
+        /// Open outbound streams and receive the inbound ones the host accepted.
+        streams,
+        /// Bind a listener the app owns (`io::listen-stream`). Specific: it opens a host
+        /// port, so it is declared and logged.
+        streams-listen,
+        /// Read documents, run list/count/aggregate, read schema metadata.
+        docstore-read,
+        /// Write documents and allocate naming series numbers.
+        docstore-write,
+        /// Read and write the app's own world directory (`plugins/<app>/`), mounted at
+        /// `/world`: the app's files, blobs and `secrets/.env`. Primordial — every app's
+        /// world is mounted, because the grant is resolved at instantiation and the mount
+        /// is the boundary (`..`, absolute paths that leave the root and a symlinked world
+        /// root are refused; no app sees another's directory). This replaces the old
+        /// blob/file host API.
+        filesystem,
+        /// Declare a method that overrides an existing one (a framework base or another app's).
+        /// Without it, an `overrides` declaration fails the app at load.
+        overrides,
+        /// Sign CSRs with the host CA, read its certificate, revoke what the app itself issued.
+        pki,
+        /// Register, list and cancel the app's schedules and enqueue jobs.
+        scheduler,
+        /// Read and write the app's non-secret config keys.
+        config,
+        /// Introspect DocType metadata.
+        schema,
+        /// Send alerts and messages through the host's delivery infrastructure.
+        notifications,
+        /// Publish to the app's declared pubsub channels.
+        pubsub,
+        /// Send and receive UDP datagrams through the host (`io::udp-connect`,
+        /// `io::udp-listen`, `io::udp-send`, `io::udp-close`), delivered to
+        /// `handle-datagram`. Specific: declaring it opens outbound datagrams and, when the
+        /// app asks with `udp-listen`, a host port. The host owns the descriptor; the guest
+        /// never sees a socket, and `none`/`0` ports are inferred by the host.
+        udp,
+        /// Serve one authoritative DNS zone the host binds on UDP and TCP on the same port
+        /// (`io::dns-serve`, `io::dns-update`, `io::dns-stop`). Specific: the host answers
+        /// queries for the zone's `origin` from the records the guest supplied, so the app
+        /// never sees a query or a socket. Port 53 is the default; `none`/`0` is inferred.
+        dns-server,
+        /// Build and receive whole IP packets from a raw socket (`io::raw-open`,
+        /// `io::raw-send`, `io::raw-close`), ICMP included. Specific: it bypasses the
+        /// transport the host would otherwise enforce, so it is declared and logged — the
+        /// host still owns the descriptor, applies its own caps and performs the capability
+        /// check before the first packet.
+        raw-sockets,
+        /// Run programs on the host (`platform::process-run`, `process-spawn`,
+        /// `process-wait`, `process-kill`). Specific: it executes host code on the app's
+        /// behalf. Programs run inside the app's world, with the declared environment, no
+        /// shell and the host's timeout and output caps; the operator configures no
+        /// per-app limit.
+        process,
+        /// Use the guest's own threads (the WebAssembly threads proposal). There is no WIT
+        /// call: the guest starts threads in its runtime, and the host reports `threads` in
+        /// `platform::features` and this capability in `grants` when the engine supports it.
+        /// Specific, because a thread pool multiplies the guest's memory and CPU footprint.
+        threads,
+    }
+
+    /// The effective grant the host computed for this app: the primordial set plus the specific
+    /// capabilities it declared. There is no profile and no operator table — declaring a
+    /// capability is the request and the grant, and `platform::grants` reports the result so a
+    /// guest can branch instead of probing for failures. A capability the running binary cannot
+    /// honour still fails at the call with `unsupported`, never by widening or narrowing the set
+    /// silently.
+    record grant-set {
+        capabilities: list<capability>,
+    }
+
+    /// The authentication a route requires before the host dispatches it.
+    variant route-auth {
+        /// Public: dispatched as an anonymous guest; the plugin decides.
+        none,
+        /// A desk session (cookie or bearer) is required; the host answers 401 before dispatch
+        /// and binds the caller to `platform::current-user`.
+        session,
+        /// The caller must send `x-ferris-capability: <token>` matching the app's secret config
+        /// key `route.<name>.token`. The host compares it in constant time (401 when absent or
+        /// wrong, 403 when the app never provisioned it) and never forwards it, so the app's
+        /// own credential policy stays its own.
+        capability(string),
+    }
+
+    /// Outbound network policy of one call, or the app default. The effective policy is the
+    /// strictest of this declaration and the host's caps: `http-unrestricted` ignores
+    /// `allowed-hosts` (exact host or `"*.suffix"`, empty = any) and `allow-private`
+    /// (loopback, RFC 1918, link-local), never the `max-body`/`timeout-ms` ceilings or
+    /// `redirects` (re-checked on every hop). `allow-credentials` forwards
+    /// `Authorization`/`Cookie`.
+    record http-policy {
+        allowed-hosts: list<string>,
+        allow-private: bool,
+        max-body: option<u64>,
+        timeout-ms: option<u32>,
+        redirects: redirect-policy,
+        allow-credentials: bool,
+    }
+
+    variant redirect-policy {
+        /// Return the 3xx as-is.
+        none,
+        /// Follow this many hops, clamped to the host's hard cap.
+        limited(u8),
+        follow,
+    }
+
+    enum tls-version {
+        tls12,
+        tls13,
+    }
+
+    /// Where one piece of PEM material comes from. `secret` is the recommended form for
+    /// anything with a private key: it names a file inside the app's world, relative to
+    /// `/world` (e.g. `secrets/client.pem`), so it rotates without a new `describe()`, never
+    /// appears in a descriptor projection and stays the app's own material. `pem` carries it
+    /// inline and the host redacts it from every JSON projection, so a key cannot leak through
+    /// `/plugins/{name}`.
+    variant tls-material {
+        pem(string),
+        secret(string),
+    }
+
+    enum client-auth {
+        none,
+        /// Ask for a certificate but accept without one.
+        optional,
+        /// Require one the configured CA verifies.
+        required,
+    }
+
+    /// TLS for an outbound connection. The host performs the handshake: `cert`/`key` are
+    /// presented, `ca` verifies the peer (`none` = system roots), `server-name` overrides SNI,
+    /// `alpn`/`min-version` pick the protocol, and `verify: false` needs `http-unrestricted`
+    /// — the same grant that widens egress, since it accepts a peer the host cannot vouch for.
+    record tls-client {
+        cert: option<tls-material>,
+        key: option<tls-material>,
+        ca: option<tls-material>,
+        server-name: option<string>,
+        alpn: list<string>,
+        min-version: tls-version,
+        verify: bool,
+    }
+
+    /// TLS for a route or listener the app serves. The host terminates TLS; the guest supplies
+    /// policy and material. `ca` is required when `client-auth` is not `none`, and `sni` lists
+    /// the names this certificate answers for (empty = the host's bind name; an unlisted name
+    /// is rejected).
+    record tls-server {
+        cert: tls-material,
+        key: tls-material,
+        ca: option<tls-material>,
+        client-auth: client-auth,
+        sni: list<string>,
+        alpn: list<string>,
+        min-version: tls-version,
+    }
+
+    /// Lifecycle of one stream, delivered to `handle-stream-event`.
+    variant stream-event {
+        /// Accepted, or the outbound connect completed.
+        opened,
+        /// The peer or the host closed it; no further chunks arrive.
+        closed,
+        /// The connection failed; no further chunks arrive.
+        error(string),
+    }
+
+    /// `websocket` is an HTTP upgrade, `tcp` a raw byte stream, `tls` a raw byte stream the
+    /// host wraps in TLS. `udp`, `raw` and `icmp` are **datagram** transports: their payloads
+    /// arrive as whole datagrams through `handle-datagram` (never `handle-stream`), and they
+    /// are opened by `io::udp-connect`/`io::udp-listen`/`io::raw-open`, not by
+    /// `io::connect-stream`.
+    enum stream-transport {
+        websocket,
+        tcp,
+        tls,
+        udp,
+        raw,
+        icmp,
+    }
+
+    /// A listener the app owns: declared in a route of kind `%stream` (mounted at load) or
+    /// opened with `io::listen-stream`. The host binds and accepts; each connection reaches the
+    /// guest as a `stream-id`. For `websocket`, `address` is the path prefix under the app;
+    /// for `tcp`/`tls`, `address` is the host to bind and `port` the port (an `"host:port"`
+    /// inside `address` is still honoured). `none` means the host infers it — the app prefix
+    /// for a path, its bind policy for a host — and `port` `none`/`0` lets the host pick one,
+    /// which `stream-describe` reports. `tls` needs `tls-server`; `auth` gates the handshake
+    /// (`none` = the app authenticates frames); `max-frame` caps one chunk. Datagram
+    /// transports are refused here: use `io::udp-listen`/`io::raw-open`.
+    record stream-listen {
+        transport: stream-transport,
+        address: option<string>,
+        port: option<u16>,
+        tls: option<tls-server>,
+        auth: option<route-auth>,
+        max-frame: option<u32>,
+        idle-timeout-seconds: option<u32>,
+    }
+
+}
+
+/// Document store, naming series, metadata and the chain of API methods. Calls are authorized as the
+/// invoking user: a read the user may not make fails with `permission-denied` whatever the
+/// app's capabilities say. Capabilities decide whether the app may call at all; the engine
+/// decides what the user sees.
+interface data {
+    use types.{error};
+
+    /// One legal lifecycle transition. `amend` creates a new draft from the source document;
+    /// `submit`/`cancel` move the same document.
+    enum docstatus-action {
+        submit,
+        cancel,
+        amend,
+    }
+
+    /// One document; `data` is the JSON body, so the boundary is stable across DocTypes and
+    /// storage layouts.
+    record doc {
+        name: string,
+        doctype: string,
+        owner: string,
+        docstatus: string,
+        data: string,
+    }
+
+    /// One filter over a field's string value. `in` takes comma-separated values (`"a,b,c"`),
+    /// `between` a low and a high (`"low,high"`), `like` a case-insensitive substring.
+    record filter {
+        field: string,
+        op: filter-op,
+        value: string,
+    }
+
+    enum filter-op {
+        eq,
+        ne,
+        like,
+        in,
+        gt,
+        gte,
+        lt,
+        lte,
+        between,
+    }
+
+    record sort {
+        field: string,
+        desc: bool,
+    }
+
+    /// Filters are ANDed. `eq` is answered by the host's index; the rest run through the query
+    /// engine after the equality match, so pagination stays honest. Post-processing is bounded
+    /// by the host's scan cap: exceeding it is `validation-failed`, never a truncated total.
+    /// `fields` projects `doc.data` (system fields always present).
+    record query {
+        filters: list<filter>,
+        order-by: list<sort>,
+        limit: option<u32>,
+        offset: option<u32>,
+        fields: option<list<string>>,
+    }
+
+    /// One write: `name` is required by `update`/`delete` and ignored by `create`/`upsert`
+    /// (which take it from the body); `data` is the JSON body, ignored by `delete`;
+    /// `disposition` decides whether the app's own handlers re-enter.
+    record write {
+        kind: op-kind,
+        doctype: string,
+        name: option<string>,
+        data: option<string>,
+        disposition: write-disposition,
+    }
+
+    enum op-kind {
+        /// Insert; an existing name is `conflict`.
+        create,
+        /// Update an existing row; a missing name is `not-found`.
+        update,
+        /// Create-or-update by the body's `name`, idempotently.
+        upsert,
+        /// Remove the row; returns no document.
+        delete,
+    }
+
+    enum write-disposition {
+        /// Run the normal `before-*` validation and queue the `after-*` events.
+        emit-events,
+        /// Persist and stamp the row but re-enter none of the app's own handlers: the only way
+        /// for a plugin reacting to its own document to avoid the reentrancy loop, and to write
+        /// from a guest call the host cannot re-enter.
+        silent,
+    }
+
+    /// `alias` names the value in `aggregate-row.values`, defaulting to `"<fn>_<field>"` (or
+    /// `"count"`); `field` is ignored by `count`.
+    record aggregate-spec {
+        fn: aggregate-fn,
+        field: string,
+        alias: option<string>,
+    }
+
+    enum aggregate-fn {
+        count,
+        sum,
+        avg,
+        min,
+        max,
+    }
+
+    /// Key values and computed values (numbers in canonical decimal form). A grand-total row
+    /// has an empty `group`.
+    record aggregate-row {
+        group: list<tuple<string, string>>,
+        values: list<tuple<string, string>>,
+    }
+
+    record field-meta {
+        name: string,
+        fieldtype: string,
+        label: string,
+        required: bool,
+        read-only: bool,
+        options: option<string>,
+    }
+
+    /// `is-single`: exactly one document, named after the doctype.
+    record doctype-meta {
+        name: string,
+        fields: list<field-meta>,
+        is-submittable: bool,
+        is-child-table: bool,
+        is-single: bool,
+    }
+
+    list-docs: func(doctype: string, query: query) -> result<list<doc>, error>;
+
+    /// Fetch documents by name in one call. The result is **positional**: entry *i* is the
+    /// document named `names[i]`, or `none` when that row does not exist. A missing row is not
+    /// an error; a caller needing strictness turns its `none` into `not-found` itself. This
+    /// one call covers the single fetch and the batch, so no separate `get`/`get-many` pair
+    /// exists.
+    get-docs: func(doctype: string, names: list<string>) -> result<list<option<doc>>, error>;
+
+    /// Write one document; `none` for `delete`.
+    write-doc: func(write: write) -> result<option<doc>, error>;
+
+    /// Apply a batch of writes as **one transaction**: if any op fails (validation,
+    /// authorization, conflict, missing row) the whole batch rolls back. Positional result,
+    /// `none` for a `delete`. This is the only batch primitive: a `create` op is just a write
+    /// whose `write` is `create`.
+    apply-ops: func(ops: list<write>) -> result<list<option<doc>>, error>;
+
+    /// Count without materialising rows: the host pushes predicates and the count into SQL
+    /// whenever they are column-backed. `limit`/`offset`/`fields` are ignored.
+    count-docs: func(doctype: string, query: query) -> result<u64, error>;
+
+    /// Aggregate the set `query` selects (`limit`/`offset`/`fields` ignored). `group-by` lists
+    /// the key fields in order; empty yields one grand-total row.
+    aggregate-docs: func(
+        doctype: string,
+        query: query,
+        group-by: list<string>,
+        aggregates: list<aggregate-spec>,
+    ) -> result<list<aggregate-row>, error>;
+
+    /// Next value of a series such as `SAL-.-YYYY-MM-####`. Requires `docstore-write`: a series
+    /// allocates, it does not read.
+    next-name: func(series: string) -> result<string, error>;
+
+    /// Rename a document's primary key (`allow-rename` still applies). The engine runs the
+    /// `before-rename`/`after-rename` controller points and moves the version/share rows in the
+    /// same transaction. Returns the renamed document.
+    rename-doc: func(doctype: string, name: string, new-name: string) -> result<doc, error>;
+
+    /// Move a document through its lifecycle. `submit` and `cancel` return the updated document
+    /// (`draft → submitted → cancelled`); `amend` clones it into a fresh draft named
+    /// `NAME-1`, `NAME-2`, … and returns the copy. Transition legality, workflow, permission
+    /// and `allow-on-submit` are enforced exactly as on `POST /api/resource/.../{action}`.
+    set-docstatus: func(doctype: string, name: string, action: docstatus-action)
+        -> result<doc, error>;
+
+    /// The complete **effective** DocType metadata as JSON: the registry definition with the
+    /// site's custom fields/property setters and `Custom DocPerm` overrides applied, plus the
+    /// stored Actions, Links, Permission Types and every `field` property (layout markers,
+    /// `virtual`, `mask`, `allow-on-submit`, `permlevel`, naming, views and the form/list
+    /// settings). This is the shape `GET /api/doctype/meta/{doctype}` serves; a guest reads it
+    /// instead of hardcoding a field list.
+    doctype-json: func(doctype: string) -> result<string, error>;
+
+    /// The canonical fieldtype vocabulary (`Data`, `Link`, `Table`, …), sorted. A descriptor
+    /// field whose `fieldtype` is outside this list is refused at load.
+    field-types: func() -> result<list<string>, error>;
+
+    get-doctype: func(doctype: string) -> result<doctype-meta, error>;
+
+    list-doctypes: func() -> result<list<string>, error>;
+
+    /// Run the handler below the caller's own entry in the chain of `name`: the base
+    /// implementation when the app overrides it, or the next app when two apps override the
+    /// same name. JSON in, JSON out, like the body `handle-request` receives. Scoped to the
+    /// caller: a method the app does not override is `permission-denied`, and re-entering the
+    /// caller's own entry is impossible.
+    call-method: func(name: string, params: string) -> result<string, error>;
+}
+
+/// Declarative schema for an app that needs the full DocType shape.
+///
+/// `descriptor.doctype` is the convenient subset the host validates at load.
+/// When an app needs a property that subset does not carry (naming type, a
+/// stored view, `allow-on-submit`, tracked changes, per-field print/report
+/// flags, `mask`, …), it calls `declare-doctype` **inside `describe()`** with a
+/// `ferris_schema::DoctypeMeta` JSON document (the registry definition; the
+/// `data::doctype-json` projection is the read-side wire shape). The host
+/// stages the declaration, validates it against the app's ownership and the
+/// canonical fieldtype list, and registers it with the schema registry before
+/// the component serves a request.
+interface schema {
+    use types.{error};
+
+    /// Declare one DocType from its JSON metadata (`ferris_schema::DoctypeMeta`).
+    ///
+    /// The name must not collide with a framework DocType or another app's, and
+    /// every `fieldtype` must be in `data::field-types`. A declaration that
+    /// fails any check fails `describe()` itself, so a half-declared schema can
+    /// never serve traffic.
+    declare-doctype: func(definition: string) -> result<_, error>;
+}
+
+/// Everything the app does over the network. The host owns the sockets in every case: outbound
+/// calls follow the app's policy, listeners and TLS are served by the host on the app's behalf,
+/// and the guest controls protocol, framing and policy — not the socket. The same holds for
+/// datagram sockets: `udp-*` and `raw-*` open a descriptor the host holds and every inbound
+/// datagram arrives through `handle-datagram`. A DNS zone is answered by the host out of the
+/// records the guest supplied: the app never sees a query, a socket or a resolver.
+interface io {
+    use types.{
+        error, headers, client-identity, http-policy, redirect-policy, tls-client,
+        stream-transport, stream-listen,
+    };
+
+    /// One outbound call. `timeout-ms` is clamped to the effective policy, `redirects` inherits
+    /// it, `tls` falls back to the app default then the host's, and `policy` can only tighten
+    /// the declaration: the host intersects the two and its own caps and refuses an attempt to
+    /// widen one.
+    record request {
+        method: string,
+        url: string,
+        headers: headers,
+        body: option<list<u8>>,
+        timeout-ms: option<u32>,
+        redirects: option<redirect-policy>,
+        tls: option<tls-client>,
+        policy: option<http-policy>,
+    }
+
+    record response {
+        status: u16,
+        headers: headers,
+        body: list<u8>,
+    }
+
+    /// Transport facts of an active stream; the protocol on top is the app's business.
+    /// `created-at` is epoch milliseconds, `bytes-received` the total forwarded so far,
+    /// `registration-id` changes when a different connection re-takes this `stream-id` (cache
+    /// invalidation), `listener` names the accepting listener when the app owns it.
+    ///
+    /// `protocol` names the datagram protocol the host attributed to the stream (`udp`, `raw`
+    /// or `icmp`) and is `none` for a byte stream. `local-addr`/`remote-addr` are the effective
+    /// endpoints (`"address:port"` for UDP, a bare address for raw and ICMP), and `port` is the
+    /// effective local port when the socket or listener was bound to an inferred one. A guest
+    /// that asked for `none`/`0` reads the pair here instead of guessing.
+    record stream-info {
+        transport: string,
+        peer: string,
+        auth-required: bool,
+        created-at: u64,
+        bytes-received: u64,
+        client-identity: option<client-identity>,
+        registration-id: string,
+        listener: option<string>,
+        protocol: option<string>,
+        local-addr: option<string>,
+        remote-addr: option<string>,
+        port: option<u16>,
+    }
+
+    /// An outbound connection: `uri` is `ws://`, `wss://`, `tcp://` or `tls://`; the host
+    /// resolves and connects, the policy decides whether it may, and `tls`/`policy` fall back
+    /// to the app defaults. For `tcp`/`tls`, `address` and `port` name the target directly and
+    /// take precedence over the authority inside `uri` (so `uri` may be only the scheme,
+    /// `tcp://`); `none`/`0` means inferred — the URI's port, or the scheme's default.
+    /// `websocket` carries its target in `uri`; datagram transports are refused here.
+    record connect-spec {
+        transport: stream-transport,
+        uri: string,
+        address: option<string>,
+        port: option<u16>,
+        tls: option<tls-client>,
+        policy: option<http-policy>,
+        max-frame: option<u32>,
+        idle-timeout-seconds: option<u32>,
+    }
+
+    /// One connected UDP socket the host holds: it binds `local-address:local-port` and connects
+    /// it to `address:port`, so a datagram from that peer arrives through `handle-datagram` for
+    /// the returned stream id. Either port `none`/`0` is inferred (an ephemeral local port is
+    /// the norm); `udp-send` may name another peer per datagram. Requires `udp`.
+    record udp-spec {
+        /// The peer the socket is connected to.
+        address: string,
+        port: option<u16>,
+        /// Local bind address; `none` = the host's bind policy.
+        local-address: option<string>,
+        /// Local bind port; `none`/`0` = an ephemeral port reported by `stream-describe`.
+        local-port: option<u16>,
+        /// Allow datagrams to a broadcast address.
+        broadcast: bool,
+        /// IP TTL; `none` = the operating system's default.
+        ttl: option<u8>,
+    }
+
+    /// A UDP listener the host binds and the app owns. Every datagram arrives through
+    /// `handle-datagram` with the sender in `peer`; the reply is the value the export returns.
+    /// `none`/`0` selects the host's bind policy and an inferred port. Requires `udp`.
+    /// (Named `udp-listener` because an interface has one item namespace and `udp-listen` is
+    /// the function that opens it.)
+    record udp-listener {
+        /// Local bind address; `none` = the host's bind policy (loopback first).
+        address: option<string>,
+        /// Local port; `none`/`0` = inferred, reported by `stream-describe`.
+        port: option<u16>,
+        broadcast: bool,
+        /// Largest datagram the host forwards in one call, clamped by its own cap.
+        max-datagram: option<u32>,
+    }
+
+    /// A raw socket the host opens for packets the guest builds (`raw`) or for ICMP echo
+    /// traffic (`icmp`). Inbound packets arrive through `handle-datagram`; a returned list the
+    /// guest leaves empty drops the packet. Requires `raw-sockets`.
+    record raw-spec {
+        /// `raw` or `icmp`; any other case is `validation-failed`, never a coerced socket.
+        transport: stream-transport,
+        /// Local bind address; `none` = the host's bind policy (loopback first).
+        address: option<string>,
+        /// Local port; `none`/`0` = inferred. Raw and ICMP sockets have no port of their own.
+        port: option<u16>,
+        /// The IP protocol number the socket receives; `none` = every protocol the host allows.
+        ip-protocol: option<u8>,
+    }
+
+    /// The record types an authoritative zone may carry. The set is closed: a guest cannot ask
+    /// for a type the host does not encode, and the host never guesses one from `data`.
+    enum dns-record-type {
+        a,
+        aaaa,
+        cname,
+        mx,
+        txt,
+        srv,
+        ptr,
+        ns,
+        soa,
+    }
+
+    /// One resource record. `name` is relative to the zone's `origin` (`""` and `"@"` are the
+    /// apex). `ttl` is seconds and `0` means the host's default. `data` is the RDATA in textual
+    /// zone-file form (`192.0.2.10`, `mail.example.test.`, `"v=spf1 -all"`, and for `soa` the
+    /// seven-field `mname rname serial refresh retry expire minimum`). `priority` is the MX
+    /// preference or the SRV priority and is ignored by every other type.
+    record dns-record {
+        name: string,
+        %type: dns-record-type,
+        ttl: u32,
+        data: string,
+        priority: option<u16>,
+    }
+
+    /// The typed SOA of the zone, the form to prefer. `serial` `0` makes the host derive one
+    /// from the records, so re-serving an unchanged zone does not bump it. Declaring this and a
+    /// `dns-record` of type `soa` in `records` is `validation-failed`: the host refuses to pick.
+    record dns-soa {
+        /// Primary name server, e.g. `ns1.example.test.`.
+        primary-ns: string,
+        /// The administrator mailbox in DNS form, e.g. `hostmaster.example.test.`.
+        admin: string,
+        serial: u32,
+        refresh: u32,
+        retry: u32,
+        expire: u32,
+        minimum-ttl: u32,
+    }
+
+    /// One authoritative zone and where the host binds it. `dns-serve` binds UDP and TCP on the
+    /// **same** port, and returns a listener id that `stream-describe` can describe and
+    /// `dns-stop` closes. `address` `none` is the host's bind policy; `port` `none` is 53 when
+    /// the host may bind it (otherwise an inferred port) and `0` always asks for an inferred
+    /// one; both are reported by `stream-describe`. Requires `dns-server`.
+    record dns-zone {
+        /// The zone apex, e.g. `example.test.`.
+        origin: string,
+        address: option<string>,
+        port: option<u16>,
+        records: list<dns-record>,
+        soa: option<dns-soa>,
+    }
+
+    /// Perform an outbound call under the effective policy. The host caps sizes and timeouts
+    /// and never forwards host credentials.
+    http-send: func(req: request) -> result<response, error>;
+
+    /// Open an outbound stream and return its `stream-id`; frames arrive after
+    /// `handle-stream-event` reports `opened`.
+    connect-stream: func(spec: connect-spec) -> result<string, error>;
+
+    /// Bind a listener the app owns and return its id. Requires `streams-listen`; `tls`
+    /// additionally requires `tls-server`. Accepted connections arrive as new `stream-id`s.
+    listen-stream: func(spec: stream-listen) -> result<string, error>;
+
+    send-stream: func(stream-id: string, bytes: list<u8>) -> result<_, error>;
+
+    /// Close a stream, or stop accepting on a listener id; the host emits `closed` for every
+    /// connection it tears down as a result.
+    close-stream: func(stream-id: string) -> result<_, error>;
+
+    /// Raises once the host closed the stream.
+    stream-describe: func(stream-id: string) -> result<stream-info, error>;
+
+    /// The carry-over buffer: the byte tail the guest chose not to consume on the previous
+    /// chunk, so a frame straddling two chunks can be reassembled. Empty until the guest writes
+    /// one; released on close.
+    stream-read-state: func(stream-id: string) -> result<list<u8>, error>;
+
+    /// Replace the carry-over buffer; an empty list clears it.
+    stream-write-state: func(stream-id: string, pending: list<u8>) -> result<_, error>;
+
+    /// Open a connected UDP socket and return its `stream-id`; inbound datagrams from the
+    /// connected peer arrive through `handle-datagram`. Requires `udp`.
+    udp-connect: func(spec: udp-spec) -> result<string, error>;
+
+    /// Bind a UDP listener the app owns and return its id; every datagram reaches
+    /// `handle-datagram`. Requires `udp`. The port is inferred when `none`/`0` and reported by
+    /// `stream-describe`.
+    udp-listen: func(spec: udp-listener) -> result<string, error>;
+
+    /// Send one datagram on a socket or listener opened here. `peer` overrides the
+    /// destination (`"address:port"`) for a connected socket and is required for a listener.
+    /// The host caps the datagram size; a larger one is `validation-failed`, never truncated.
+    udp-send: func(stream-id: string, datagram: list<u8>, peer: option<string>) -> result<_, error>;
+
+    /// Close a UDP socket, or stop accepting on a UDP listener. Idempotent: an unknown or
+    /// already closed id is a no-op, because `handle-stream-event`'s `closed` is the
+    /// authoritative signal and the bind failure was reported by the open call already.
+    udp-close: func(stream-id: string);
+
+    /// Open a raw or ICMP socket and return its `stream-id`; inbound packets arrive through
+    /// `handle-datagram` and replies are the bytes the export returns. Requires
+    /// `raw-sockets`; a `transport` other than `raw`/`icmp` is `validation-failed`.
+    raw-open: func(spec: raw-spec) -> result<string, error>;
+
+    /// Send one packet the guest built. `destination` overrides the peer address the packet
+    /// goes to (a bare IP, or `"address:port"` when the encapsulated protocol has a port and
+    /// the packet's header carries it — the host does not rewrite the packet, so the guest owns
+    /// its headers). A packet the host refuses (size, protocol or policy) is
+    /// `permission-denied` or `validation-failed`, never silently dropped.
+    raw-send: func(stream-id: string, packet: list<u8>, destination: option<string>) -> result<_, error>;
+
+    /// Close a raw socket. Idempotent, like `udp-close`.
+    raw-close: func(stream-id: string);
+
+    /// Serve `zone` authoritatively: the host binds UDP and TCP on the same port (53 by
+    /// default, an inferred one when the request says `0`) and answers queries from the
+    /// records, including `dns-update` replacements. Returns the listener id. Requires
+    /// `dns-server`; a zone the host cannot encode (a record type it does not support, two
+    /// SOA declarations) is `validation-failed`, never a partially served zone.
+    dns-serve: func(zone: dns-zone) -> result<string, error>;
+
+    /// Replace the records of a live DNS listener atomically: a query in flight is answered
+    /// from the old zone or the new one, never a half-applied mix. The listener keeps its
+    /// address and port. Requires `dns-server`.
+    dns-update: func(listener-id: string, zone: dns-zone) -> result<_, error>;
+
+    /// Stop answering for a DNS listener and release the UDP and TCP sockets. Idempotent: an
+    /// unknown id is a no-op.
+    dns-stop: func(listener-id: string);
+
+    /// Publish `payload` (JSON) tagged with `event-type` to `channel`; consumers subscribe to
+    /// the room `channel:<channel>`. The host refuses a channel the app did not declare in
+    /// `describe().subscriptions`, so the declaration is enforcement, not documentation.
+    publish: func(channel: string, event-type: string, payload: string) -> result<_, error>;
+
+    /// Send `title`/`message` to `to` over `channel` (`"email"`, `"push"`, `"in-app"`,
+    /// `"webhook"` or `"all"`). Delivery infrastructure is the host's; the app never manages a
+    /// server.
+    notify: func(to: string, channel: string, title: string, message: string) -> result<_, error>;
+}
+
+/// Who is calling, what the app may configure, and the host services it may schedule, sign or
+/// run.
+interface platform {
+    use types.{error, grant-set};
+
+    record user {
+        name: string,
+        email: string,
+        roles: list<string>,
+    }
+
+    /// `name` is the row name for a row-level check, `none` for a DocType-wide one.
+    record permission-check {
+        doctype: string,
+        action: string,
+        name: option<string>,
+    }
+
+    record schedule-info {
+        id: string,
+        job-name: string,
+        cron: string,
+        enabled: bool,
+    }
+
+    /// What a certificate is for; `server` additionally needs `tls-server`.
+    enum cert-usage {
+        client,
+        server,
+    }
+
+    /// One program to run. `program` is an executable name or a path resolved inside the app's
+    /// world; there is no shell, so `args` reach the process verbatim and a guest never builds
+    /// a command line. `env` is the whole environment — the host adds only its fixed baseline
+    /// (`PATH` and a `HOME` inside the scratch directory), never framework or session
+    /// credentials. `cwd` is relative to `/world` and may not leave it (`validation-failed`
+    /// otherwise); `stdin` is written once and closed; `timeout-ms` `none`/`0` means no
+    /// deadline, and the host's other caps still apply. Requires `process`.
+    record process-spec {
+        program: string,
+        args: list<string>,
+        env: list<tuple<string, string>>,
+        cwd: option<string>,
+        stdin: option<list<u8>>,
+        timeout-ms: option<u32>,
+    }
+
+    /// What a finished process reported. `stdout`/`stderr` are the captured bytes, each bounded
+    /// by the host's cap: a process that produces more is killed and the call answers
+    /// `validation-failed` naming the cap, so output is never silently truncated.
+    /// `timed-out` marks a run the host killed for exceeding `timeout-ms`; `status` is then the
+    /// signal-derived exit code. A process that exited non-zero is a successful call with a
+    /// non-zero `status`, not an `error`.
+    record process-output {
+        status: s32,
+        stdout: list<u8>,
+        stderr: list<u8>,
+        timed-out: bool,
+    }
+
+    /// The signed-in user, or the anonymous guest when no session is bound. Reading the
+    /// caller's own identity needs no capability.
+    current-user: func() -> result<user, error>;
+
+    /// Ask many permission questions in one call; one boolean per check, in order. Without a
+    /// `name` a check is DocType-wide, with one it is row-level, so `if_owner` grants are
+    /// honoured instead of the app working blind over rows the user cannot see. A single
+    /// question is a list of one.
+    can: func(checks: list<permission-check>) -> result<list<bool>, error>;
+
+    /// The effective grant: the primordial set plus the specific capabilities the app
+    /// declared. An app branches on this instead of probing for failures.
+    grants: func() -> result<grant-set, error>;
+
+    /// The host features compiled into the running binary, sorted by name: `api`, `web`,
+    /// `realtime`, `jobs`, `scheduler`, `email`, `files`, `print`, `report`, `integrations`,
+    /// `wasm`, `full`. Names are open — an entry a guest does not know is a feature
+    /// added later, not an error. The engine also reports the surfaces a capability depends on
+    /// as their own entries: `threads` when the wasm threads proposal is supported, and
+    /// `udp`, `raw-sockets`, `dns-server` or `process` when the host can honour that
+    /// capability at all. A host that cannot serve one omits the entry and answers
+    /// `unsupported`.
+    ///
+    /// This is feature **detection**, not a grant: it says which surfaces exist at all, while
+    /// `grants` says which of them this app may reach. An app needs both to decide whether to
+    /// show a surface. `threads` is the only entry with no import: the guest starts its own
+    /// threads and the host only reports whether the engine allows it.
+    features: func() -> result<list<string>, error>;
+
+    /// Keys are scoped to the calling app. A key the app declared with `value-type = "secret"`
+    /// is operator-owned: the guest can neither read nor write it, and must keep its own
+    /// secrets in `/world/secrets` instead. The host resolves declared `secret` keys itself
+    /// (TLS material), which is why the store still exists.
+    config-get: func(key: string) -> result<option<string>, error>;
+
+    config-set: func(key: string, value: string) -> result<_, error>;
+
+    config-list: func() -> result<list<string>, error>;
+
+    config-delete: func(key: string) -> result<_, error>;
+
+    /// Register a cron schedule. `payload` is a JSON body with `cron`, `job_name`, `queue`
+    /// and an optional `payload`, e.g.
+    /// `{"cron":"0 3 * * *","job_name":"app.monthly","queue":"default"}`. Returns the
+    /// schedule id.
+    schedule: func(payload: string) -> result<string, error>;
+
+    /// Enqueue a one-shot job; the worker re-enters the app through `handle-job` with this
+    /// `job-type` and payload.
+    enqueue-job: func(job-type: string, payload: string) -> result<_, error>;
+
+    /// Remove one of this app's schedules. Succeeds when it is already gone; rejects an id that
+    /// belongs to another app.
+    cancel-schedule: func(schedule-id: string) -> result<_, error>;
+
+    /// This app's schedules. (Named `list-…` because `list` is a WIT keyword.)
+    list-schedules: func() -> result<list<schedule-info>, error>;
+
+    /// Sign a PKCS#10 request with the host CA and return the issued certificate as PEM.
+    /// `csr-der-b64` is the base64 DER CSR; `ttl-seconds` bounds the validity. Certificates are
+    /// scoped to the calling app: the host records the issuer, and a `revoke-cert` from another
+    /// app is `permission-denied`. The CA private key never crosses into the guest.
+    sign-csr: func(csr-der-b64: string, ttl-seconds: u32, usage: cert-usage) -> result<string, error>;
+
+    /// The CA certificate in PEM, so a client can be provisioned to trust what the host issues.
+    ca-cert: func() -> result<string, error>;
+
+    /// Revoke by lowercase hex SHA-256 fingerprint, the value `client-identity.fingerprint`
+    /// reports. Refused for a certificate this app did not issue.
+    revoke-cert: func(fingerprint: string) -> result<_, error>;
+
+    is-revoked: func(fingerprint: string) -> result<bool, error>;
+
+    /// Run `spec` to completion and return what it wrote. The host owns the fork, the pipes,
+    /// the deadline and the cleanup: a run that outlives `timeout-ms` is killed (children
+    /// included) and returned with `timed-out`, so a guest never leaks a process. Requires
+    /// `process`; the program is looked up inside the app's world and the declared `cwd`, never
+    /// on the host's `PATH` outside it.
+    process-run: func(spec: process-spec) -> result<process-output, error>;
+
+    /// Start `spec` without waiting and return its id. The process is a child of the host, not
+    /// of the guest: it keeps running across guest calls until `process-wait` reaps it or
+    /// `process-kill` stops it, and it dies with the instance. Requires `process`.
+    process-spawn: func(spec: process-spec) -> result<string, error>;
+
+    /// Wait for a spawned process and return its captured output. Waiting twice is
+    /// `not-found` — the output is handed over once, like a consumed channel — and waiting on
+    /// a live process blocks until it exits or its `timeout-ms` fires.
+    process-wait: func(process-id: string) -> result<process-output, error>;
+
+    /// Stop a spawned process and every child the host can attribute to it. Idempotent for a
+    /// process that already exited; an unknown id is `not-found`. Requires `process`.
+    process-kill: func(process-id: string) -> result<_, error>;
+}
+
+/// The typed shape of `describe()`: what the app advertises, what it asks the operator for, and
+/// how its network surface is configured.
+interface descriptor {
+    use types.{
+        capability, route-auth, http-policy, tls-client, tls-server, stream-listen,
+    };
+
+    /// The fields of the doctype's own document that carry the dashboard format — the payload
+    /// of `doc-view.dashboard-document`. Each name is optional and `none` means the canonical
+    /// one (`widgets`, `layout`, `label`, `config`). `route` is deliberately absent: a
+    /// document's route is its Desk URL.
+    record dashboard-format {
+        widgets: option<string>,
+        layout: option<string>,
+        label: option<string>,
+        config: option<string>,
+    }
+
+    /// How a document opens in the Desk. The URL never changes
+    /// (`/desk/:module/:doctype/:name`); only what renders there does. Each `dashboard-*` case
+    /// carries its own backing, so a binding cannot be declared next to a view kind that would
+    /// ignore it.
+    variant doc-view {
+        /// The built-in metadata form; needs nothing else declared.
+        form,
+        /// The dashboard engine over the document itself: its name is the id.
+        dashboard-native,
+        /// The dashboard engine over a fixed id, resolved against the UI feed; a missing
+        /// dashboard is a missing panel, never an empty grid.
+        dashboard-fixed(string),
+        /// The dashboard engine over `field` of this document — normally a `Link`, so each
+        /// document opens the dashboard its own field names.
+        dashboard-link(string),
+        /// The dashboard engine over this document's own fields (`dashboard-format`), saved
+        /// back into them through `GET|PUT /api/dashboard-layout/doc/{doctype}/{name}`.
+        dashboard-document(dashboard-format),
+        /// The app's own `form.view` element; with none declared the Desk reports the missing
+        /// view.
+        custom,
+    }
+
+    /// One document type. `allow-*` flags are closed by default (the host opens only what the
+    /// app declares, and authorization still flows through the engine's per-role checks);
+    /// `is-single` declares exactly one document named after the doctype; `in-*` turn on desk
+    /// views (the list view is always available for app doctypes). `indexes` decide which
+    /// fields the Desk offers as columns and `list-default-order` is `"<field> <asc|desc>"` (an
+    /// unknown field or direction falls back, never fails).
+    record doctype {
+        name: string,
+        is-submittable: bool,
+        is-single: bool,
+        allow-submit: bool,
+        allow-cancel: bool,
+        allow-amend: bool,
+        allow-delete: bool,
+        allow-copy: bool,
+        allow-print: bool,
+        allow-rename: bool,
+        in-calendar: bool,
+        in-kanban: bool,
+        in-gantt: bool,
+        in-tree-view: bool,
+        in-report-view: bool,
+        /// Projected onto `DoctypeMeta.view`/`dashboard`.
+        view: doc-view,
+        fields: list<field>,
+        indexes: list<index>,
+        list-default-order: option<string>,
+    }
+
+    variant field {
+        name(string),
+        config(field-config),
+    }
+
+    /// `in-list-view` is opt-in: silence means the field is not a list column.
+    record field-config {
+        name: string,
+        fieldtype: option<string>,
+        label: option<string>,
+        options: option<string>,
+        reqd: bool,
+        read-only: bool,
+        read-only-on-load: bool,
+        hidden: bool,
+        columns: u8,
+        permlevel: u8,
+        placeholder: option<string>,
+        description: option<string>,
+        depends-on: option<string>,
+        min-value: option<string>,
+        max-value: option<string>,
+        precision: option<u8>,
+        default: option<string>,
+        in-list-view: option<bool>,
+    }
+
+    /// An index over the doctype's own fields; the host derives the physical name.
+    record index {
+        fields: list<string>,
+        unique: bool,
+    }
+
+    /// One UI theme: a palette of CSS custom properties for `:root`, in order.
+    record theme {
+        id: string,
+        label: string,
+        dark: bool,
+        vars: list<tuple<string, string>>,
+    }
+
+    /// A group of workspace icons on the desk grid. `icon` is a Lucide name or an inline SVG
+    /// document (the Desk sanitizes SVG before rendering it).
+    record folder {
+        name: string,
+        label: string,
+        icon: option<string>,
+    }
+
+    /// One sidebar section; `folder` groups it on the desk grid, `none` puts its icon on the
+    /// grid itself.
+    record workspace {
+        name: string,
+        label: string,
+        module: string,
+        icon: option<string>,
+        folder: option<string>,
+        items: list<workspace-item>,
+    }
+
+    /// One sidebar link or group. Types cannot recurse, so groups are flattened: each row
+    /// carries an id unique within the workspace and an optional `parent` naming its group
+    /// (earlier in the list). A row with `doctype`/`route`/`href` is a link (`doctype` wins
+    /// over `href`); the host rebuilds the tree.
+    record workspace-item {
+        id: u32,
+        parent: option<u32>,
+        label: string,
+        icon: option<string>,
+        doctype: option<string>,
+        route: option<string>,
+        href: option<string>,
+        open-in-new-tab: bool,
+    }
+
+    /// One API method, registered on `/api/method/<name>` and dispatched to `handle-request`
+    /// with the reserved route id `method:<name>`, authorized as the authenticated caller.
+    /// `params` are `(name, type)` pairs.
+    record method {
+        name: string,
+        params: list<tuple<string, string>>,
+        returns: string,
+        description: string,
+        /// When true this declaration does not create a method: it replaces the handler of the
+        /// method with the same `name`. Requires the `overrides` capability; the host keeps an
+        /// ordered chain (base → apps) and `data::call-method` runs the next entry below.
+        overrides: bool,
+    }
+
+    /// A component mounted into a host slot. Additive `form.*`/`list.*`/`shell.*` slots render
+    /// inside the built-in view; `form.view` is the whole-view slot, replaces the built-in form
+    /// and must name its doctype. On a per-row slot `"$field"` in `props` is projected from the
+    /// row (`"$device_id"`); `requires` limits who sees it.
+    record ui-extension {
+        slot: string,
+        doctype: option<string>,
+        component: string,
+        label: option<string>,
+        props: list<tuple<string, string>>,
+        requires: option<string>,
+    }
+
+    /// Footprint in the `grid-12` layout: 1..=12 columns, 1..=64 rows of 72 px.
+    record grid-size {
+        span: u8,
+        rows: u8,
+    }
+
+    /// Appearance of one widget: a definition's default or an instance's override. Every field
+    /// is `none` and inherits from the level below. A colour names a semantic token (`card`,
+    /// `muted`, `accent`, …) so themes keep working; `*-custom` is injected as a CSS custom
+    /// property, never a class name. Lengths are pixels bounded by the host.
+    record style-spec {
+        background: option<string>,
+        background-custom: option<string>,
+        border-color: option<string>,
+        border-width: option<u8>,
+        border-radius: option<u8>,
+        padding: option<u8>,
+        shadow: option<string>,
+    }
+
+    /// Appearance and geometry of a board: the desk default, an app declaration or a user
+    /// override. `none` inherits; `title-full-screen` `none` keeps the title drawn.
+    record dashboard-style {
+        background: option<string>,
+        background-custom: option<string>,
+        gap-px: option<u8>,
+        padding-px: option<u8>,
+        border-radius: option<u8>,
+        title-full-screen: option<bool>,
+    }
+
+    /// Schema of one parameter a widget accepts. `value-type` is `string`, `number`, `bool`,
+    /// `doctype` or `json` (open; values travel as strings). `depends-on` is a form-renderer
+    /// expression deciding whether the panel shows it (empty or malformed shows it);
+    /// `read-only` renders it disabled while still storing the value, `hidden` keeps it out of
+    /// the panel without losing it.
+    record widget-param {
+        name: string,
+        label: option<string>,
+        value-type: string,
+        default: option<string>,
+        options: list<string>,
+        required: bool,
+        description: option<string>,
+        group: option<string>,
+        placeholder: option<string>,
+        depends-on: option<string>,
+        read-only: bool,
+        hidden: bool,
+    }
+
+    /// One widget definition published to the **global catalog**: any dashboard of any app
+    /// instances it by `owner.name`, and the definition owns the custom element (N instances
+    /// mount N copies). `code-path` is the module's asset path — the host serves the stored
+    /// `script` there so relative `import`s resolve; `none` serves
+    /// `/api/widgets/{app}/{name}/script.js`. `script` seeds the host's `Widget` DocType (the
+    /// runtime source of truth), `version` separates a definition change from an admin edit,
+    /// `renderer` marks a host-owned widget, `kind` drives the default renderer and span,
+    /// `events` refresh every instance, `size`/`min`/`style` seed new instances.
+    record widget-def {
+        name: string,
+        label: string,
+        component: string,
+        code-path: option<string>,
+        script: option<string>,
+        stylesheet: option<string>,
+        ssr: option<string>,
+        renderer: option<string>,
+        version: option<string>,
+        kind: string,
+        params: list<widget-param>,
+        description: option<string>,
+        requires: option<string>,
+        events: list<string>,
+        icon: option<string>,
+        category: option<string>,
+        preview: option<string>,
+        size: option<grid-size>,
+        min: option<grid-size>,
+        style: option<style-spec>,
+    }
+
+    /// One placement: a reference to a global definition (`owner.name`, or a bare name for this
+    /// dashboard's app) plus its configuration. `col`/`row` are 0-based (`none` = first free
+    /// cell); `span`/`rows` default to the kind's and the definition's; `style` layers over the
+    /// definition field by field.
+    record widget-instance {
+        id: string,
+        widget: string,
+        label: option<string>,
+        params: list<tuple<string, string>>,
+        span: option<u8>,
+        col: option<u8>,
+        row: option<u16>,
+        rows: option<u8>,
+        style: option<style-spec>,
+    }
+
+    /// One dashboard: a layout of widget instances. `route` must not shadow a reserved prefix;
+    /// `default` marks the one shown at `/`.
+    record dashboard {
+        id: string,
+        label: string,
+        route: string,
+        default: bool,
+        style: option<dashboard-style>,
+        widgets: list<widget-instance>,
+    }
+
+    /// One website route. `kind` is `page` (inside the desk chrome, the default) or `bare`
+    /// (alone); it stays open so further kinds need no wire change.
+    record website-route {
+        path: string,
+        component: string,
+        kind: string,
+    }
+
+    /// A pubsub channel the app publishes to; declaring it is what makes `io::publish` accept
+    /// the channel.
+    record subscription {
+        channel: string,
+    }
+
+    /// One config key the app declares. The host owns the storage; declaring the key lets the
+    /// Desk render a settings form and apply the default. `value-type` is `string`, `number`,
+    /// `bool` or `secret`: a `secret` key is operator-owned and never readable or writable by
+    /// the guest (the app's own secrets belong in `/world/secrets`).
+    record config-item {
+        key: string,
+        label: option<string>,
+        value-type: string,
+        required: bool,
+        default: option<string>,
+        description: option<string>,
+    }
+
+    enum route-kind {
+        /// Plain HTTP, answered by `handle-request`.
+        http,
+        /// An HTTP upgrade or a mounted listener, handed to `handle-stream`. `%stream` is the
+        /// keyword escape WIT requires.
+        %stream,
+    }
+
+    /// One endpoint the app owns. `path` is a **prefix** matched segment-wise under the app
+    /// prefix (`/plugins/{app}`); the longest match wins and `"/"` claims the whole namespace.
+    /// The host interprets no placeholders: it dispatches with `route-id` and the guest parses
+    /// `http-request.path`. `method` is `GET`, `POST`, … or `*` (ignored for `%stream`); `auth`
+    /// inherits `auth-mode` when `none`; `body-limit` is clamped to the host's maximum;
+    /// `tls-server` serves the app's certificate for an `http` route; `listener` is present
+    /// exactly when `kind` is `%stream`. A route declared without the `routes` capability is a
+    /// descriptor validation error, not a silently unmounted endpoint.
+    record route {
+        id: string,
+        method: string,
+        path: string,
+        kind: route-kind,
+        auth: option<route-auth>,
+        body-limit: option<u32>,
+        tls-server: option<tls-server>,
+        listener: option<stream-listen>,
+    }
+
+    /// Everything an app advertises in `describe()`. `capabilities` is what the app asks the
+    /// operator for; anything not covered by a granted one fails with `permission-denied`.
+    /// `routes` is the surface the host mounts (empty: `handle-request` is never called) and
+    /// `auth-mode` the default for routes that declare none; `http-policy`, `tls-client` and
+    /// `tls-server` are the app-wide defaults.
+    /// `folders`/`workspaces`/`themes`/`methods`/`doctypes` are the Desk surface, the rest are
+    /// optional sections. Assets are served same-origin through `ui-asset` and are trusted app
+    /// code. `subscriptions` is enforced by `io::publish`; `config` is the schema the Desk
+    /// renders, never the stored values.
+    record descriptor {
+        capabilities: list<capability>,
+        routes: list<route>,
+        auth-mode: route-auth,
+        http-policy: option<http-policy>,
+        tls-client: option<tls-client>,
+        tls-server: option<tls-server>,
+        doctypes: list<doctype>,
+        themes: list<theme>,
+        folders: list<folder>,
+        workspaces: list<workspace>,
+        methods: list<method>,
+        ui-extensions: option<list<ui-extension>>,
+        dashboards: option<list<dashboard>>,
+        widgets: option<list<widget-def>>,
+        /// Website pages published by the app, served by the host router.
+        website: option<list<website-route>>,
+        assets: option<list<string>>,
+        subscriptions: option<list<subscription>>,
+        config: option<list<config-item>>,
+        plugin-version: option<string>,
+        requires: option<list<string>>,
+    }
+}
+
+/// World implemented by an app plugin. The app advertises what it handles through `describe`,
+/// and the host calls it for exactly the surfaces it declared: its own routes, DocType
+/// lifecycle events, streams, datagrams, background jobs and UI assets. Every framework service
+/// comes in through the imports; the plugin never touches SQL, sockets, certificates, child
+/// processes or files directly. A surface the running host did not compile answers the typed
+/// `unsupported` failure; `platform::features` is how the guest learns that before it calls
+/// anything.
+world ferris-app {
+    use types.{error, http-request, stream-event};
+    use io.{response};
+    use descriptor.{descriptor};
+
+    import types;
+    import data;
+    import io;
+    import schema;
+    import platform;
+    import descriptor;
+
+    /// Typed descriptor: capabilities, routes and the Desk/UI surface.
+    export describe: func() -> result<descriptor, error>;
+
+    /// Dispatch one inbound HTTP request. `route-id` names the matched route (or
+    /// `method:<name>` for a declared API method), so one export serves every endpoint without
+    /// the guest re-deriving which route the host picked. The response goes back verbatim after
+    /// filtering hop-by-hop headers, the framework-owned `Content-Length`/`Set-Cookie` and a
+    /// conflicting session cookie.
+    export handle-request: func(route-id: string, req: http-request) -> result<response, error>;
+
+    /// DocType lifecycle event (`data` is the document as JSON), forwarded once per
+    /// engine `HookPoint`:
+    ///
+    /// | operation | points, in order |
+    /// |-----------|------------------|
+    /// | insert | `before-naming`, `before-validate`, `validate`, `before-insert`, `created`, `on-update` |
+    /// | update | `before-validate`, `validate`, `before-save`, `before-update-after-submit`, `after-save`, `on-update`, `on-update-after-submit`, `on-change` |
+    /// | submit | `before-submit`, `submitted` |
+    /// | cancel | `before-cancel`, `cancelled` |
+    /// | trash | `before-delete`, `trashed` |
+    /// | rename | `before-rename`, `after-rename` |
+    /// | amend (back to draft) | `before-save`, `after-save` |
+    ///
+    /// A create emits **only** `created`; an update emits `after-save` and
+    /// `on-update`. Pre-write points run before the row is written and returning an
+    /// `error` aborts the write; the rest observe the persisted document. A
+    /// `before-*` the host cannot dispatch (the write came from inside the guest's
+    /// own call) refuses the write rather than skipping validation;
+    /// `data::write-disposition.silent` is the explicit opt-out.
+    export doctype-event: func(event: string, doctype: string, name: string, data: string) -> result<_, error>;
+
+    /// One chunk of an inbound or outbound stream. `stream-id` is a connection the host
+    /// accepted for a declared route/listener or one the guest opened with
+    /// `io::connect-stream`. Returns bytes to relay back (empty means ack/drop). **Chunks are
+    /// data only**: open and close arrive through `handle-stream-event`, so an empty frame is a
+    /// legitimate frame.
+    export handle-stream: func(stream-id: string, chunk: list<u8>) -> result<list<u8>, error>;
+
+    /// Lifecycle of a stream, once per stream and in order: `opened`, then any number of
+    /// chunks, then `closed` or `error`. Per-connection state is created here and released on
+    /// close; no cleanup is inferred from a chunk.
+    export handle-stream-event: func(stream-id: string, event: stream-event) -> result<_, error>;
+
+    /// One inbound datagram on a UDP socket or a raw/ICMP socket opened with `io::udp-connect`,
+    /// `io::udp-listen` or `io::raw-open`. `stream-id` is the socket (not a peer connection) and
+    /// `peer` is the sender — `"address:port"` for UDP, a bare address for raw and ICMP;
+    /// `io::stream-describe(stream-id).protocol` names the datagram protocol. The returned
+    /// bytes are one datagram the host sends back to the same `peer`; an empty list drops it,
+    /// so a request/response protocol needs no second send call. The guest owns the payload
+    /// and, on a raw socket, the packet header: the host only moves the bytes. Byte streams
+    /// keep using `handle-stream`, and a DNS zone is answered by the host, so no query ever
+    /// reaches this export.
+    export handle-datagram: func(stream-id: string, data: list<u8>, peer: string) -> result<list<u8>, error>;
+
+    /// Run one background job as the app: the worker claims jobs carrying a `job-type` (from a
+    /// schedule or `platform::enqueue-job`) and routes each here with its JSON payload. The
+    /// returned string is the job's result. A claimed job no loaded plugin handles fails loudly
+    /// (retry, then dead-letter) rather than being dropped.
+    export handle-job: func(job-type: string, payload: string) -> result<string, error>;
+
+    /// Serve one UI asset: `path` names a script, stylesheet or image inside the plugin and the
+    /// guest answers with raw bytes, relayed verbatim at `/plugins/{name}/asset/{path}` with a
+    /// content type guessed from the extension.
+    ///
+    /// These bytes are served **same-origin** and the
+    /// browser runs them as first-party code: a script can read the page's DOM, use its cookies
+    /// and call `/api/*` with the caller's session. An asset is trusted code the app ships,
+    /// *not* sandboxed guest code — the sandbox covers the component's imports, not the
+    /// JavaScript the app asks the browser to run.
+    export ui-asset: func(path: string) -> result<list<u8>, error>;
+
+    /// SSR markup for one widget definition with the parameters of the instance being rendered,
+    /// served at `/plugins/{name}/widget/{widget}?params=<urlencoded pairs>`. The mounted
+    /// element receives the same reference in `data-widget` and the parameters in
+    /// `data-params`, so server HTML and client upgrade share one contract.
+    export ui-widget: func(widget: string, params: list<tuple<string, string>>) -> result<string, error>;
+}

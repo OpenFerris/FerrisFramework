@@ -1,0 +1,219 @@
+[package]
+name = "ferris-web"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "Admin UI for Ferris framework (Leptos SSR + WASM)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+# Nothing is on by default. `cargo check` of this crate typechecks the
+# platform-neutral Desk: the wire contract from `ferris-schema` plus Leptos. It
+# does *not* pull the engine (`ferris-core`/`ferris-db`/`ferris-api`/
+# `ferris-document`) or the HTTP stack, which used to make an ordinary check
+# load the whole backend to typecheck a handful of DTOs.
+#
+# `ferris-server` and the SSR dev server opt into `ssr` explicitly.
+default = []
+# Server-side rendering + in-process engine bridge (native toolchain).
+# Pulls the native ferris crates that must not reach the wasm32 hydrate build.
+#
+# `ferris-schema/native` turns on the registry/migrations behind the contract
+# type; without it this crate sees only `ferris_schema::contract`, which is all
+# the browser needs.
+ssr = [
+    "dep:ferris-core",
+    "dep:ferris-db",
+    "dep:ferris-api",
+    "dep:ferris-document",
+    # `ferris-api` already depends on `ferris-auth`, so this adds nothing to the
+    # graph; the direct dependency exists solely so the SSR bridge can build the
+    # caller's `ferris_auth::User` and run the same permission checks the REST
+    # handlers run (customization is the first endpoint whose gate needs roles,
+    # not just an identity string).
+    "dep:ferris-auth",
+    "ferris-schema/native",
+    "dep:uuid",
+    "dep:leptos_axum",
+    "leptos/ssr",
+    "ferris-web-ui/ssr",
+]
+# Plugin host and native HTTP/auth stack, required only by the `ferris-web-ssr`
+# dev-server binary.
+#
+# Kept out of `ssr` on purpose. ferris-wasm pulls wasmtime + wasmtime-wasi,
+# i.e. ~40 cranelift crates whose .rmeta alone is ~60 MB. With it inside the
+# default feature set, every `cargo check` and every rust-analyzer load of
+# this crate had to pull that whole graph in, which is what made the desk
+# sources feel unresponsive. The library itself never touches ferris-wasm --
+# only src/bin/ssr.rs does -- so the split costs nothing.  The same holds for
+# auth/axum/tokio/tower-http/anyhow/tracing: the library never imports them,
+# so gating them here keeps `cargo check` of the lib from pulling the HTTP
+# stack and keeps `unused_crate_dependencies` honest.
+wasm-runtime = [
+    "ssr",
+    "dep:ferris-wasm",
+    "dep:ferris-auth",
+    "dep:axum",
+    "dep:tokio",
+    "dep:tower-http",
+    "dep:anyhow",
+    "dep:async-trait",
+    "dep:tracing",
+]
+# Client-side hydration (wasm32-unknown-unknown). The browser-safe subset of
+# the crate compiles against the REST API instead of the in-process engine.
+hydrate = ["leptos/hydrate", "ferris-web-ui/hydrate"]
+
+[package.metadata.leptos]
+bin-package = "ferris-web"
+bin-target = "ferris-web-ssr"
+bin-exe-name = "ferris-web-ssr"
+bin-features = ["ssr", "wasm-runtime"]
+
+lib-package = "ferris-web"
+lib-features = ["hydrate"]
+
+site-root = "target/site"
+site-pkg-dir = "pkg"
+
+style-file = "style/tailwind.css"
+style-cmd = "node_modules/.bin/tailwindcss -i style/tailwind.css -o style/desk.css --minify"
+site-addr = "127.0.0.1:8000"
+lib-target = "wasm32-unknown-unknown"
+
+[dependencies]
+# The UI leaf and the pure shared leaf. Both are path deps with no native ferris
+# crates behind them, so they compile for wasm32 exactly as the browser needs.
+ferris-web-ui = { path = "../../FerrisCore/ferris-web-ui" }
+ferris-web-shared = { path = "../../FerrisCore/ferris-web-shared" }
+ferris-core = { path = "../../FerrisCore/ferris-core", optional = true }
+ferris-api = { path = "../../FerrisCore/ferris-api", optional = true }
+ferris-auth = { path = "../../FerrisCore/ferris-auth", optional = true }
+ferris-db = { path = "../../FerrisCore/ferris-db", optional = true }
+ferris-document = { path = "../../FerrisCore/ferris-document", optional = true }
+# Not optional: `contract` is the wire format both the SSR bridge and the
+# browser deserialize, so the wasm hydrate build needs it too. Only the
+# registry/migrations are gated, behind `ferris-schema/native` (enabled by the
+# `ssr` feature above).
+ferris-schema = { path = "../../FerrisCore/ferris-schema", default-features = false }
+ferris-wasm = { path = "../ferris-wasm", optional = true }
+leptos = { workspace = true }
+leptos_meta = "0.8"
+leptos_router = { version = "0.8" }
+leptos_axum = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true, optional = true, features = ["serde", "v4", "v7"] }
+chrono = { workspace = true }
+anyhow = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+wasm-bindgen = "0.2"
+tw_merge = { version = "0.1.21", features = ["variant"] }
+icons = { version = "0.18.3", features = ["leptos"] }
+web-sys = { version = "0.3", default-features = false, features = [
+    "Attr",
+    "Blob",
+    "BlobPropertyBag",
+    "CanvasRenderingContext2d",
+    "Clipboard",
+    "console",
+    "CssStyleDeclaration",
+    "CssStyleSheet",
+    "CustomElementRegistry",
+    "CustomEvent",
+    "CustomEventInit",
+    "DataTransfer",
+    "Document",
+    "DocumentFragment",
+    "DomRect",
+    "DomTokenList",
+    "DragEvent",
+    "Element",
+    "Event",
+    "EventSource",
+    "EventTarget",
+    "File",
+    "FileList",
+    "Headers",
+    "HtmlAnchorElement",
+    "HtmlAudioElement",
+    "HtmlCanvasElement",
+    "HtmlDivElement",
+    "HtmlElement",
+    "HtmlImageElement",
+    "HtmlInputElement",
+    "HtmlLinkElement",
+    "HtmlMediaElement",
+    "HtmlScriptElement",
+    "InputEvent",
+    "KeyboardEvent",
+    "Location",
+    "MediaQueryList",
+    "MessageEvent",
+    "MouseEvent",
+    "MutationObserver",
+    "MutationObserverInit",
+    "MutationRecord",
+    "NamedNodeMap",
+    "Navigator",
+    "Node",
+    "NodeList",
+    "Notification",
+    "NotificationOptions",
+    "NotificationPermission",
+    "PointerEvent",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "ShadowRoot",
+    "ShadowRootInit",
+    "ShadowRootMode",
+    "Storage",
+    "Url",
+    "Window",
+] }
+
+# `validator` and `strum` are declared by `ferris-web-ui`: the form components
+# that derive `Validate` and the enums that derive `EnumString`/`Display` both
+# live there, so keeping a copy here would only trip `unused_crate_dependencies`.
+
+heck = "0.5.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = { version = "0.1" }
+wasm-bindgen-futures = "0.4"
+# Only the wasm-only extension mount path names `js_sys`.
+js-sys = "0.3.105"
+
+# The browser speaks `fetch` (see `api::client::wasm_fetch_raw`), so reqwest is
+# never built for wasm32 -- it would only add a second HTTP stack to the bundle
+# and pull its own wasm shim (`wasm-streams`, ...) into the graph. Native keeps
+# it for the desktop path, the one build without `ssr` that still talks REST.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { workspace = true }
+
+[[bin]]
+name = "ferris-web-hydrate"
+path = "src/main.rs"
+required-features = ["hydrate"]
+
+# Standalone SSR dev server, produced by `ferris dev --hot-reload frontend`
+# (cargo-leptos builds and runs this instead of the framework's own server).
+[[bin]]
+name = "ferris-web-ssr"
+path = "src/bin/ssr.rs"
+required-features = ["ssr", "wasm-runtime"]

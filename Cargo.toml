@@ -1,0 +1,242 @@
+[workspace]
+resolver = "2"
+members = [
+    "ferris-web",
+    "ferris-realtime",
+    "ferris-jobs",
+    "ferris-scheduler",
+    "ferris-files",
+    "ferris-email",
+    "ferris-print",
+    "ferris-report",
+    "ferris-integrations",
+    "ferris-wasm",
+    "ferris-server",
+    "ferris-cli",
+]
+
+# Cheap default: the Desk and the verticals that do not pull wasmtime.
+# `cargo check-cli` covers server/CLI/wasm/print/email/files/report.
+default-members = [
+    "ferris-web",
+    "ferris-realtime",
+    "ferris-jobs",
+    "ferris-scheduler",
+    "ferris-integrations",
+]
+
+exclude = ["test"]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+# Edition 2024 needs 1.85; the repository pins (and CI uses) 1.98.1, so the
+# declared floor is the minor the project is actually tested with.
+rust-version = "1.98"
+license = "MIT"
+authors = ["Stdg001 <holasoybarbiequetal1090@gmail.com>"]
+repository = "https://github.com/Stdg001/ferris"
+homepage = "https://github.com/Stdg001/ferris"
+readme = "README.md"
+keywords = ["web-framework", "metadata", "frappe", "leptos", "wasm"]
+categories = ["web-programming", "web-programming::http-server", "database", "wasm"]
+description = "Metadata-driven, full-stack web framework in Rust"
+
+[workspace.dependencies]
+# Core
+anyhow = "1.0"
+async-trait = "0.1.80"
+
+# Web
+axum = { version = "0.8", features = ["ws", "http1", "http2", "tokio"] }
+axum-macros = { version = "0.5" }
+chrono = { version = "0.4", features = ["serde"] }
+# `ferris-scheduler` interprets `scheduler.timezone` (an IANA name) when it
+# resolves cron deadlines; DST correctness needs the zone database, not a fixed
+# offset. Already pulled in by `tokio-cron-scheduler` 0.15 and present in
+# `Cargo.lock`, so the direct edge adds no crate, licence or TLS stack.
+chrono-tz = "0.10"
+hmac = { version = "0.12", features = ["std"] }
+
+# Server-side TLS (device identity / mTLS). `ring` only: the dependency graph
+# already selects the `ring` backend through `rustls-tls` (reqwest/sqlx), and
+# enabling rustls' default features would add `aws-lc-rs` — a second crypto
+# backend with a heavyweight C/assembly build.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls-pemfile = "2.2"
+# Parses the subject/issuer/CN out of the client certificate; rustls only
+# exposes the raw DER and the verified trust chain.
+x509-parser = "0.17"
+# Root certificates for outbound TLS the app did not pin a CA for. Pure data,
+# already in the graph through `reqwest/rustls-tls`, so declaring it directly
+# costs no extra compilation and keeps `ferris-wasm` from re-deriving the trust
+# store through reqwest's private API.
+webpki-roots = "1.0"
+# Internal certificate authority (mTLS plan Phase 3): signs device CSRs so the
+# framework issues its own client certificates instead of leaving enrolment to
+# an external CA. `ring` backend only — the same reason rustls above pins
+# `ring`: one crypto stack, no `aws-lc-rs`. The `x509-parser` feature adds CSR
+# parsing (it pulls its own x509-parser 0.16 next to the 0.17 above).
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem", "x509-parser"] }
+# rcgen exposes `CertificateParams::not_before/not_after` as
+# `time::OffsetDateTime` and does not re-export `time`, so bounding a leaf's
+# lifetime by the caller's TTL needs it directly. Already in the graph through
+# rcgen, so this adds no new compilation.
+time = { version = "0.3", default-features = false, features = ["std"] }
+
+# Frontend (Leptos)
+leptos = { version = "0.8" }
+leptos_axum = "0.8"
+
+# Files
+object_store = { version = "0.11", features = [] }
+parking_lot = "0.12"
+
+# Jobs/Queue
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager", "script", "streams"] }
+# `default-features = false` drops `default-tls`, i.e. `hyper-tls` ->
+# `native-tls` -> `openssl`. `rustls-tls` is already requested below, so the
+# only effect was to build a second TLS stack (and the OpenSSL C shim) for
+# crates that only ever make plain HTTPS calls.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+
+# User-editable print formats. MiniJinja is a runtime, Jinja2-compatible
+# template engine in pure Rust: templates are rows, not compiled code, so a
+# user can edit them from the Desk. `fuel`, `loop_controls` and `serde` are on
+# because the print renderer runs untrusted-shaped templates with a strict
+# execution budget.
+minijinja = { version = "3.1", features = ["fuel", "json", "loop_controls", "serde"] }
+
+# Raw/ICMP sockets for the `raw-sockets` capability. Already in the locked
+# graph through tokio; `all` exposes the socket options (broadcast/TTL/bind)
+# without a second networking stack.
+socket2 = { version = "0.6", features = ["all"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "mysql", "sqlite", "chrono", "uuid", "bigdecimal", "json", "migrate"] }
+thiserror = "2.0"
+tokio = { version = "1.40", features = ["full", "tracing"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+# WebSocket client behind `io::connect-stream` on `ws://`/`wss://`: the transport
+# needs the RFC 6455 handshake and framing that the HTTP stack does not expose.
+# `axum`'s `ws` feature already resolves this exact version (0.29) for the server
+# half, so the crate is in the locked graph and the graph is not widened. Only
+# `rustls` TLS is enabled — `rustls-tls-webpki-roots` (`__rustls-tls`) and never
+# `native-tls`, which would drag OpenSSL in next to the `ring` stack the workspace
+# pins; the handshake itself is performed by `tokio-rustls` with the app's
+# `tls-client` policy so `verify`, `server-name` and ALPN behave exactly as on
+# `io::request`. `connect` is what gives the tests the loopback client.
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit", "timeout", "auth", "fs"] }
+tracing = "0.1"
+uuid = { version = "1.8", features = ["serde", "v4", "v7"] }
+# Crypto / runtime helpers compartidos
+base64 = { version = "0.22", features = ["std"] }
+# `StreamExt`/`SinkExt` over the WebSocket client: `tokio-tungstenite` exposes a
+# `Stream` + `Sink` pair, not `AsyncRead`/`AsyncWrite`, so the frame pump needs
+# these two extension traits. Already in the locked graph through `axum` and
+# `leptos` (0.3.34), so this adds a crate edge and no new compilation.
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# AEAD for recoverable `Secret` fields (H3): AES-256-GCM. `ring` is already
+# selected by `rustls-tls` (reqwest/sqlx) and pinned by the entries above, so
+# this adds no second crypto backend and no new compile graph — only the
+# `ferris-core` crate edge that needs the primitive. The alternative
+# (`aes-gcm`/`chacha20poly1305`) would pull a parallel RustCrypto stack for the
+# same one algorithm.
+ring = { version = "0.17", default-features = false, features = ["alloc", "std"] }
+# RFC 4648 Base32: the `otpauth://` `secret=` parameter and RFC 6238 TOTP use
+# Base32, not Base64 (V3-AUTH-1). Already in the locked graph transitively, so
+# it adds no new compile graph.
+data-encoding = "2.11"
+# Inbound mail (IMAP) MIME parsing: headers, RFC 2047 encoded words, multipart
+# text/HTML and transfer-decoded attachments. Pure Rust (no C, no OpenSSL) under
+# Apache-2.0 OR MIT, and it does not pull a TLS stack. Not in the locked graph
+# today, so it adds its small parser stack (`encodify`, `hashify`, `memchr`,
+# `simdutf8`); `full_encoding` reuses `encoding_rs`, which `reqwest` already
+# compiles, for non-UTF-8 charsets. Writing a MIME parser by hand would be a
+# larger correctness and security surface than this dependency.
+mail-parser = { version = "1.0", default-features = false, features = ["full_encoding"] }
+rand = { version = "0.8", features = ["std"] }
+
+# Validation
+validator = { version = "0.19", features = ["derive"] }
+
+# Observabilidad
+metrics = "0.22"
+metrics-exporter-prometheus = "0.13"
+opentelemetry = { version = "0.28", features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.23", features = ["tonic", "metrics", "trace"] }
+opentelemetry-sdk = "0.28"
+# Realtime transport and Leptos hosting (SRV11): centralised so a second crate
+# cannot silently resolve a different patch of the same crate.
+socketioxide = { version = "0.10", features = ["extensions", "state", "tracing"] }
+leptos_config = "0.8"
+any_spawner = { version = "0.3", features = ["futures-executor"] }
+# Test-only: WAT assembly and the wasm runtime the server's boot tests compile
+# guests against.
+wat = "1"
+wasmtime = { version = "49", default-features = true }
+tower = "0.5"
+
+# Dev-dependencies are declared per crate: Cargo has no workspace-level
+# dev-dependency inheritance, and `[workspace.dev-dependencies]` is not a valid
+# manifest key (it warns on every invocation). `wiremock` lives in
+# `ferris-auth`/`ferris-api`; add mocks and containers where the tests use them.
+
+[workspace.lints.rust]
+unused_crate_dependencies = "warn"
+unused_imports = "warn"
+unused_variables = "warn"
+dead_code = "warn"
+nonstandard_style = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+cargo = "warn"
+style = "warn"
+complexity = "warn"
+perf = "warn"
+correctness = "warn"
+suspicious = "warn"
+
+[profile.dev]
+debug = "line-tables-only" # Mantiene backtraces útiles sin inflar target/ (evita 100+ GB)
+incremental = true          # Permite a rust-analyzer y cargo reutilizar cachés
+split-debuginfo = "unpacked"
+
+# 1. OPTIMIZACIÓN DE PROC-MACROS Y BUILD SCRIPTS (CRÍTICO PARA LATENCIA)
+# Optimiza al máximo la generación de código de las macros (serde_derive, sqlx, etc.)
+# para que la expansión en tiempo de compilación/check sea ultra rápida.
+[profile.dev.build-override]
+opt-level = 3
+
+# 2. DEPENDENCIAS EXTERNAS SIN DEBUGINFO
+# Las 2000 dependencias no necesitan info de depuración; ahorra espacio y tiempo de linking.
+[profile.dev.package."*"]
+debug = false
+opt-level = 0
+
+# 3. ACELERAR CRATES CRÍTICAS DE INFRAESTRUCTURA Y PARSERS
+# Le da un pequeño extra de optimización a crates pesadas de parseo/cripto en dev
+[profile.dev.package.syn]
+opt-level = 2
+
+[profile.dev.package.miniz_oxide]
+opt-level = 2
+
+[profile.dev.package.wasm-bindgen]
+opt-level = 1
+
+[profile.dev.package.ferris-web]
+opt-level = 0
+
+# Vendored serde
+[patch.crates-io]
+serde = { path = "vendor/serde" }
+serde_core = { path = "vendor/serde_core" }

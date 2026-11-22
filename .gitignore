@@ -1,0 +1,116 @@
+# Rust
+target/
+**/target/
+
+# Build artifacts
+pkg/
+dist/
+out/
+build/
+*.rlib
+*.rmeta
+
+# IDEs and editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+test.db
+
+# Local test app (independent git repo, excluded from the workspace)
+test/
+
+# Node.js (for frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Wasm
+ferris-web/pkg/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.part
+*.temp
+
+# Uploads & TUS
+tus_uploads/
+**/tus_uploads/
+uploads/
+**/uploads/
+
+# Coverage
+coverage/
+*.lcov
+lcov.info
+
+# Generated docs
+doc/
+docs/build/
+
+# Backup files
+*.bak
+*.bkp
+*.backup
+*.orig
+
+# Profiling
+perf.data*
+flamegraph.svg
+
+# Cache
+.cache/
+.parquet_cache/
+
+# Certificates
+*.pem
+*.key
+!*.example.key
+!*.example.pem
+
+# Misc
+*.pid
+*.seed
+*.pid.lock
+
+# Redis dumps
+*.rdb
+
+# Local worktree leftovers
+.git.dangling.bak
+
+# Local editor servers
+.vscode-server/

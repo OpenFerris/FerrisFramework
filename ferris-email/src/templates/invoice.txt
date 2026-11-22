@@ -1,0 +1,7 @@
+Invoice {{ invoice_number }}
+
+Dear {{ customer_name }},
+
+Please find your invoice for {{ amount }}, due on {{ due_date }}.
+
+Download: {{ pdf_url }}

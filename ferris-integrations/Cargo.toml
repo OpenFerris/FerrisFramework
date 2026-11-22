@@ -1,0 +1,57 @@
+[package]
+name = "ferris-integrations"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "Integration DocTypes, Desk workspace and runtime for Ferris"
+
+[lints]
+workspace = true
+
+[features]
+# Default: declarations only — DocTypes and the Desk workspace, no database and
+# no network. An install that never runs integrations pays no runtime cost.
+default = []
+# Declarative native module: DocTypes + Desk workspace.
+module = ["dep:ferris-api"]
+# Full runtime: document-event hooks (webhooks, automation, assignment,
+# milestone), scheduled jobs (auto repeat, reminders, auto email reports), push
+# delivery, and the OAuth/Google adapters. `ferris-server` enables this when the
+# matching server role is on.
+runtime = [
+  "dep:ferris-auth",
+  "dep:ferris-db",
+  "dep:ferris-document",
+  "dep:ferris-jobs",
+  "dep:async-trait",
+  "dep:chrono",
+  "dep:hmac",
+  "dep:reqwest",
+  "dep:serde",
+  "dep:serde_json",
+  "dep:sha2",
+  "dep:tokio",
+  "dep:tracing",
+]
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-schema = { path = "../../FerrisCore/ferris-schema", features = ["native"] }
+ferris-api = { path = "../../FerrisCore/ferris-api", optional = true }
+# Runtime (feature-gated): nothing below is compiled without `runtime`.
+ferris-auth = { path = "../../FerrisCore/ferris-auth", optional = true }
+ferris-db = { path = "../../FerrisCore/ferris-db", optional = true }
+ferris-document = { path = "../../FerrisCore/ferris-document", optional = true }
+ferris-jobs = { path = "../ferris-jobs", optional = true }
+async-trait = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }

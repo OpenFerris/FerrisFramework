@@ -1,0 +1,18 @@
+# Probe guest for the selective-WASI linker test (selective-WASI linker test).
+# Not a workspace member: built on demand with
+#   cargo build --target wasm32-wasip2 --manifest-path ferris-wasm/tests/fixtures/probe-ok/Cargo.toml
+[package]
+name = "probe-ok"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.62"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+
+[workspace]

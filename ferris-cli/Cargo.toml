@@ -1,0 +1,104 @@
+[package]
+name = "ferris-cli"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "CLI tool for Ferris framework"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ferris"
+path = "src/main.rs"
+
+# Same names and same default set as `ferris-server` (AGENTS §2): one feature
+# per subsystem, `api` as the base, `full` as the alias. Each one forwards to the
+# server, so `ferris serve` links exactly the code its configuration can ask for
+# and `ferris doctor` reports the same set the WIT layer sees.
+[features]
+default = [
+    "api",
+    "web",
+    "realtime",
+    "jobs",
+    "scheduler",
+    "email",
+    "files",
+    "print",
+    "report",
+    "integrations",
+    "wasm",
+]
+api = ["ferris-server/api"]
+web = ["ferris-server/web"]
+realtime = ["ferris-server/realtime"]
+jobs = ["ferris-server/jobs"]
+scheduler = ["ferris-server/scheduler"]
+email = ["ferris-server/email"]
+files = ["ferris-server/files"]
+print = ["ferris-server/print", "dep:ferris-print"]
+report = ["ferris-server/report"]
+integrations = ["ferris-server/integrations"]
+# The plugin host: the CLI publishes apps and hands the store to the server, so
+# `ferris-wasm` is a direct dependency of this crate too.
+wasm = ["dep:ferris-wasm", "ferris-server/wasm"]
+full = [
+    "api",
+    "web",
+    "realtime",
+    "jobs",
+    "scheduler",
+    "email",
+    "files",
+    "print",
+    "report",
+    "integrations",
+    "wasm",
+]
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-db = { path = "../../FerrisCore/ferris-db" }
+ferris-auth = { path = "../../FerrisCore/ferris-auth" }
+ferris-schema = { path = "../../FerrisCore/ferris-schema" }
+# `ferris doctor` scans the stored blob for `Secret` values that predate
+# encryption (H3). Already in this crate's graph through `ferris-auth`, so the
+# direct edge only makes the use honest.
+ferris-document = { path = "../../FerrisCore/ferris-document" }
+ferris-jobs = { path = "../ferris-jobs" }
+# The server is the process this CLI boots; its features are forwarded one to
+# one below, so its own `default` must not leak into a minimal CLI build.
+ferris-server = { path = "../ferris-server", default-features = false }
+ferris-print = { path = "../ferris-print", optional = true }
+ferris-wasm = { path = "../ferris-wasm", optional = true }
+redis = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+reqwest = { workspace = true, features = ["blocking"] }
+toml = "0.8"
+open = "5"
+clap = { version = "4.5", features = ["derive", "env", "string", "help", "usage", "wrap_help"] }
+color-eyre = { version = "0.6" }
+cargo-leptos = { version = "0.2", default-features = false }
+dialoguer = { version = "0.11" }
+toml_edit = "0.22"
+notify = "8.2.0"
+uuid = { workspace = true }
+
+[dev-dependencies]
+ferris-macro = { path = "../../FerrisCore/ferris-macro" }
+
+# The end-to-end publish test drives `commands::plugin_boot`, which only exists
+# with the `wasm` feature (it hands a store to `ServerSettings::plugins`).
+[[test]]
+name = "plugins"
+path = "tests/plugins.rs"
+required-features = ["wasm"]

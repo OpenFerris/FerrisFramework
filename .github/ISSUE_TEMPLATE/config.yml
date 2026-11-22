@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Stdg001/ferris/security/advisories/new
+    about: Report a vulnerability privately; do not open a public issue.
+  - name: Questions and ideas
+    url: https://github.com/Stdg001/ferris/discussions
+    about: Ask questions or discuss design ideas with the community.

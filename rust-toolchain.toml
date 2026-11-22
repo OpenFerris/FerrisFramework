@@ -1,0 +1,11 @@
+[toolchain]
+# Pinned so the editor, cargo-leptos and the CLI all agree. Without this,
+# rust-analyzer can resolve a different toolchain than the terminal, which
+# changes the compilation database hash and forces a full rebuild of the
+# dependency graph on every window load.
+channel = "1.98.1"
+components = ["rust-analyzer", "clippy", "rustfmt", "rust-src"]
+# `wasm32-wasip2` is what `ferris dev` builds the app component with; without it
+# here a fresh checkout fails on the first save instead of at first build.
+targets = ["wasm32-unknown-unknown", "wasm32-wasip2"]
+profile = "minimal"

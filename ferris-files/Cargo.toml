@@ -1,0 +1,49 @@
+[package]
+name = "ferris-files"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = "File storage for Ferris framework"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Declarative native module: the file DocType. The HTTP adapter lives behind
+# its own feature once the routes move here.
+module = ["dep:ferris-api"]
+# HTTP adapter: Desk file routes and the public signed download.
+http = [
+    "module",
+    "dep:ferris-auth",
+    "dep:ferris-document",
+    "dep:axum",
+    "dep:async-trait",
+]
+
+[dependencies]
+ferris-core = { path = "../../FerrisCore/ferris-core" }
+ferris-api = { path = "../../FerrisCore/ferris-api", optional = true }
+ferris-auth = { path = "../../FerrisCore/ferris-auth", optional = true }
+ferris-document = { path = "../../FerrisCore/ferris-document", optional = true }
+ferris-db = { path = "../../FerrisCore/ferris-db" }
+ferris-schema = { path = "../../FerrisCore/ferris-schema" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+axum = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+tracing = { workspace = true }
+object_store = { workspace = true, features = ["aws", "azure", "gcp"] }
+uuid = { workspace = true }
+chrono = { workspace = true }
+image = { version = "0.24", features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico"] }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

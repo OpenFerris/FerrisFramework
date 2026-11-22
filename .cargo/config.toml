@@ -1,0 +1,11 @@
+# `ferris-wasm`, `ferris-server` and `ferris-cli` are deliberately left out of
+# the workspace `default-members`: they pull wasmtime/cranelift, and because
+# cargo unifies features across the packages of a single invocation, listing
+# `ferris-cli` here would turn `ferris-web/ssr` back on for a plain
+# `cargo check` and undo what the feature split buys.
+#
+# So the CLI is checked in its own invocation instead, where the extra cost
+# lands only on whoever asks for it.
+[alias]
+# Check the crates a plain `cargo check` skips, including the CLI binary.
+check-cli = "check -p ferris-cli -p ferris-server -p ferris-wasm --all-targets"

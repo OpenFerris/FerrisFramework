@@ -1,0 +1,292 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+/* Component class catalog. Kept in its own file, inside `@layer components`,
+   so the `.ferris-*` classes are plain CSS (themeable/overridable by plugins)
+   and every framework component has a stable, documented hook. */
+@import "./components.css";
+@source "../src";
+/* The component library lives in a sibling crate; without this every class in
+   ferris-web-ui is missing from the build and the overlay primitives that hide
+   themselves (`.data-[state=closed]:opacity-0`) render visible forever. */
+@source "../../ferris-web-ui/src";
+
+/*
+  Design tokens — the single source of colour truth (F1).
+  Every token exists in `:root` AND `.dark` AND is mapped in `@theme inline`
+  below. Themes (built-in or plugin-registered) override these on `:root`;
+  component classes in `components.css` reference them with `var(--token)`.
+  Keep the three places in sync: a token missing from `.dark` silently falls
+  back to the light value under a runtime dark theme.
+*/
+:root {
+  --radius: 0.625rem;
+
+  /* Structural (not part of a theme palette): the Desk's chrome metrics.
+     Components read these instead of repeating a width/height literal. */
+  --sidebar-width: 15rem;
+  --sidebar-width-icon: 4rem;
+  --bottom__nav__height: 4rem;
+
+  /* Base palette */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.153 0.006 107.1);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.153 0.006 107.1);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.153 0.006 107.1);
+  --primary: oklch(0.228 0.013 107.4);
+  --primary-foreground: oklch(0.988 0.003 106.5);
+  --secondary: oklch(0.966 0.005 106.5);
+  --secondary-foreground: oklch(0.228 0.013 107.4);
+  --muted: oklch(0.966 0.005 106.5);
+  --muted-foreground: oklch(0.58 0.031 107.3);
+  --accent: oklch(0.966 0.005 106.5);
+  --accent-foreground: oklch(0.228 0.013 107.4);
+  --border: oklch(0.93 0.007 106.5);
+  --input: oklch(0.93 0.007 106.5);
+  --ring: oklch(0.737 0.021 106.9);
+
+  /* Status */
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.988 0.003 106.5);
+  --success: oklch(0.723 0.192 149.579);
+  --success-foreground: oklch(0.988 0.003 106.5);
+  --warning: oklch(0.795 0.184 86.047);
+  --warning-foreground: oklch(0.216 0.006 56.043);
+  --info: oklch(0.685 0.169 237.323);
+  --info-foreground: oklch(0.988 0.003 106.5);
+
+  /* Surfaces */
+  --surface: oklch(0.985 0.002 106.5);
+  --surface-foreground: oklch(0.153 0.006 107.1);
+  --overlay: oklch(0 0 0 / 50%);
+
+  /* Desk chrome */
+  --sidebar: oklch(0.985 0.002 106.5);
+  --sidebar-foreground: oklch(0.153 0.006 107.1);
+  --sidebar-border: oklch(0.93 0.007 106.5);
+  --sidebar-accent: oklch(0.966 0.005 106.5);
+  --sidebar-accent-foreground: oklch(0.228 0.013 107.4);
+  --sidebar-ring: oklch(0.737 0.021 106.9);
+  --topbar: oklch(1 0 0);
+  --topbar-foreground: oklch(0.153 0.006 107.1);
+  --topbar-border: oklch(0.93 0.007 106.5);
+
+  /* Desk folder accents (user-chosen, fixed hues). Each one paints a folder
+     tile and its picker swatch through `.ferris-desk-folder--*`. */
+  --folder-slate: oklch(0.446 0.043 257.281);
+  --folder-blue: oklch(0.546 0.245 262.881);
+  --folder-emerald: oklch(0.596 0.145 163.225);
+  --folder-amber: oklch(0.555 0.163 48.998);
+  --folder-rose: oklch(0.586 0.253 17.585);
+  --folder-violet: oklch(0.541 0.281 293.009);
+}
+
+.dark {
+  --background: oklch(0.153 0.006 107.1);
+  --foreground: oklch(0.988 0.003 106.5);
+  --card: oklch(0.228 0.013 107.4);
+  --card-foreground: oklch(0.988 0.003 106.5);
+  --popover: oklch(0.228 0.013 107.4);
+  --popover-foreground: oklch(0.988 0.003 106.5);
+  --primary: oklch(0.93 0.007 106.5);
+  --primary-foreground: oklch(0.228 0.013 107.4);
+  --secondary: oklch(0.286 0.016 107.4);
+  --secondary-foreground: oklch(0.988 0.003 106.5);
+  --muted: oklch(0.286 0.016 107.4);
+  --muted-foreground: oklch(0.737 0.021 106.9);
+  --accent: oklch(0.286 0.016 107.4);
+  --accent-foreground: oklch(0.988 0.003 106.5);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.58 0.031 107.3);
+
+  /* Status */
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.988 0.003 106.5);
+  --success: oklch(0.696 0.17 162.48);
+  --success-foreground: oklch(0.988 0.003 106.5);
+  --warning: oklch(0.828 0.189 84.429);
+  --warning-foreground: oklch(0.216 0.006 56.043);
+  --info: oklch(0.746 0.16 232.661);
+  --info-foreground: oklch(0.216 0.006 56.043);
+
+  /* Surfaces */
+  --surface: oklch(0.205 0.012 107.3);
+  --surface-foreground: oklch(0.988 0.003 106.5);
+  --overlay: oklch(0 0 0 / 60%);
+
+  /* Desk chrome */
+  --sidebar: oklch(0.205 0.012 107.3);
+  --sidebar-foreground: oklch(0.988 0.003 106.5);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-accent: oklch(0.286 0.016 107.4);
+  --sidebar-accent-foreground: oklch(0.988 0.003 106.5);
+  --sidebar-ring: oklch(0.58 0.031 107.3);
+  --topbar: oklch(0.228 0.013 107.4);
+  --topbar-foreground: oklch(0.988 0.003 106.5);
+  --topbar-border: oklch(1 0 0 / 10%);
+
+  /* Desk folder accents (lighter shades for contrast on dark surfaces). */
+  --folder-slate: oklch(0.869 0.022 252.894);
+  --folder-blue: oklch(0.809 0.105 251.813);
+  --folder-emerald: oklch(0.845 0.143 164.978);
+  --folder-amber: oklch(0.879 0.169 91.605);
+  --folder-rose: oklch(0.81 0.117 11.638);
+  --folder-violet: oklch(0.811 0.111 293.571);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --color-overlay: var(--overlay);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-topbar: var(--topbar);
+  --color-topbar-foreground: var(--topbar-foreground);
+  --color-topbar-border: var(--topbar-border);
+  --color-folder-slate: var(--folder-slate);
+  --color-folder-blue: var(--folder-blue);
+  --color-folder-emerald: var(--folder-emerald);
+  --color-folder-amber: var(--folder-amber);
+  --color-folder-rose: var(--folder-rose);
+  --color-folder-violet: var(--folder-violet);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Native scrollbars are part of the design surface here: the rail, the list
+     body, the form sidebar and every overlay scroll their own content, and the
+     platform default painted a light, arrowed bar inside the dark theme. Thin,
+     token-coloured, transparent track; `color-scheme` (set per theme in
+     `theme.rs`) still decides the arrows and the corner. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  dialog {
+    margin: auto;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   `.ferris-quill` — Quill's snow chrome restated with design tokens (T2-F4).
+
+   This block is deliberately NOT inside `@layer components` (where every
+   other `.ferris-*` rule lives): Quill ships its own unlayered stylesheet,
+   injected after `desk.css` at runtime, and unlayered styles beat *any*
+   layered rule regardless of specificity — a layered override could never
+   win. Unlayered, the winner is specificity + document order, and Quill's
+   link comes later, so every selector below carries the extra
+   `.ferris-quill` anchor (and `.ql-snow`, where quill's own state rules
+   would otherwise tie). Colour values are tokens only, like everywhere
+   else; the wrapper class is emitted by `TextEditorField`.
+   ------------------------------------------------------------------------- */
+.ferris-quill .ql-toolbar.ql-snow {
+  border-color: var(--border);
+}
+.ferris-quill .ql-container.ql-snow {
+  border-color: var(--border);
+  font-family: inherit;
+}
+.ferris-quill .ql-snow .ql-stroke {
+  stroke: var(--muted-foreground);
+}
+.ferris-quill .ql-snow .ql-fill {
+  fill: var(--muted-foreground);
+}
+.ferris-quill .ql-toolbar.ql-snow .ql-picker-label {
+  color: var(--muted-foreground);
+}
+.ferris-quill .ql-toolbar.ql-snow button:hover .ql-stroke,
+.ferris-quill .ql-toolbar.ql-snow button:focus-visible .ql-stroke,
+.ferris-quill .ql-toolbar.ql-snow button.ql-active .ql-stroke,
+.ferris-quill .ql-toolbar.ql-snow .ql-picker-label:hover .ql-stroke {
+  stroke: var(--primary);
+}
+.ferris-quill .ql-toolbar.ql-snow button:hover .ql-fill,
+.ferris-quill .ql-toolbar.ql-snow button:focus-visible .ql-fill,
+.ferris-quill .ql-toolbar.ql-snow button.ql-active .ql-fill,
+.ferris-quill .ql-toolbar.ql-snow .ql-picker-label:hover .ql-fill {
+  fill: var(--primary);
+}
+.ferris-quill .ql-toolbar.ql-snow button:hover,
+.ferris-quill .ql-toolbar.ql-snow button:focus-visible,
+.ferris-quill .ql-toolbar.ql-snow button.ql-active,
+.ferris-quill .ql-toolbar.ql-snow .ql-picker-label:hover,
+.ferris-quill .ql-toolbar.ql-snow .ql-picker-label.ql-active {
+  color: var(--primary);
+}
+.ferris-quill .ql-snow .ql-picker-options {
+  background-color: var(--popover);
+  border-color: var(--border);
+}
+.ferris-quill .ql-snow .ql-picker-item {
+  color: var(--popover-foreground);
+}
+.ferris-quill .ql-snow .ql-picker-item:hover,
+.ferris-quill .ql-snow .ql-picker-item.ql-selected {
+  color: var(--primary);
+}
+.ferris-quill .ql-snow .ql-tooltip {
+  background-color: var(--popover);
+  border-color: var(--border);
+  color: var(--popover-foreground);
+}
+.ferris-quill .ql-snow .ql-tooltip input[type="text"] {
+  border-color: var(--input);
+  color: var(--foreground);
+}
+.ferris-quill .ql-editor.ql-blank::before {
+  color: var(--muted-foreground);
+}
+.ferris-quill .ql-editor a {
+  color: var(--primary);
+}
+.ferris-quill .ql-editor blockquote {
+  border-left-color: var(--border);
+}

@@ -1,0 +1,19 @@
+//! Directories and the WIT contract copy.
+
+use anyhow::Result;
+use std::fs;
+use std::path::Path;
+
+pub(super) fn create_project_structure(project_dir: &Path) -> Result<()> {
+    for dir in ["src", "wit", "config", ".cargo"] {
+        fs::create_dir_all(project_dir.join(dir))?;
+    }
+    Ok(())
+}
+
+pub(super) fn write_wit(project_dir: &Path, wit_source: &Path) -> Result<()> {
+    let wit = fs::read_to_string(wit_source)
+        .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", wit_source.display()))?;
+    fs::write(project_dir.join("wit").join("ferris.wit"), wit)?;
+    Ok(())
+}

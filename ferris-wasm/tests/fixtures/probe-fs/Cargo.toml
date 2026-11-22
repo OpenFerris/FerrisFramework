@@ -1,0 +1,18 @@
+# Probe guest for the selective-WASI linker test (selective-WASI linker test):
+# reaches `std::fs`, so the component imports wasi:filesystem/types and must
+# fail to instantiate against the selective linker.
+# Not a workspace member: built on demand with
+#   cargo build --target wasm32-wasip2 --manifest-path ferris-wasm/tests/fixtures/probe-fs/Cargo.toml
+[package]
+name = "probe-fs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.62"
+
+[workspace]

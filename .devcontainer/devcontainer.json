@@ -1,0 +1,40 @@
+{
+  "name": "Ferris development",
+  // The image user must match the host UID/GID or the bind-mounted /workspace
+  // (and target/) is not writable (DX-19). UID/GID are shell variables and are
+  // usually *not* exported, so these defaults are the common case; export them
+  // before opening the folder, or rebuild with
+  // `--build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)`.
+  // The postCreateCommand warns when the mounted UID and the remote user differ.
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": "..",
+    "args": {
+      "USER_ID": "${localEnv:UID:1000}",
+      "GROUP_ID": "${localEnv:GID:1000}"
+    }
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "remoteUser": "ferris",
+  "postCreateCommand": "cargo --version && rustc --version && node --version && ( [ \"$(stat -c %u /workspace)\" = \"$(id -u)\" ] || echo \"WARNING: /workspace is owned by UID $(stat -c %u /workspace) but the remote user is UID $(id -u); writes to target/ will fail. Rebuild with --build-arg USER_ID=$(stat -c %u /workspace) --build-arg GROUP_ID=$(stat -c %g /workspace), or export USER_ID/GROUP_ID first.\" )",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "bradlc.vscode-tailwindcss",
+        "astro-build.astro-vscode"
+      ],
+      "settings": {
+        "rust-analyzer.check.command": "check",
+        "rust-analyzer.check.allTargets": false
+      }
+    }
+  },
+  "forwardPorts": [8000, 4321, 5432, 6379],
+  "portsAttributes": {
+    "8000": { "label": "Ferris" },
+    "4321": { "label": "Docs" }
+  }
+}
