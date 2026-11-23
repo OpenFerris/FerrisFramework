@@ -25,7 +25,7 @@ pub(super) fn render_lib_rs(name: &str) -> String {
 //! framework through the `wit/ferris.wit` imports. The app never touches the
 //! database directly.
 //!
-//! The contract is `ferris:framework@0.3.0`: six interfaces (`types`, `data`,
+//! The contract is `ferris:framework@0.4.0`: six interfaces (`types`, `data`,
 //! `schema`, `io`, `platform`, `descriptor`) and an explicit capability
 //! declaration in `describe()`. The primordial capabilities (the app's world,
 //! its routes, outbound HTTP, the document store, config, schema, the

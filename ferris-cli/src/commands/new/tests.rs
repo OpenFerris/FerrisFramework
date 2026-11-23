@@ -62,7 +62,7 @@ fn lib_rs_matches_the_world_export_signatures() {
     assert!(
         src.contains("fn handle_job(job_type: String, payload: String) -> Result<String, Error>")
     );
-    // WIT 0.3.0: datagrams have their own export, sibling of `handle-stream`.
+    // Since WIT 0.3.0 datagrams have their own export, sibling of `handle-stream`.
     assert!(
         src.contains("fn handle_datagram("),
         "the scaffold must export the datagram callback"
@@ -178,7 +178,7 @@ fn rejects_unsafe_project_names() {
 #[test]
 fn the_readme_describes_the_current_contract_once() {
     let readme = render_readme("my-app");
-    assert!(readme.contains("ferris:framework@0.3.0"), "{readme}");
+    assert!(readme.contains("ferris:framework@0.4.0"), "{readme}");
     assert!(readme.contains("six interfaces"), "{readme}");
     for interface in ["types", "data", "schema", "io", "platform", "descriptor"] {
         assert!(readme.contains(&format!("`{interface}`")), "{interface}");

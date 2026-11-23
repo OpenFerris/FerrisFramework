@@ -41,6 +41,53 @@ pub(super) fn check_cargo() -> HealthCheck {
     }
 }
 
+/// Every installed app's translation catalogues parse and cover the declared
+/// locales.
+///
+/// The boot skips a broken file (a translation must not take a site down), so a
+/// typo would otherwise only show as an English label in one language.
+pub(super) fn check_locales(bench_root: &Path) -> HealthCheck {
+    let apps = bench_root.join("apps");
+    let mut catalogues = 0_usize;
+    let mut broken: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&apps) {
+        let mut apps: Vec<_> = entries
+            .flatten()
+            .filter(|entry| entry.path().is_dir())
+            .collect();
+        apps.sort_by_key(std::fs::DirEntry::file_name);
+        for app in apps {
+            match crate::commands::app::locales::validate(&app.path(), None) {
+                Ok(tags) => catalogues += tags.len(),
+                Err(error) => {
+                    broken.push(format!("{}: {error}", app.file_name().to_string_lossy()))
+                }
+            }
+        }
+    }
+
+    if broken.is_empty() {
+        HealthCheck {
+            name: "App catalogues".to_string(),
+            passed: true,
+            message: if catalogues == 0 {
+                "no app translation catalogues installed".to_string()
+            } else {
+                format!("{catalogues} catalogue(s) are valid")
+            },
+            critical: true,
+        }
+    } else {
+        HealthCheck {
+            name: "App catalogues".to_string(),
+            passed: false,
+            message: broken.join("; "),
+            // A skipped file degrades one language, it does not stop the boot.
+            critical: false,
+        }
+    }
+}
+
 pub(super) fn check_cargo_toml(cwd: &Path, bench_root: &Path) -> HealthCheck {
     let path = cwd.join("Cargo.toml");
     if path.is_file() {

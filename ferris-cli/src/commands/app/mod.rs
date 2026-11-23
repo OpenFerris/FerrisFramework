@@ -118,7 +118,20 @@ fn install_package(catalogue: &SiteManager, source: &Path, name: Option<&str>) -
         // against this binary must not replace a working one and take every
         // site down on its next boot.
         let package = AppManifest::read(source)?;
-        validate_component(&package.wasm, &package.name)?;
+        let described = validate_component(&package.wasm, &package.name)?;
+        // Declared locales and shipped catalogues must agree before the
+        // catalogue (and every site that copies it) is touched.
+        let declared = described.get("locales").and_then(|value| {
+            value.as_array().map(|tags| {
+                tags.iter()
+                    .filter_map(|tag| tag.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+        });
+        let tags = locales::validate(source, declared.as_deref())?;
+        if !tags.is_empty() {
+            tracing::info!("Package ships catalogues for: {}", tags.join(", "));
+        }
         catalogue.install_global_app(source)?
     } else {
         install_component(catalogue, source, name)?
@@ -189,7 +202,7 @@ fn install_component(
 /// `component imports instance ... not found in the linker`. Instantiating it
 /// against an in-memory host moves the failure to the install command, before
 /// the catalogue (and every site that will copy it) is touched.
-pub(super) fn validate_component(path: &Path, name: &str) -> Result<()> {
+pub(super) fn validate_component(path: &Path, name: &str) -> Result<serde_json::Value> {
     // `plugin_boot::load` parks a worker with `block_in_place`, which a
     // current-thread runtime rejects; the runtime must be multi-threaded.
     let rt = crate::runtime::block_on_runtime(Some(2))?;
@@ -215,8 +228,14 @@ pub(super) fn validate_component(path: &Path, name: &str) -> Result<()> {
             path.display()
         )
     });
+    let described = result.and_then(|()| store.describe_json_for(name));
     let _ = fs::remove_dir_all(&worlds);
-    result
+    described
+        .with_context(|| format!("`{}` did not describe itself", path.display()))
+        .and_then(|json| {
+            serde_json::from_str(&json)
+                .with_context(|| format!("`{}` described an unreadable projection", path.display()))
+        })
 }
 
 /// Assemble the one-app package `install_global_app` expects.
@@ -575,6 +594,8 @@ fn write_array(doc: &mut DocumentMut, names: &[String]) -> Result<()> {
     table["enabled"] = toml_edit::value(array);
     Ok(())
 }
+
+pub(in crate::commands) mod locales;
 
 fn save(path: &Path, doc: &DocumentMut) -> Result<()> {
     fs::write(path, doc.to_string()).with_context(|| format!("cannot write {}", path.display()))

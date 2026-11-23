@@ -41,7 +41,21 @@ pub fn run(args: ServeArgs, config: &CliConfig) -> Result<()> {
         }
         apply_allowed_hosts(&effective)?;
     }
-    let settings = settings_for(args.host, args.port, roles, &effective)?;
+    // A site serves its own copies (`sites/<site>/plugins/<app>/locales`), so a
+    // per-site install translates that site only; a bench without a site reads
+    // the catalogue (`apps/<app>/locales`).
+    let catalogues = match args.site.as_deref() {
+        Some(name) => Some(super::site::manager(&effective).plugins_root(name)?),
+        None => None,
+    };
+    let settings = settings_for_with_features(
+        args.host,
+        args.port,
+        roles,
+        &effective,
+        &features::compiled(),
+        catalogues.as_deref(),
+    )?;
     start(settings, &effective)
 }
 
@@ -95,7 +109,30 @@ pub(in crate::commands) fn settings_for(
     roles: ServerRoles,
     config: &CliConfig,
 ) -> Result<ServerSettings> {
-    settings_for_with_features(host, port, roles, config, &features::compiled())
+    settings_for_with_features(
+        host,
+        port,
+        roles,
+        config,
+        &features::compiled(),
+        default_catalogue_root(config).as_deref(),
+    )
+}
+
+/// The catalogue directory a bench-level command reads.
+///
+/// `apps/` when the bench has one; for a standalone project (`--standalone`),
+/// its own directory, where `locales/` sits next to `plugin.toml`.
+fn default_catalogue_root(config: &CliConfig) -> Option<std::path::PathBuf> {
+    let apps = super::site::manager(config).apps_root().to_path_buf();
+    if apps.is_dir() {
+        return Some(apps);
+    }
+    let standalone = config.source.project_dir.clone();
+    standalone
+        .join(ferris_core::site::LOCALES_DIR)
+        .is_dir()
+        .then_some(standalone)
 }
 
 /// [`settings_for`] with an explicit feature set.
@@ -110,6 +147,7 @@ pub(in crate::commands) fn settings_for_with_features(
     roles: ServerRoles,
     config: &CliConfig,
     compiled: &ferris_core::host_features::HostFeatures,
+    catalogues: Option<&std::path::Path>,
 ) -> Result<ServerSettings> {
     // The feature matrix is checked first: a config that asks for any
     // other subsystem) this binary was not built with must fail before a
@@ -137,7 +175,7 @@ pub(in crate::commands) fn settings_for_with_features(
     settings.body_limit_mb = config.server.body_limit_mb;
     settings.enable_cors = config.server.enable_cors;
     settings.cors_origins = config.server.cors_origins.clone();
-    settings.i18n = build_i18n(&config.i18n);
+    settings.i18n = build_i18n(&config.i18n, catalogues);
     Ok(settings)
 }
 
@@ -147,14 +185,18 @@ pub(in crate::commands) fn settings_for_with_features(
 /// instead of refusing to boot: a locale is presentation, and a typo in
 /// `supported` must not take the API down. `ferris doctor` prints the set, so
 /// the typo is still visible.
-fn build_i18n(config: &crate::config::I18nConfig) -> I18n {
+fn build_i18n(config: &crate::config::I18nConfig, catalogues: Option<&std::path::Path>) -> I18n {
     let default = Locale::parse(&config.default_locale).unwrap_or_default();
     let supported: Vec<Locale> = config
         .supported
         .iter()
         .filter_map(|tag| Locale::parse(tag))
         .collect();
-    I18n::new(default, supported)
+    let i18n = I18n::new(default, supported);
+    match catalogues {
+        Some(root) => crate::config::merge_installed_app_catalogues(i18n, root),
+        None => i18n,
+    }
 }
 
 fn build_core_config(cli_config: &CliConfig) -> Result<CoreConfig> {
@@ -451,8 +493,9 @@ mod tests {
 
         let roles = ServerRoles::parse(&["api".to_string()]).unwrap();
         let compiled = ferris_core::host_features::HostFeatures::new(["api"]);
-        let settings = settings_for_with_features("127.0.0.1".into(), 0, roles, &cli, &compiled)
-            .expect("an api-only build with nothing else requested is valid");
+        let settings =
+            settings_for_with_features("127.0.0.1".into(), 0, roles, &cli, &compiled, None)
+                .expect("an api-only build with nothing else requested is valid");
         assert!(settings.roles.has(ServerRole::Api));
         assert!(!settings.roles.has(ServerRole::Web));
     }

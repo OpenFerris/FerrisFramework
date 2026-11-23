@@ -59,7 +59,7 @@ site's pinned component until it is reinstalled with `--force`.
 
 ## What the app declares
 
-The app contract is `ferris:framework@0.3.0` (`wit/ferris.wit`, six interfaces:
+The app contract is `ferris:framework@0.4.0` (`wit/ferris.wit`, six interfaces:
 `types`, `data`, `schema`, `io`, `platform` and `descriptor`). Nothing is
 configured by the host operator: `describe()` declares, and the declaration is
 the grant.

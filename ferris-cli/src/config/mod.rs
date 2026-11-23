@@ -19,7 +19,7 @@ pub use auth::AuthConfig;
 pub use cli::CliSettings;
 pub use database::DatabaseConfig;
 pub use files::FilesConfig;
-pub use i18n::I18nConfig;
+pub use i18n::{I18nConfig, merge_installed_app_catalogues};
 pub use project::ProjectConfig;
 pub use redis::{RedisConfig, redact_url};
 pub use server::ServerConfig;

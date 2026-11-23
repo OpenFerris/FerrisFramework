@@ -436,6 +436,13 @@ fn install_app(manager: &SiteManager, site: &str, app: &str, force: bool) -> Res
     let catalogue = manager.app_manifest(app)?;
     #[cfg(feature = "wasm")]
     super::app::validate_component(&catalogue.wasm, &catalogue.name)?;
+    // The catalogue was validated when it was installed; this catches a file
+    // edited in place (or copied by hand) before it reaches the site's boot.
+    let package = manager.global_app_dir(app)?;
+    let tags = super::app::locales::validate(&package, None)?;
+    if !tags.is_empty() {
+        info!("App '{app}' translates itself into: {}", tags.join(", "));
+    }
     let manifest = manager.install_app(site, app, force)?;
     let applied = docperm::apply(manager, site, app)?;
     if applied > 0 {
