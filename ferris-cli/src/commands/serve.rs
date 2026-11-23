@@ -1,6 +1,7 @@
 //! `ferris serve`: run the unified server on a single port with flag-selected roles.
 
 use anyhow::Result;
+use ferris_core::i18n::{I18n, Locale};
 use ferris_core::{Config as CoreConfig, DatabaseConfig as CoreDatabaseConfig};
 use ferris_server::{Server, ServerRole, ServerRoles, ServerSettings};
 
@@ -9,7 +10,10 @@ use crate::config::{CliConfig, DatabaseConfig};
 use crate::features;
 
 pub fn run(args: ServeArgs, config: &CliConfig) -> Result<()> {
-    let roles = roles_from_flags(&args)?;
+    if args.all_sites {
+        return super::multi_site::run(args, config);
+    }
+    let roles = roles_from_flags(&args, config)?;
 
     // `--cors-origin` flags extend (and imply) the config-driven allow-list.
     let mut effective = config.clone();
@@ -53,7 +57,7 @@ pub(in crate::commands) fn apply_allowed_hosts(config: &CliConfig) -> Result<()>
     Ok(())
 }
 
-fn roles_from_flags(args: &ServeArgs) -> Result<ServerRoles> {
+fn roles_from_flags(args: &ServeArgs, config: &CliConfig) -> Result<ServerRoles> {
     if args.all {
         return Ok(ServerRoles::all());
     }
@@ -69,13 +73,19 @@ fn roles_from_flags(args: &ServeArgs) -> Result<ServerRoles> {
             selected.push(role.as_str().to_string());
         }
     }
-    let roles = ServerRoles::parse(&selected)?;
-    if roles.is_empty() {
-        anyhow::bail!(
-            "no roles selected: pass --all or at least one of --api/--web/--realtime/--worker/--scheduler"
-        );
+    // No flag falls back to `[server] roles`, the same source `ferris run`
+    // reads: `ferris serve --site <name>` is a documented command and must not
+    // fail because it omitted the roles the config already names.
+    if selected.is_empty() {
+        if config.server.roles.is_empty() {
+            anyhow::bail!(
+                "no roles selected: pass --all, one of --api/--web/--realtime/--worker/--scheduler, \
+                 or list them in [server] roles"
+            );
+        }
+        return ServerRoles::parse(&config.server.roles);
     }
-    Ok(roles)
+    ServerRoles::parse(&selected)
 }
 
 /// Build `ServerSettings` from CLI flags plus the project config.
@@ -127,7 +137,24 @@ pub(in crate::commands) fn settings_for_with_features(
     settings.body_limit_mb = config.server.body_limit_mb;
     settings.enable_cors = config.server.enable_cors;
     settings.cors_origins = config.server.cors_origins.clone();
+    settings.i18n = build_i18n(&config.i18n);
     Ok(settings)
+}
+
+/// Build the locale policy from `[i18n]`.
+///
+/// An unparseable tag is dropped (and the default falls back to English)
+/// instead of refusing to boot: a locale is presentation, and a typo in
+/// `supported` must not take the API down. `ferris doctor` prints the set, so
+/// the typo is still visible.
+fn build_i18n(config: &crate::config::I18nConfig) -> I18n {
+    let default = Locale::parse(&config.default_locale).unwrap_or_default();
+    let supported: Vec<Locale> = config
+        .supported
+        .iter()
+        .filter_map(|tag| Locale::parse(tag))
+        .collect();
+    I18n::new(default, supported)
 }
 
 fn build_core_config(cli_config: &CliConfig) -> Result<CoreConfig> {
@@ -271,12 +298,25 @@ mod tests {
             cors_origin: Vec::new(),
             site: None,
             tenant: None,
+            all_sites: false,
         }
     }
 
     #[test]
-    fn no_flags_is_an_error() {
-        assert!(roles_from_flags(&serve_args()).is_err());
+    fn no_flags_uses_the_configured_roles() {
+        let mut config = CliConfig::default();
+        config.server.roles = vec!["api".into(), "web".into()];
+        let roles = roles_from_flags(&serve_args(), &config).unwrap();
+        assert!(roles.has(ServerRole::Api));
+        assert!(roles.has(ServerRole::Web));
+        assert!(!roles.has(ServerRole::Realtime));
+    }
+
+    #[test]
+    fn no_flags_and_no_configured_roles_is_an_error() {
+        let mut config = CliConfig::default();
+        config.server.roles.clear();
+        assert!(roles_from_flags(&serve_args(), &config).is_err());
     }
 
     #[test]
@@ -284,7 +324,7 @@ mod tests {
         let mut args = serve_args();
         args.api = true;
         args.web = true;
-        let roles = roles_from_flags(&args).unwrap();
+        let roles = roles_from_flags(&args, &CliConfig::default()).unwrap();
         assert!(roles.has(ServerRole::Api));
         assert!(roles.has(ServerRole::Web));
         assert!(!roles.has(ServerRole::Realtime));
@@ -294,7 +334,7 @@ mod tests {
     fn all_flag_enables_every_role() {
         let mut args = serve_args();
         args.all = true;
-        let roles = roles_from_flags(&args).unwrap();
+        let roles = roles_from_flags(&args, &CliConfig::default()).unwrap();
         for role in ServerRole::ALL {
             assert!(roles.has(role));
         }

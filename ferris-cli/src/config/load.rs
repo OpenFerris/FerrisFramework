@@ -15,22 +15,35 @@ impl CliConfig {
         // An explicit `--config` must point at an existing file: silently
         // falling back to defaults would hide typos and bad deploys.
         let explicit = config_file.is_some();
-        let source = match (config_file, project_dir) {
-            (Some(file), _) => ConfigSource {
-                config_path: PathBuf::from(file),
-                project_dir: PathBuf::from(project_dir.unwrap_or(".")),
-            },
-            (None, Some(dir)) => {
-                let project_dir = PathBuf::from(dir);
-                ConfigSource {
-                    config_path: project_dir.join("config").join("ferris.toml"),
-                    project_dir,
-                }
+        let invocation = match project_dir {
+            Some(dir) => PathBuf::from(dir),
+            None => std::env::current_dir()?,
+        };
+        let source = if let Some(file) = config_file {
+            let config_path = PathBuf::from(file);
+            let bench_root = config_path
+                .parent()
+                .filter(|parent| parent.file_name().is_some_and(|name| name == "config"))
+                .and_then(Path::parent)
+                .map_or_else(|| invocation.clone(), Path::to_path_buf);
+            ConfigSource {
+                config_path,
+                bench_root,
+                project_dir: invocation,
             }
-            (None, None) => ConfigSource {
-                config_path: std::env::current_dir()?.join("config").join("ferris.toml"),
-                project_dir: std::env::current_dir()?,
-            },
+        } else {
+            let (bench_root, config_path) = match find_bench_root(&invocation) {
+                Some((root, path)) => (root, path),
+                None => (
+                    invocation.clone(),
+                    invocation.join("config").join("ferris.toml"),
+                ),
+            };
+            ConfigSource {
+                config_path,
+                bench_root,
+                project_dir: invocation,
+            }
         };
         let config_path = source.config_path.clone();
 
@@ -52,6 +65,24 @@ impl CliConfig {
         config.reject_insecure_jwt_secret()?;
         config.warn_insecure_defaults();
         config.source = source;
+
+        // One bench, one SQLite database. `ferris dev --app <name>` moves into
+        // `apps/<name>/` before opening the pool, so a relative `database.name`
+        // would create a different file per command (and a second one for
+        // `ferris migrate` run from the root). Resolving it against the bench
+        // root keeps every command on the same file; a standalone app's root is
+        // its own directory, so nothing changes there.
+        if config.database.r#type.eq_ignore_ascii_case("sqlite")
+            && !config.database.name.is_empty()
+            && Path::new(&config.database.name).is_relative()
+        {
+            config.database.name = config
+                .source
+                .bench_root
+                .join(&config.database.name)
+                .display()
+                .to_string();
+        }
 
         Ok(config)
     }
@@ -289,6 +320,19 @@ impl CliConfig {
 
 /// Reads a TOML config file and merges it over the compiled-in defaults so
 /// partial configs remain valid.
+/// Walk up from `start` looking for the bench root (`<dir>/config/ferris.toml`).
+fn find_bench_root(start: &Path) -> Option<(PathBuf, PathBuf)> {
+    let mut current = Some(start);
+    while let Some(dir) = current {
+        let path = dir.join("config").join("ferris.toml");
+        if path.is_file() {
+            return Some((dir.to_path_buf(), path));
+        }
+        current = dir.parent();
+    }
+    None
+}
+
 fn load_from_file(path: &Path) -> Result<CliConfig> {
     let content = fs::read_to_string(path).map_err(|e| {
         Error::Config(ferris_core::ConfigError::Invalid {

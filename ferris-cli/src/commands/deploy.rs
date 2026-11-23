@@ -23,18 +23,22 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 pub fn run(args: super::DeployArgs, config: &CliConfig) -> Result<()> {
-    project::check_project_exists(&config.source.project_dir)?;
+    // Works from the app directory and from the bench root (single app).
+    let project_dir = super::build::resolve_app_dir(config, None)?;
+    project::check_project_exists(&project_dir)?;
 
     if !args.skip_build {
         info!("Building the plugin...");
-        super::build::build_plugin(&config.source.project_dir, "release")?;
+        super::build::build_plugin(&project_dir, "release")?;
     }
 
     match args.target {
         super::DeployTarget::Docker => deploy_docker(&args)?,
         super::DeployTarget::Kubernetes => deploy_kubernetes(&args)?,
         super::DeployTarget::Serverless => deploy_serverless(&args)?,
-        super::DeployTarget::Binary => deploy_binary(&config.source.project_dir, &args)?,
+        super::DeployTarget::Binary => {
+            deploy_binary(&project_dir, &config.source.bench_root, &args)?
+        }
     }
 
     Ok(())
@@ -118,7 +122,7 @@ fn deploy_dir_for(env: &str, to: Option<&str>) -> Result<PathBuf> {
 }
 
 /// Copy the plugin and the config to `/opt/ferris/<env>` (or `--to`).
-fn deploy_binary(project_dir: &Path, args: &super::DeployArgs) -> Result<()> {
+fn deploy_binary(project_dir: &Path, bench_root: &Path, args: &super::DeployArgs) -> Result<()> {
     let plugin_name = super::build::package_name(project_dir)?;
     let plugin = super::build::plugin_path(project_dir, &plugin_name);
     if !plugin.is_file() {
@@ -141,7 +145,12 @@ fn deploy_binary(project_dir: &Path, args: &super::DeployArgs) -> Result<()> {
     std::fs::copy(&plugin, &target)?;
     info!("Plugin copied to {}", target.display());
 
-    let config_src = project_dir.join("config");
+    let local_config = project_dir.join("config");
+    let config_src = if local_config.is_dir() {
+        local_config
+    } else {
+        bench_root.join("config")
+    };
     if config_src.is_dir() {
         let deployed_config = deploy_dir.join("config");
         let copied = copy_deployable(&config_src, &deployed_config)?;
@@ -300,6 +309,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"my-app\"\n").unwrap();
         let err = deploy_binary(
+            &dir,
             &dir,
             &super::super::DeployArgs {
                 target: super::super::DeployTarget::Binary,

@@ -34,6 +34,23 @@ pub fn run(args: DevArgs, config: &CliConfig, verbose: bool) -> Result<()> {
         crate::commands::site::apply_site_by_name(&mut config, name)?;
     }
 
+    // Resolve the app before anything reads the working directory: starting at
+    // the bench root (`ferris dev --app billing`, or the only app in `apps/`)
+    // moves to the app directory once, so the build, watcher, hydrate bundle
+    // and frontend supervisor all see the same crate.
+    let app_dir = crate::commands::build::resolve_app_dir(&config, args.app.as_deref())?;
+    let invocation = std::env::current_dir()?;
+    if invocation != app_dir {
+        std::env::set_current_dir(&app_dir)?;
+    }
+    config.source.project_dir = app_dir.clone();
+    // The catalogue is a bench-level path; pin it before `plugins_dir` joins a
+    // relative `wasm_dir` inside the app. A `--site` already set an absolute
+    // instance root, which must win.
+    if args.site.is_none() && config.apps.wasm_dir.is_relative() {
+        config.apps.wasm_dir = config.source.bench_root.join(&config.apps.wasm_dir);
+    }
+
     // `--hot-reload front` turns this process into a supervisor: the desk
     // (ferris-web) is rebuilt on change and the dev server is restarted as a
     // child, because SSR code lives inside the server binary.

@@ -10,15 +10,111 @@ use std::path::{Path, PathBuf};
 use tracing::info;
 
 pub fn run(args: super::BuildArgs, config: &CliConfig) -> Result<()> {
-    let project_dir = config.source.project_dir.clone();
-    project::check_project_exists(&project_dir)?;
+    let app_dir = resolve_app_dir(config, args.app.as_deref())?;
+    project::check_project_exists(&app_dir)?;
 
-    let package_name = build_plugin(&project_dir, &args.profile)?;
-    info!("Build completed successfully! Component: plugins/{package_name}.wasm");
+    let package_name = build_plugin(&app_dir, &args.profile)?;
+    write_package(&app_dir, &package_name)?;
+    info!(
+        "Build completed successfully! Catalogue package: {}/{package_name}.wasm",
+        app_dir.display()
+    );
 
     if let Some(out_dir) = args.out_dir.clone() {
-        copy_artifacts(&project_dir, &out_dir, &package_name, &args.profile)?;
+        copy_artifacts(&app_dir, &out_dir, &package_name, &args.profile)?;
     }
+    Ok(())
+}
+
+/// Locate the app the command operates on: `--app`, the current app directory,
+/// or the only app under `<bench>/apps`.
+pub(crate) fn resolve_app_dir(config: &CliConfig, requested: Option<&str>) -> Result<PathBuf> {
+    if let Some(name) = requested {
+        let dir = config.source.bench_root.join("apps").join(name);
+        if !dir.join("Cargo.toml").is_file() {
+            anyhow::bail!(
+                "app `{name}` not found at {}; run `ferris new {name}` first",
+                dir.display()
+            );
+        }
+        return Ok(dir);
+    }
+
+    let project_dir = config.source.project_dir.clone();
+    if project_dir.join("Cargo.toml").is_file() {
+        return Ok(project_dir);
+    }
+
+    let apps_dir = config.source.bench_root.join("apps");
+    let mut apps: Vec<PathBuf> = std::fs::read_dir(&apps_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.join("Cargo.toml").is_file())
+                .collect()
+        })
+        .unwrap_or_default();
+    apps.sort();
+    match apps.len() {
+        1 => Ok(apps.remove(0)),
+        0 => anyhow::bail!(
+            "no app found under {}; run `ferris new <name>` or `ferris build --app <name>`",
+            apps_dir.display()
+        ),
+        _ => {
+            let names: Vec<String> = apps
+                .iter()
+                .filter_map(|path| {
+                    path.file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                })
+                .collect();
+            anyhow::bail!(
+                "several apps under {} ({}); run `ferris build --app <name>` or cd into apps/<name>",
+                apps_dir.display(),
+                names.join(", ")
+            )
+        }
+    }
+}
+
+/// Write the catalogue package next to the source.
+///
+/// `ferris site install-app` reads exactly this shape (`plugin.toml`,
+/// `<app>.wasm`, `world/`), so a build produces something installable. Files
+/// that already exist are preserved: the manifest carries the app's version.
+fn write_package(app_dir: &Path, package_name: &str) -> Result<()> {
+    let component = plugin_path(app_dir, package_name);
+    let dest = app_dir.join(format!("{package_name}.wasm"));
+    if component != dest {
+        std::fs::copy(&component, &dest)?;
+    }
+
+    let manifest = app_dir.join(ferris_core::site::PLUGIN_MANIFEST);
+    if !manifest.is_file() {
+        std::fs::write(
+            &manifest,
+            format!("name = \"{package_name}\"\nversion = \"0.1.0\"\n"),
+        )?;
+    }
+
+    let world = app_dir.join(ferris_core::site::TEMPLATE_WORLD);
+    for dir in ferris_core::plugins::WORLD_DIRS {
+        std::fs::create_dir_all(world.join(dir))?;
+    }
+    // Exported customizations travel in the template; dev data/files/secrets
+    // do not (the template creates them empty).
+    let exported = app_dir.join("customizations");
+    if exported.is_dir() {
+        for entry in std::fs::read_dir(&exported)?.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                std::fs::copy(&path, world.join("customizations").join(entry.file_name()))?;
+            }
+        }
+    }
+    std::fs::create_dir_all(app_dir.join("assets"))?;
     Ok(())
 }
 

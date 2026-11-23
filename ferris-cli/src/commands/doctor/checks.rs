@@ -41,13 +41,20 @@ pub(super) fn check_cargo() -> HealthCheck {
     }
 }
 
-pub(super) fn check_cargo_toml(cwd: &Path) -> HealthCheck {
+pub(super) fn check_cargo_toml(cwd: &Path, bench_root: &Path) -> HealthCheck {
     let path = cwd.join("Cargo.toml");
     if path.is_file() {
         HealthCheck {
             name: "Cargo.toml".to_string(),
             passed: true,
             message: "found".to_string(),
+            critical: true,
+        }
+    } else if cwd == bench_root && bench_root.join("apps").is_dir() {
+        HealthCheck {
+            name: "Cargo.toml".to_string(),
+            passed: true,
+            message: "bench root: app crates live under apps/".to_string(),
             critical: true,
         }
     } else {
@@ -60,52 +67,125 @@ pub(super) fn check_cargo_toml(cwd: &Path) -> HealthCheck {
     }
 }
 
-pub(super) fn check_project_structure(cwd: &Path) -> HealthCheck {
-    let required = ["src", "config"];
-    let mut missing: Vec<&str> = Vec::new();
-    for dir in required {
-        if !cwd.join(dir).is_dir() {
-            missing.push(dir);
-        }
+pub(super) fn check_project_structure(cwd: &Path, bench_root: &Path) -> HealthCheck {
+    // Two layouts: the bench root owns `apps/` + `sites/`; an app directory
+    // owns `src/` + `wit/`. Requiring `config/` inside every app is why doctor
+    // failed on the scaffold once the bench config moved to the root.
+    if cwd == bench_root {
+        let missing: Vec<&str> = ["apps", "sites"]
+            .into_iter()
+            .filter(|dir| !cwd.join(dir).is_dir())
+            .collect();
+        return if missing.is_empty() {
+            HealthCheck {
+                name: "Project structure".to_string(),
+                passed: true,
+                message: "bench layout: apps/ and sites/ present".to_string(),
+                critical: true,
+            }
+        } else {
+            HealthCheck {
+                name: "Project structure".to_string(),
+                passed: false,
+                message: format!("missing bench directories: {}", missing.join(", ")),
+                critical: true,
+            }
+        };
     }
 
+    let missing_src = !cwd.join("src").is_dir();
     let wit_message = if cwd.join("wit/ferris.wit").is_file() {
         "WIT interface present".to_string()
     } else {
-        "wit/ferris.wit missing (recommended; components are built from it)".to_string()
+        "wit/ferris.wit missing (components are built from it)".to_string()
     };
-
-    if missing.is_empty() {
+    if missing_src {
         HealthCheck {
             name: "Project structure".to_string(),
-            passed: true,
-            message: format!("src/ and config/ present; {wit_message}"),
+            passed: false,
+            message: format!("missing directory: src ({wit_message})"),
             critical: true,
         }
     } else {
         HealthCheck {
             name: "Project structure".to_string(),
-            passed: false,
-            message: format!("missing directories: {}", missing.join(", ")),
+            passed: true,
+            message: format!("src/ present; {wit_message}"),
             critical: true,
         }
     }
 }
 
-pub(super) fn check_config_files(cwd: &Path) -> HealthCheck {
-    let path = cwd.join("config/ferris.toml");
-    if path.is_file() {
+/// The WIT copy must match the contract this binary links.
+///
+/// A stale `wit/ferris.wit` compiles cleanly and produces a component the host
+/// refuses to instantiate. Catching it here is the difference between a
+/// five-second fix and a server that will not boot.
+pub(super) fn check_wit_version(cwd: &Path, bench_root: &Path) -> HealthCheck {
+    if cwd == bench_root {
+        return HealthCheck {
+            name: "WIT version".to_string(),
+            passed: true,
+            message: "bench root: each app carries its own wit/ferris.wit".to_string(),
+            critical: true,
+        };
+    }
+    let path = cwd.join("wit/ferris.wit");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return HealthCheck {
+            name: "WIT version".to_string(),
+            passed: false,
+            message: format!("{} not found", path.display()),
+            critical: true,
+        };
+    };
+    let expected = env!("CARGO_PKG_VERSION");
+    let Some(found) = text.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("package ferris:framework@")
+            .and_then(|rest| rest.trim_end_matches(';').split_whitespace().next())
+            .map(str::to_string)
+    }) else {
+        return HealthCheck {
+            name: "WIT version".to_string(),
+            passed: false,
+            message: "wit/ferris.wit has no `package ferris:framework@<version>;` line".to_string(),
+            critical: true,
+        };
+    };
+    if found == expected {
+        HealthCheck {
+            name: "WIT version".to_string(),
+            passed: true,
+            message: format!("contract {found} matches the host"),
+            critical: true,
+        }
+    } else {
+        HealthCheck {
+            name: "WIT version".to_string(),
+            passed: false,
+            message: format!(
+                "wit/ferris.wit is {found} but this ferris links {expected}; \
+                 copy the host's ferris-wasm/wit/ferris.wit and rebuild"
+            ),
+            critical: true,
+        }
+    }
+}
+
+pub(super) fn check_config_files(config_path: &Path) -> HealthCheck {
+    if config_path.is_file() {
         HealthCheck {
             name: "Config files".to_string(),
             passed: true,
-            message: "config/ferris.toml present".to_string(),
+            message: format!("{} present", config_path.display()),
             critical: true,
         }
     } else {
         HealthCheck {
             name: "Config files".to_string(),
             passed: false,
-            message: "config/ferris.toml not found".to_string(),
+            message: format!("{} not found", config_path.display()),
             critical: true,
         }
     }

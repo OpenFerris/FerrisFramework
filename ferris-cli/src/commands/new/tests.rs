@@ -1,6 +1,6 @@
 use super::cargo_files::render_cargo_toml;
 use super::command::validate_project_name;
-use super::config_files::render_ferris_toml;
+use super::config_files::{render_bench_toml, render_standalone_toml};
 use super::lib_rs::render_lib_rs;
 use super::project_docs::render_readme;
 use super::toolchain::render_toolchain_toml;
@@ -131,14 +131,21 @@ fn lib_rs_declares_capabilities_and_routes() {
 }
 
 #[test]
-fn dev_config_is_sqlite_with_dev_roles() {
-    let cfg = render_ferris_toml("my-app");
+fn the_bench_config_points_at_the_fixed_layout() {
+    let cfg = render_bench_toml();
     assert!(cfg.contains("type = \"sqlite\""));
     assert!(cfg.contains("roles = [\"api\", \"web\", \"realtime\"]"));
-    // The server publishes `ferris build`'s output from here; an omitted
-    // section would fall back to the same default but hide the contract.
-    assert!(cfg.contains("wasm_dir = \"plugins\""));
+    assert!(cfg.contains("wasm_dir = \"apps\""));
     assert!(cfg.contains("enabled = []"));
+    assert!(cfg.contains("default_locale = \"en\""));
+    assert!(cfg.contains("supported = [\"en\", \"es\"]"));
+}
+
+#[test]
+fn a_standalone_app_keeps_the_plugins_layout() {
+    let cfg = render_standalone_toml("my-app");
+    assert!(cfg.contains("name = \"my-app.db\""));
+    assert!(cfg.contains("wasm_dir = \"plugins\""));
 }
 
 /// Without `targets` in the pin, a fresh machine fails at first build
@@ -185,4 +192,24 @@ fn the_readme_describes_the_current_contract_once() {
         !readme.contains("`streams` and `streams`"),
         "the scaffold needs exactly one specific grant"
     );
+}
+
+/// The scaffold's first request must mount. `path = "/"` is refused by the
+/// host (`RootClaim`) and `/plugins/<app>` is dev-only, so the generated app
+/// owns `/apps/<app>`: a unique, production-mountable prefix.
+#[test]
+fn the_scaffold_route_is_mountable_and_namespaced() {
+    let src = render_lib_rs("billing");
+    assert!(
+        src.contains("path: \"/apps/billing\".to_string()"),
+        "the route must be namespaced under /apps/<app>"
+    );
+    assert!(
+        !src.contains("path: \"/\".to_string()"),
+        "a root route is refused at boot"
+    );
+    assert!(src.contains("folders: vec!["));
+    assert!(src.contains("workspaces: vec!["));
+    assert!(src.contains("descriptor::WorkspaceItem"));
+    assert!(src.contains("plugin_version: Some(\"0.1.0\".to_string())"));
 }
