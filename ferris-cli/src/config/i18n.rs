@@ -109,10 +109,8 @@ pub fn merge_installed_app_catalogues(mut i18n: I18n, root: &Path) -> I18n {
             .collect();
         apps.sort_by_key(std::fs::DirEntry::file_name);
         for app in apps {
-            let (next, count) = merge_directory(
-                i18n,
-                &app.path().join(ferris_core::site::LOCALES_DIR),
-            );
+            let (next, count) =
+                merge_directory(i18n, &app.path().join(ferris_core::site::LOCALES_DIR));
             i18n = next;
             merged += count;
         }
@@ -218,10 +216,8 @@ mod tests {
     /// directory in between.
     #[test]
     fn a_standalone_project_catalogue_is_read_from_its_own_directory() {
-        let root = std::env::temp_dir().join(format!(
-            "ferris-i18n-standalone-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("ferris-i18n-standalone-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("locales")).expect("the fixture is created");
         std::fs::write(
             root.join("locales").join("es.toml"),
