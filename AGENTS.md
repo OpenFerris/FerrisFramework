@@ -103,7 +103,7 @@ FerrisCore by relative path**.
 | `ferris-server` | axum router, server roles, module composition root, feature gate. |
 | `ferris-cli` | `ferris new/dev/serve/run/build/app/migrate/generate/deploy/tenant/shell/benchmark/info/doctor/config/role-permissions`. |
 
-Workspace: `resolver = "2"`, edition 2024, version **0.3.0**, Rust **1.98.1**,
+Workspace: `resolver = "2"`, edition 2024, version **0.4.0**, Rust **1.98.1**,
 MIT.
 
 ### Sibling Core is mandatory
@@ -177,11 +177,18 @@ preopen is the sandbox. `ferris migrate` applies every enabled world's
 
 ### WIT contract and extensibility
 
-The contract is `ferris-wasm/wit/ferris.wit` (`ferris:framework@0.3.0`; six
+The contract is `ferris-wasm/wit/ferris.wit` (`ferris:framework@0.4.0`; six
 interfaces: `types`, `data`, `schema`, `io`, `platform`, `descriptor`). **The
 WIT package version and the workspace version are the same number** in both
 `Cargo.toml` files, both WIT copies and `FerrisDocs/project.json`, guarded by
 `ferris-wasm/tests/wit_version.rs`.
+
+An app declares the locales it translates (`descriptor.locales`) and ships the
+messages as `locales/<tag>.toml` next to `plugin.toml`; `app install` and
+`site install-app` validate and copy them, and boot merges them over the
+embedded catalogues. Metadata labels are resolved server-side through the
+`doctype.<X>.label` / `field.<X>.<field>.label` / `workspace.<X>.label`
+convention, never by translating identifiers.
 
 Capabilities are primordial (always granted: world, routes, outbound HTTP,
 document store, config, schema, scheduler, notifications, pubsub) or specific

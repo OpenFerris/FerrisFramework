@@ -42,6 +42,7 @@ use ferris_schema::contract::style::{MAX_GAP, MAX_PADDING, MAX_RADIUS};
 
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::checkbox::Checkbox;
+use crate::i18n::use_i18n;
 
 use super::style_fields::{BackgroundFields, NumberField};
 
@@ -83,6 +84,7 @@ pub(super) fn BoardConfig(
     /// Empty the draft of the active scope (without closing).
     on_restore: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     // Escape closes the drawer. The listener lives as long as the component and
     // stays inert while the drawer is shut — the same convention the
     // notifications panel keeps.
@@ -93,9 +95,21 @@ pub(super) fn BoardConfig(
     });
 
     let is_global = Signal::derive(move || scope.get() == BoardScope::Global);
+    let i18n_aria = i18n;
+    let i18n_heading = i18n;
+    let i18n_scope = i18n;
+    let i18n_note = i18n;
+    let i18n_restore = i18n;
+    let i18n_footer = i18n;
 
     view! {
         {move || {
+            let i18n_aria = i18n_aria;
+            let i18n_heading = i18n_heading;
+            let i18n_scope = i18n_scope;
+            let i18n_note = i18n_note;
+            let i18n_restore = i18n_restore;
+            let i18n_footer = i18n_footer;
             open.get()
                 .then(|| {
                     view! {
@@ -104,16 +118,16 @@ pub(super) fn BoardConfig(
                                 type="button"
                                 class="absolute inset-0 bg-foreground/40 animate-in fade-in duration-200 motion-reduce:animate-none"
                                 on:click=move |_| on_cancel.run(())
-                                aria-label="Cerrar la configuración"
+                                aria-label=i18n.t("views.dashboard.close_config")
                             ></button>
                             <aside
                                 role="dialog"
                                 aria-modal="true"
                                 aria-label=move || {
                                     if is_global.get() {
-                                        "Configuración global del Desk"
+                                        i18n_aria.t("views.dashboard.global_config_aria")
                                     } else {
-                                        "Configuración del tablero"
+                                        i18n_aria.t("views.dashboard.board_config_aria")
                                     }
                                 }
                                 class="absolute inset-y-0 right-0 flex w-80 max-w-[90vw] flex-col border-l border-border bg-card text-card-foreground shadow-lg animate-in fade-in slide-in-from-right-4 duration-200 motion-reduce:animate-none"
@@ -122,9 +136,9 @@ pub(super) fn BoardConfig(
                                     <h2 class="text-sm font-semibold">
                                         {move || {
                                             if is_global.get() {
-                                                "Configuración global"
+                                                i18n_heading.t("views.dashboard.global_config")
                                             } else {
-                                                "Configuración"
+                                                i18n_heading.t("views.dashboard.configuration")
                                             }
                                         }}
                                     </h2>
@@ -132,7 +146,7 @@ pub(super) fn BoardConfig(
                                         variant=ButtonVariant::Ghost
                                         size=ButtonSize::IconSm
                                         on:click=move |_| on_cancel.run(())
-                                        attr:aria-label="Cerrar la configuración"
+                                        attr:aria-label=i18n.t("views.dashboard.close_config")
                                     >
                                         <icons::X class="size-4" />
                                     </Button>
@@ -149,18 +163,18 @@ pub(super) fn BoardConfig(
                                                 view! {
                                                     <div
                                                         role="group"
-                                                        aria-label="Ámbito de la configuración"
+                                                        aria-label=i18n_scope.t("views.dashboard.scope_aria")
                                                         class="grid grid-cols-2 gap-1 rounded-md bg-muted p-1"
                                                     >
                                                         <ScopeButton
                                                             scope=scope
                                                             value=BoardScope::Board
-                                                            label="Este tablero"
+                                                            label=i18n_scope.t("views.dashboard.scope_board")
                                                         />
                                                         <ScopeButton
                                                             scope=scope
                                                             value=BoardScope::Global
-                                                            label="Global del Desk"
+                                                            label=i18n_scope.t("views.dashboard.scope_global")
                                                         />
                                                     </div>
                                                 }
@@ -182,7 +196,7 @@ pub(super) fn BoardConfig(
                                             .then(|| {
                                                 view! {
                                                     <p class="text-[0.65rem] text-muted-foreground">
-                                                        "La base de todos los tableros: cada uno puede sobrescribir estos valores."
+                                                        {i18n_note.t("views.dashboard.global_note")}
                                                     </p>
                                                 }
                                             })
@@ -198,9 +212,9 @@ pub(super) fn BoardConfig(
                                     >
                                         {move || {
                                             if scope.get() == BoardScope::Global {
-                                                "Restaurar por defecto"
+                                                i18n_restore.t("views.dashboard.restore_defaults")
                                             } else {
-                                                "Restaurar global"
+                                                i18n_restore.t("views.dashboard.restore_global")
                                             }
                                         }}
                                     </Button>
@@ -209,7 +223,7 @@ pub(super) fn BoardConfig(
                                         size=ButtonSize::Sm
                                         on:click=move |_| on_cancel.run(())
                                     >
-                                        "Cancelar"
+                                        {i18n_footer.t("common.cancel")}
                                     </Button>
                                     {move || {
                                         if scope.get() == BoardScope::Global {
@@ -219,7 +233,7 @@ pub(super) fn BoardConfig(
                                                     size=ButtonSize::Sm
                                                     on:click=move |_| on_save_global.run(())
                                                 >
-                                                    "Guardar global"
+                                                    {i18n_footer.t("views.dashboard.save_global")}
                                                 </Button>
                                             }
                                                 .into_any()
@@ -230,7 +244,7 @@ pub(super) fn BoardConfig(
                                                     size=ButtonSize::Sm
                                                     on:click=move |_| on_apply.run(())
                                                 >
-                                                    "Aplicar"
+                                                    {i18n_footer.t("views.common.apply")}
                                                 </Button>
                                             }
                                                 .into_any()
@@ -251,7 +265,7 @@ pub(super) fn BoardConfig(
 fn ScopeButton(
     scope: RwSignal<BoardScope>,
     value: BoardScope,
-    label: &'static str,
+    #[prop(into)] label: String,
 ) -> impl IntoView {
     let active = Signal::derive(move || scope.get() == value);
     view! {
@@ -279,35 +293,36 @@ fn ScopeButton(
 /// the other signal, not keep the previous one's `Signal::derive` bindings.
 #[component]
 fn BoardStyleFields(draft: RwSignal<DashboardStyle>) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="space-y-5">
             <section class="space-y-3">
                 <h3 class="text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
-                    "Disposición"
+                    {i18n.t("views.dashboard.section_layout")}
                 </h3>
                 <NumberField
-                    label="Separación entre widgets"
+                    label=i18n.t("views.dashboard.style.gap")
                     value=Signal::derive(move || draft.get().gap_px)
                     max=MAX_GAP
-                    hint="Vacío = el valor global del Desk."
+                    hint=i18n.t("views.dashboard.style.gap_hint")
                     on_change=Callback::new(move |gap_px| {
                         draft.update(|style| style.gap_px = gap_px);
                     })
                 />
                 <NumberField
-                    label="Padding del tablero"
+                    label=i18n.t("views.dashboard.style.padding")
                     value=Signal::derive(move || draft.get().padding_px)
                     max=MAX_PADDING
-                    hint="Espacio interior alrededor de la rejilla. Vacío = 0."
+                    hint=i18n.t("views.dashboard.style.padding_hint")
                     on_change=Callback::new(move |padding_px| {
                         draft.update(|style| style.padding_px = padding_px);
                     })
                 />
                 <NumberField
-                    label="Radio del tablero"
+                    label=i18n.t("views.dashboard.style.radius")
                     value=Signal::derive(move || draft.get().border_radius)
                     max=MAX_RADIUS
-                    hint="Vacío = sin radio."
+                    hint=i18n.t("views.dashboard.style.radius_hint")
                     on_change=Callback::new(move |border_radius| {
                         draft.update(|style| style.border_radius = border_radius);
                     })
@@ -316,10 +331,10 @@ fn BoardStyleFields(draft: RwSignal<DashboardStyle>) -> impl IntoView {
 
             <section class="space-y-3">
                 <h3 class="text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
-                    "Color"
+                    {i18n.t("views.dashboard.section_color")}
                 </h3>
                 <BackgroundFields
-                    label="Fondo del tablero"
+                    label=i18n.t("views.dashboard.style.board_background")
                     value=Signal::derive(move || draft.get().background)
                     custom=Signal::derive(move || draft.get().background_custom)
                     on_change=Callback::new(move |(background, custom)| {
@@ -333,11 +348,11 @@ fn BoardStyleFields(draft: RwSignal<DashboardStyle>) -> impl IntoView {
 
             <section class="space-y-3">
                 <h3 class="text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
-                    "Pantalla completa"
+                    {i18n.t("views.dashboard.section_fullscreen")}
                 </h3>
                 <div class="flex items-center gap-2">
                     <Checkbox
-                        aria_label="Mostrar el título en pantalla completa"
+                        aria_label=i18n.t("views.dashboard.show_title_fullscreen")
                         checked=Signal::derive(move || {
                             draft.get().title_full_screen.unwrap_or(true)
                         })
@@ -345,10 +360,10 @@ fn BoardStyleFields(draft: RwSignal<DashboardStyle>) -> impl IntoView {
                             draft.update(|style| style.title_full_screen = Some(checked));
                         })
                     />
-                    <span class="text-xs">"Mostrar el título en pantalla completa"</span>
+                    <span class="text-xs">{i18n.t("views.dashboard.show_title_fullscreen")}</span>
                 </div>
                 <p class="text-[0.65rem] text-muted-foreground">
-                    "En pantalla completa sólo quedan este título y el botón para salir."
+                    {i18n.t("views.dashboard.fullscreen_note")}
                 </p>
             </section>
         </div>

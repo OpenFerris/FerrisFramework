@@ -13,6 +13,7 @@ use crate::components::desk::top_bar::{
 };
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 use crate::views::services::form_service::{LAYOUT_SEGMENT, WriteOutcome};
 
@@ -35,6 +36,9 @@ use crate::components::views::form::edit_mode::DocSettingsDialog;
 /// mode-dependent actions. Renders only the dialogs the menu opens.
 #[component]
 pub fn FormTopBar(service: FormService) -> impl IntoView {
+    let i18n = use_i18n();
+    let status_i18n = i18n;
+    let actions_i18n = i18n;
     let service = StoredValue::new(service);
     let svc = service.get_value();
 
@@ -65,6 +69,7 @@ pub fn FormTopBar(service: FormService) -> impl IntoView {
             })
         },
         toasts.clone(),
+        i18n,
     );
 
     // The shell mounts those anchors doctype-filtered but cannot read the route
@@ -86,9 +91,9 @@ pub fn FormTopBar(service: FormService) -> impl IntoView {
             };
             s.last_write.set(None);
             match outcome {
-                WriteOutcome::Succeeded(verb) => toasts.success(verb.done_message()),
+                WriteOutcome::Succeeded(verb) => toasts.success(i18n.t(verb.done_key())),
                 WriteOutcome::Failed(verb, message) => {
-                    toasts.error(format!("{}: {message}", verb.error_prefix()));
+                    toasts.error(format!("{}: {message}", i18n.t(verb.error_key())));
                 }
             }
         });
@@ -144,7 +149,12 @@ pub fn FormTopBar(service: FormService) -> impl IntoView {
             top_status.set(None);
             return;
         }
-        let (label, variant) = status_of(s.docstatus.get(), s.dirty.get(), s.is_new.get());
+        let (label, variant) = status_of(
+            s.docstatus.get(),
+            s.dirty.get(),
+            s.is_new.get(),
+            &status_i18n,
+        );
         top_status.set(Some(TopBarStatus {
             label: label.to_string(),
             variant,
@@ -159,7 +169,7 @@ pub fn FormTopBar(service: FormService) -> impl IntoView {
     // handler that no longer exists.
     Effect::new(move |_| {
         let s = service.get_value();
-        top_actions.set(form_actions(&s, &actions));
+        top_actions.set(form_actions(&s, &actions, &actions_i18n));
     });
 
     on_cleanup(move || {
@@ -217,7 +227,7 @@ fn MenuActionError(error: RwSignal<Option<String>>) -> impl IntoView {
                 <Button
                     variant=ButtonVariant::Ghost
                     size=ButtonSize::IconSm
-                    attr:aria-label="Cerrar el aviso"
+                    attr:aria-label=t("components.form.action.dismiss_error")
                     on:click=move |_| error.set(None)
                 >
                     <Icon name="x" class="size-4" />
@@ -303,6 +313,7 @@ impl FormActions {
         service: StoredValue<FormService>,
         navigate: Callback<(String, NavigateOptions)>,
         toasts: Toasts,
+        i18n: crate::i18n::I18n,
     ) -> Self {
         // A callback that runs one `FormService` method on the service this
         // component holds.
@@ -361,6 +372,7 @@ impl FormActions {
             toasts.clone(),
             running_action,
             action_error,
+            i18n,
         );
 
         let copy_doc = {
@@ -512,6 +524,7 @@ fn run_action_callback(
     toasts: Toasts,
     running: RwSignal<Option<usize>>,
     action_error: RwSignal<Option<String>>,
+    i18n: crate::i18n::I18n,
 ) -> Callback<usize> {
     Callback::new(move |index: usize| {
         run_declared_action(
@@ -522,6 +535,7 @@ fn run_action_callback(
             toasts.clone(),
             running,
             action_error,
+            i18n,
         );
     })
 }
@@ -540,6 +554,7 @@ fn run_declared_action(
     toasts: Toasts,
     running: RwSignal<Option<usize>>,
     action_error: RwSignal<Option<String>>,
+    i18n: crate::i18n::I18n,
 ) {
     let Some(action) = declared.with_untracked(|actions| actions.get(index).cloned()) else {
         return;
@@ -579,10 +594,14 @@ fn run_declared_action(
                     // No reload on purpose: the parameters are empty, so the
                     // method cannot assume a document, and a reload would throw
                     // away unsaved field edits for a call that may only read.
-                    Ok(_) => toasts.success(format!("Acción «{label}» ejecutada.")),
+                    Ok(_) => toasts
+                        .success(i18n.t_with("components.form.action.ran", &[("label", &label)])),
                     Err(message) => {
                         action_error.set(Some(message.clone()));
-                        toasts.error(format!("No se pudo ejecutar «{label}»: {message}"));
+                        toasts.error(i18n.t_with(
+                            "components.form.action.failed",
+                            &[("label", &label), ("message", &message)],
+                        ));
                     }
                 }
             });

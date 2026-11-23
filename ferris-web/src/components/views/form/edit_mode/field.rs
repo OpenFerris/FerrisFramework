@@ -18,6 +18,7 @@ use crate::api::DynField;
 use crate::api::types::{Customization, PropertySetterSpec};
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 use crate::views::services::form_service::LayoutOp;
 
@@ -34,6 +35,9 @@ pub(super) fn FieldInspector(
     export_open: RwSignal<bool>,
     on_saved: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let save_i18n = i18n;
+    let reset_i18n = i18n;
     let selected = service.selected_field;
     let doctype = service.doctype;
 
@@ -178,7 +182,7 @@ pub(super) fn FieldInspector(
         flag("unique", current.unique, d_unique.get_untracked());
 
         if changes.is_empty() {
-            notice.set(Some("No hay cambios que guardar.".to_string()));
+            notice.set(Some(save_i18n.t("components.form.edit_mode.no_changes")));
             return;
         }
 
@@ -211,6 +215,7 @@ pub(super) fn FieldInspector(
         error.set(None);
         notice.set(None);
         saving.set(true);
+        let i18n = save_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 saving.set(false);
@@ -252,7 +257,7 @@ pub(super) fn FieldInspector(
             if let Some(message) = failure {
                 error.set(Some(message));
             } else {
-                notice.set(Some("Propiedades guardadas.".to_string()));
+                notice.set(Some(i18n.t("components.form.edit_mode.properties_saved")));
                 // The field shape changed: the form re-reads its metadata
                 // and rebuilds. The selection lives on the service, so the
                 // panel stays on the same field.
@@ -281,6 +286,7 @@ pub(super) fn FieldInspector(
         let dt = doctype.get_untracked();
         error.set(None);
         saving.set(true);
+        let i18n = reset_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 saving.set(false);
@@ -297,7 +303,7 @@ pub(super) fn FieldInspector(
                 }
             }
             saving.set(false);
-            notice.set(Some("Campo restablecido.".to_string()));
+            notice.set(Some(i18n.t("components.form.edit_mode.field_reset")));
             reload_signal.update(|n| *n += 1);
             on_saved.run(());
         });
@@ -342,7 +348,7 @@ pub(super) fn FieldInspector(
                 <p class="min-w-0 truncate text-sm font-semibold">{title}</p>
                 <span
                     class="mt-0.5 inline-flex shrink-0 items-center text-muted-foreground"
-                    title="Arrastra el campo en el formulario para moverlo"
+                    title=t("components.form.edit_mode.drag_hint")
                     aria-hidden="true"
                 >
                     <Icon name="grip-vertical" class="size-4" />
@@ -355,12 +361,12 @@ pub(super) fn FieldInspector(
                 <span class="truncate text-xs text-muted-foreground">{fieldname.clone()}</span>
                 <Show when=move || is_custom>
                     <span class="rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
-                        "campo personalizado"
+                        {t("components.form.edit_mode.custom_field")}
                     </span>
                 </Show>
                 <Show when=move || is_break>
                     <span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                        "maquetación"
+                        {t("components.form.edit_mode.layout_break")}
                     </span>
                 </Show>
             </div>
@@ -370,8 +376,8 @@ pub(super) fn FieldInspector(
                         variant=ButtonVariant::Ghost
                         size=ButtonSize::IconSm
                         class="text-destructive"
-                        attr:aria-label="Eliminar campo"
-                        attr:title="Eliminar campo personalizado"
+                        attr:aria-label=t("components.form.edit_mode.delete_field")
+                        attr:title=t("components.form.edit_mode.delete_custom_field")
                         attr:disabled=move || saving.get()
                         on:click=move |_| delete_field.run(())
                     >
@@ -417,7 +423,7 @@ pub(super) fn FieldInspector(
         <div class="flex flex-col gap-2 border-t pt-3">
             <Show when=move || dirty.get()>
                 <p class="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
-                    "Guarda o descarta los cambios del documento antes de modificar el formulario."
+                    {t("components.form.edit_mode.save_document_first")}
                 </p>
             </Show>
             <div class="flex flex-wrap items-center gap-2">
@@ -427,7 +433,7 @@ pub(super) fn FieldInspector(
                     attr:disabled=move || saving.get() || dirty.get()
                     on:click=move |_| save.run(())
                 >
-                    "Guardar propiedades"
+                    {t("components.form.edit_mode.save_properties")}
                 </Button>
                 <Button
                     variant=ButtonVariant::Ghost
@@ -435,7 +441,7 @@ pub(super) fn FieldInspector(
                     attr:disabled=move || saving.get() || dirty.get() || !has_overrides()
                     on:click=move |_| reset.run(())
                 >
-                    "Restablecer"
+                    {t("components.form.edit_mode.reset")}
                 </Button>
             </div>
         </div>

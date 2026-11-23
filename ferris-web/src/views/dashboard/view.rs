@@ -34,6 +34,7 @@ use crate::components::desk::top_bar::{
 use crate::components::ui::badge::BadgeVariant;
 use crate::components::ui::button::ButtonVariant;
 use crate::ext::UiCtx;
+use crate::i18n::use_i18n;
 
 use super::canvas::DashboardBoard;
 use super::card::ActiveDrag;
@@ -72,6 +73,7 @@ pub fn DashboardGrid(
     declared_style: Option<DashboardStyle>,
 ) -> impl IntoView {
     let apps = expect_context::<UiCtx>().apps;
+    let i18n = use_i18n();
 
     // Where the effective layout lives: the document itself when this is a
     // document-format dashboard, else the app's `(owner, id)` pair.
@@ -379,24 +381,29 @@ pub fn DashboardGrid(
     // stages into the layout saved by the top bar's "Guardar"), the global row
     // has no second step, so the drawer owns the request and closes only after
     // the server accepted it.
-    let save_global = Callback::new(move |_: ()| {
-        let style = global_draft.get_untracked().clamped();
-        crate::api::drive(async move {
-            match layout_api::save_dashboard_settings(&style).await {
-                Ok(settings) => {
-                    global_style.set(settings.style);
-                    global_editable.set(settings.editable);
-                    close_config();
-                    notice.set(None);
+    let save_global = {
+        let i18n_save_global = i18n;
+        Callback::new(move |_: ()| {
+            let style = global_draft.get_untracked().clamped();
+            let i18n_error = i18n_save_global;
+            crate::api::drive(async move {
+                match layout_api::save_dashboard_settings(&style).await {
+                    Ok(settings) => {
+                        global_style.set(settings.style);
+                        global_editable.set(settings.editable);
+                        close_config();
+                        notice.set(None);
+                    }
+                    Err(error) => {
+                        notice.set(Some(i18n_error.t_with(
+                            "views.dashboard.save_global_failed",
+                            &[("message", &error)],
+                        )));
+                    }
                 }
-                Err(error) => {
-                    notice.set(Some(format!(
-                        "No se pudo guardar la configuración global: {error}"
-                    )));
-                }
-            }
-        });
-    });
+            });
+        })
+    };
 
     let editing_signal: Signal<bool> = editing.into();
     let refresh_signal: Signal<u32> = refresh.into();
@@ -414,6 +421,7 @@ pub fn DashboardGrid(
     let top_title = use_top_bar_title();
     let top_chrome = use_top_bar_chrome();
 
+    let i18n_effect = i18n;
     Effect::new(move |_| {
         // Crumbs say *where* the view is; this is *what* it is.
         top_title.set(Some(label.clone()));
@@ -432,7 +440,7 @@ pub fn DashboardGrid(
         // saved override is personalized; a document-format dashboard's
         // fields *are* the state, so the server keeps the flag off for it.
         top_status.set(customized.get().then(|| TopBarStatus {
-            label: "personalizado".to_string(),
+            label: i18n_effect.t("views.dashboard.customized_badge"),
             variant: BadgeVariant::Muted,
         }));
 
@@ -440,7 +448,7 @@ pub fn DashboardGrid(
         if editable.get() {
             if editing.get() {
                 actions.push(TopBarAction::Button(ButtonSpec {
-                    label: "Guardar".to_string(),
+                    label: i18n_effect.t("common.save"),
                     aria_label: None,
                     icon: Some("Check"),
                     variant: ButtonVariant::Default,
@@ -448,7 +456,7 @@ pub fn DashboardGrid(
                     on_click: save,
                 }));
                 actions.push(TopBarAction::Button(ButtonSpec {
-                    label: "Cancelar".to_string(),
+                    label: i18n_effect.t("common.cancel"),
                     aria_label: None,
                     icon: Some("X"),
                     variant: ButtonVariant::Ghost,
@@ -456,7 +464,7 @@ pub fn DashboardGrid(
                     on_click: cancel_edit,
                 }));
                 actions.push(TopBarAction::Button(ButtonSpec {
-                    label: "Añadir widget".to_string(),
+                    label: i18n_effect.t("views.dashboard.add_widget"),
                     aria_label: None,
                     icon: Some("Plus"),
                     variant: ButtonVariant::Outline,
@@ -464,7 +472,7 @@ pub fn DashboardGrid(
                     on_click: toggle_palette,
                 }));
                 actions.push(TopBarAction::Button(ButtonSpec {
-                    label: "Configuración".to_string(),
+                    label: i18n_effect.t("views.dashboard.configuration"),
                     aria_label: None,
                     icon: Some("Settings"),
                     variant: ButtonVariant::Outline,
@@ -473,7 +481,7 @@ pub fn DashboardGrid(
                 }));
                 if customized.get() {
                     actions.push(TopBarAction::Button(ButtonSpec {
-                        label: "Restaurar app".to_string(),
+                        label: i18n_effect.t("views.dashboard.restore_app"),
                         aria_label: None,
                         icon: Some("RotateCcw"),
                         variant: ButtonVariant::Outline,
@@ -483,7 +491,7 @@ pub fn DashboardGrid(
                 }
             } else {
                 actions.push(TopBarAction::Button(ButtonSpec {
-                    label: "Editar".to_string(),
+                    label: i18n_effect.t("views.dashboard.edit"),
                     aria_label: None,
                     icon: Some("Pencil"),
                     variant: ButtonVariant::Outline,

@@ -13,8 +13,8 @@ use crate::components::ui::icon::Icon;
 #[component]
 pub(super) fn SidebarRow(
     icon: &'static str,
-    label: &'static str,
-    aria_label: &'static str,
+    label: String,
+    aria_label: String,
     on_add: Callback<()>,
 ) -> impl IntoView {
     view! {
@@ -27,7 +27,7 @@ pub(super) fn SidebarRow(
                 variant=ButtonVariant::Ghost
                 size=ButtonSize::IconSm
                 class="size-7 text-muted-foreground hover:text-foreground"
-                attr:aria-label=aria_label
+                attr:aria-label=aria_label.clone()
                 attr:title=aria_label
                 on:click=move |_| on_add.run(())
             >

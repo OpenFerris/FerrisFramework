@@ -5,6 +5,7 @@ use leptos_router::components::A;
 use wasm_bindgen::JsCast;
 
 use crate::components::ui::dialog::{Dialog, DialogContent, DialogHeader, DialogTitle};
+use crate::i18n::t;
 use crate::views::services::FormField;
 
 /// The "Ir a campo" dialog: the form's jumpable fields, each scrolling to its
@@ -18,7 +19,7 @@ pub(super) fn JumpToFieldDialog(
         <Dialog class="max-w-md">
             <DialogContent open=open>
                 <DialogHeader>
-                    <DialogTitle>"Ir a campo"</DialogTitle>
+                    <DialogTitle>{t("components.form.menu.jump_to_field")}</DialogTitle>
                 </DialogHeader>
                 <div class="flex max-h-80 flex-col gap-1 overflow-y-auto">
                     {move || fields.get().into_iter().filter(|f| is_jumpable(&f.fieldtype)).map(|f| {
@@ -65,14 +66,14 @@ pub(super) fn LinkedDocumentsDialog(
         <Dialog class="max-w-md">
             <DialogContent open=open>
                 <DialogHeader>
-                    <DialogTitle>"Vínculos"</DialogTitle>
+                    <DialogTitle>{t("components.form.linked_docs.title")}</DialogTitle>
                 </DialogHeader>
                 <div class="flex max-h-80 flex-col gap-1 overflow-y-auto">
                     <Show
                         when=move || !linked.get().is_empty()
                         fallback=|| view! {
                             <p class="py-4 text-center text-sm text-muted-foreground">
-                                "Este documento no tiene vínculos."
+                                {t("components.form.linked_docs.empty")}
                             </p>
                         }
                     >

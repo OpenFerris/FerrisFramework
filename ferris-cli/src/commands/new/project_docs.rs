@@ -12,6 +12,22 @@ pub(super) fn write_gitignore(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The bench repository ignores build output and, above all, `sites/`.
+///
+/// A site's `site_config.json` carries the database password and its instances
+/// carry uploaded files and the app's secrets; none of that belongs in git.
+pub(super) fn write_bench_gitignore(root: &Path) -> Result<()> {
+    let path = root.join(".gitignore");
+    if path.exists() {
+        return Ok(());
+    }
+    fs::write(
+        path,
+        "/target\n/apps/*/target\n*.db\n.env\n\n# Deployments: credentials, data, files and secrets\n/sites/\n\n# App dev worlds (the exported template lives in apps/<app>/world)\n/apps/*/data/\n/apps/*/files/\n/apps/*/secrets/\n/apps/*/world/data/\n/apps/*/world/files/\n/apps/*/world/secrets/\n",
+    )?;
+    Ok(())
+}
+
 pub(super) fn write_readme(project_dir: &Path, name: &str) -> Result<()> {
     fs::write(project_dir.join("README.md"), render_readme(name))?;
     Ok(())
@@ -26,15 +42,24 @@ a plugin inside the `ferris` binary — the framework hosts every service (the
 database, the file store, sockets, TLS certificates, schedules, delivery), and
 the plugin never touches any of them directly.
 
+The app lives at `apps/{name}/` inside its bench. Run the commands from the
+bench root so the catalogue (`apps/`) and the sites (`sites/`) are the same
+ones `ferris build` and `ferris site` resolve:
+
 ```bash
-ferris dev          # build the component and hot-reload it while you code
-ferris build        # build to plugins/{name}.wasm
-ferris migrate      # apply the framework schema
+ferris dev --app {name}     # build + hot-reload this app
+ferris build --app {name}   # build apps/{name}/{name}.wasm (the catalogue package)
+ferris migrate              # apply the framework schema
 ```
+
+`ferris build` also writes `apps/{name}/plugin.toml` and a `world/` template,
+which is exactly the package `ferris site install-app {name}` copies into a
+site. The site's copy is independent: upgrading the catalogue never changes a
+site's pinned component until it is reinstalled with `--force`.
 
 ## What the app declares
 
-The app contract is `ferris:framework@0.3.0` (`wit/ferris.wit`, six interfaces:
+The app contract is `ferris:framework@0.4.0` (`wit/ferris.wit`, six interfaces:
 `types`, `data`, `schema`, `io`, `platform` and `descriptor`). Nothing is
 configured by the host operator: `describe()` declares, and the declaration is
 the grant.
@@ -48,8 +73,9 @@ set fails with `permission-denied`. Drop a route and you can drop its
 capability; add a service and you add both the capability and the code that
 uses it. `platform::grants()` reports the effective set.
 
-`filesystem` is the app's own world (`plugins/<app>/`, mounted at `/world`):
-the app writes its files and settings there, and no blob/file host API exists.
+`filesystem` is the app's own world (`apps/<app>/` in development,
+`sites/<site>/plugins/<app>/` once installed, both mounted at `/world`): the app
+writes its files and settings there, and no blob/file host API exists.
 
 `describe().routes` is the other half of the declaration: `handle-request` is
 only called for an app that declares a route, each dispatch names the matched
@@ -57,6 +83,14 @@ only called for an app that declares a route, each dispatch names the matched
 `http-request.path` itself. `%stream` routes carry a listener instead, and their
 connections arrive through `handle-stream` (frames) and `handle-stream-event`
 (`opened` / `closed` / `error`).
+
+## Permissions (`docperm.toml`)
+
+A WASM descriptor declares DocTypes but has no permissions field. The
+scaffold ships `docperm.toml` next to `plugin.toml`; `ferris site
+install-app` applies its `[[permissions]]` rows to that site's database (the
+same rows `ferris role-permissions set` writes). The default grants the
+administrator full rights on `Task`; add a role to let other users in.
 
 ## Capabilities: declared, not configured
 

@@ -17,6 +17,7 @@ use crate::components::ui::button::{Button, ButtonVariant};
 use crate::components::ui::dialog::{
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 };
+use crate::i18n::use_i18n;
 use crate::theme::{ThemeCtx, ThemeSpec};
 use icons::Check;
 
@@ -25,13 +26,14 @@ use icons::Check;
 #[component]
 pub fn ThemeDialog(open: RwSignal<bool>) -> impl IntoView {
     let theme = StoredValue::new(expect_context::<ThemeCtx>());
+    let i18n = use_i18n();
 
     view! {
         <Dialog>
             <DialogContent open=open class="max-w-sm">
                 <DialogHeader>
-                    <DialogTitle>{ "Seleccionar tema" }</DialogTitle>
-                    <DialogDescription>{ "Elige un tema:" }</DialogDescription>
+                    <DialogTitle>{ i18n.t("desk.theme.select") }</DialogTitle>
+                    <DialogDescription>{ i18n.t("desk.theme.choose") }</DialogDescription>
                 </DialogHeader>
 
                 <div class="flex flex-col gap-1">

@@ -19,6 +19,7 @@ use crate::components::ui::dropdown_menu::{
     DropdownMenuCustomItem, DropdownMenuGroup, DropdownMenuSeparator, DropdownMenuTrigger,
 };
 use crate::components::ui::icon::Icon;
+use crate::i18n::t;
 
 /// A menu of every column the doctype offers, with one checkbox each.
 #[component]
@@ -39,8 +40,8 @@ pub fn ListColumnPicker(
                 <Button
                     variant=ButtonVariant::Outline
                     size=ButtonSize::IconSm
-                    attr:aria-label="Columnas"
-                    attr:title="Elegir columnas"
+                    attr:aria-label=t("components.list.column_picker.aria")
+                    attr:title=t("components.list.column_picker.title")
                 >
                     <Icon name="Columns3" class="size-4" />
                 </Button>
@@ -48,7 +49,7 @@ pub fn ListColumnPicker(
             <DropdownMenuContent>
                 <DropdownMenuGroup>
                     <li class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                        "Columnas visibles"
+                        {t("components.list.column_picker.visible")}
                     </li>
                     {move || {
                         columns
@@ -82,7 +83,7 @@ pub fn ListColumnPicker(
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuAction on_click=on_reset>
-                    "Restablecer columnas"
+                    {t("components.list.column_picker.reset")}
                 </DropdownMenuAction>
             </DropdownMenuContent>
         </DropdownMenu>

@@ -4,6 +4,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+pub mod app_catalogues;
+
 #[cfg(feature = "wasm")]
 pub mod app;
 pub mod backup;
@@ -23,6 +25,7 @@ pub mod doctor;
 pub mod generate;
 pub mod info;
 pub mod migrate;
+pub mod multi_site;
 pub mod new;
 #[cfg(feature = "wasm")]
 pub mod plugin_boot;
@@ -107,13 +110,18 @@ pub struct NewArgs {
     /// Project name
     pub name: String,
 
-    /// Directory to create the project in (default: `./<name>`)
+    /// Directory to create the app in (default: `<bench>/apps/<name>`).
     ///
     /// Not `--dir`: that is the global working directory, and two flags of the
     /// same name meaning different things is how `ferris new -d x app` and
     /// `ferris --dir x new app` came to disagree.
     #[arg(long, value_name = "DIR")]
     pub into: Option<String>,
+
+    /// Create a standalone app with its own `config/ferris.toml` and the
+    /// historical `plugins/` output, instead of the `apps/` + `sites/` bench.
+    #[arg(long)]
+    pub standalone: bool,
 }
 
 #[derive(Parser)]
@@ -121,6 +129,11 @@ pub struct DevArgs {
     /// Port to run on
     #[arg(short, long, default_value = "8000")]
     pub port: u16,
+
+    /// App to run when starting from the bench root (default: the only app
+    /// under `apps/`, or the app directory the command runs in).
+    #[arg(long, value_name = "NAME")]
+    pub app: Option<String>,
 
     /// Host to bind to
     #[arg(long, default_value = "0.0.0.0")]
@@ -209,6 +222,14 @@ pub struct ServeArgs {
     /// `--site`: the sites/ layout also carries the app instances.
     #[arg(long, value_name = "ID")]
     pub tenant: Option<String>,
+
+    /// Serve every enabled site from this one address, routing by `Host`.
+    ///
+    /// One process per site, one public port. Each site keeps its own
+    /// database, files root, Redis and schema registry; a `Host` with no site
+    /// answers `421`.
+    #[arg(long, conflicts_with_all = ["site", "tenant"])]
+    pub all_sites: bool,
 }
 
 #[derive(Parser)]
@@ -232,6 +253,10 @@ pub struct BuildArgs {
     /// Output directory
     #[arg(short, long)]
     pub out_dir: Option<String>,
+
+    /// App to build when the command runs from the bench root.
+    #[arg(long, value_name = "NAME")]
+    pub app: Option<String>,
 }
 
 #[derive(Parser)]

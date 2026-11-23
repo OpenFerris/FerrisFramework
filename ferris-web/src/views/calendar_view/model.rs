@@ -81,38 +81,62 @@ pub fn event_range(
 /// The Monday-to-Sunday header labels.
 pub const WEEKDAYS: [&str; 7] = ["L", "M", "X", "J", "V", "S", "D"];
 
-pub fn month_label(date: NaiveDate) -> String {
-    const MONTHS: [&str; 12] = [
-        "enero",
-        "febrero",
-        "marzo",
-        "abril",
-        "mayo",
-        "junio",
-        "julio",
-        "agosto",
-        "septiembre",
-        "octubre",
-        "noviembre",
-        "diciembre",
-    ];
-    let month = MONTHS
-        .get(usize::try_from(date.month0()).unwrap_or(0))
-        .copied()
-        .unwrap_or("");
-    format!("{month} de {}", date.year())
+const fn month_long_key(month: u32) -> &'static str {
+    match month {
+        1 => "views.common.month_long.1",
+        2 => "views.common.month_long.2",
+        3 => "views.common.month_long.3",
+        4 => "views.common.month_long.4",
+        5 => "views.common.month_long.5",
+        6 => "views.common.month_long.6",
+        7 => "views.common.month_long.7",
+        8 => "views.common.month_long.8",
+        9 => "views.common.month_long.9",
+        10 => "views.common.month_long.10",
+        11 => "views.common.month_long.11",
+        12 => "views.common.month_long.12",
+        _ => "",
+    }
+}
+
+/// The key of the abbreviated month name (`1` = January).
+const fn month_short_key(month: u32) -> &'static str {
+    match month {
+        1 => "views.common.month_short.1",
+        2 => "views.common.month_short.2",
+        3 => "views.common.month_short.3",
+        4 => "views.common.month_short.4",
+        5 => "views.common.month_short.5",
+        6 => "views.common.month_short.6",
+        7 => "views.common.month_short.7",
+        8 => "views.common.month_short.8",
+        9 => "views.common.month_short.9",
+        10 => "views.common.month_short.10",
+        11 => "views.common.month_short.11",
+        12 => "views.common.month_short.12",
+        _ => "",
+    }
+}
+
+pub fn month_label(date: NaiveDate, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
+    i18n.t_with(
+        "views.calendar.month_label",
+        &[
+            ("month", &i18n.t(month_long_key(date.month()))),
+            ("year", &date.year().to_string()),
+        ],
+    )
 }
 
 /// `2026-11-21` as `21 nov`.
-pub fn short_day(date: NaiveDate) -> String {
-    const MONTHS: [&str; 12] = [
-        "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic",
-    ];
-    let month = MONTHS
-        .get(usize::try_from(date.month0()).unwrap_or(0))
-        .copied()
-        .unwrap_or("");
-    format!("{} {month}", date.day())
+pub fn short_day(date: NaiveDate, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
+    i18n.t_with(
+        "views.calendar.short_day",
+        &[
+            ("day", &date.day().to_string()),
+            ("month", &i18n.t(month_short_key(date.month()))),
+        ],
+    )
 }
 
 /// The time a row carries, when its date field is a `Datetime`.

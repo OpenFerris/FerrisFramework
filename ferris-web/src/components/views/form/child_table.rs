@@ -26,6 +26,7 @@ use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::checkbox::Checkbox;
 use crate::components::ui::icon::Icon;
 use crate::components::ui::skeleton::Skeleton;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormField;
 
 /// Fields the child grid never edits: layout markers, nested tables and the
@@ -59,15 +60,16 @@ fn is_bookkeeping(fieldname: &str) -> bool {
 /// error rather than an empty table. Silently reading it as "no rows" and then
 /// mirroring `[]` back into the field (the effect below) would erase the
 /// document's child rows on the next save.
-fn parse_rows(raw: &str) -> Result<Vec<Value>, String> {
+fn parse_rows(
+    raw: &str,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Result<Vec<Value>, String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Ok(Vec::new());
     }
-    serde_json::from_str::<Vec<Value>>(raw).map_err(|_| {
-        "El valor guardado en este campo no es una lista de filas; no se edita para no perderlo."
-            .to_string()
-    })
+    serde_json::from_str::<Vec<Value>>(raw)
+        .map_err(|_| i18n.t("components.form.child_table.parse_error"))
 }
 
 /// Stamp `idx` from the current order, matching Frappe's contract for child
@@ -131,10 +133,11 @@ fn default_cell(field: &DynField) -> Value {
 /// The editable grid of one `Table` field.
 #[component]
 pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
+    let i18n = use_i18n();
     let child_doctype = field.options.clone().unwrap_or_default();
     let label = field.label.clone();
     let value = field.value;
-    let (parsed_rows, parse_error) = match parse_rows(&value.get_untracked()) {
+    let (parsed_rows, parse_error) = match parse_rows(&value.get_untracked(), &i18n) {
         Ok(rows) => (rows, None),
         Err(message) => (Vec::new(), Some(message)),
     };
@@ -149,8 +152,10 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
         loading.set(false);
     } else if !child_doctype.trim().is_empty() {
         let child_for_load = child_doctype.clone();
+        let load_i18n = i18n;
         Effect::new(move |_| {
             let doctype = child_for_load.clone();
+            let i18n = load_i18n;
             spawn_local(async move {
                 let result = match DocStore::runtime() {
                     Ok(store) => store.meta(&doctype).await,
@@ -159,8 +164,9 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
                 loading.set(false);
                 match result {
                     Ok(Some(child)) => meta.set(Some(child)),
-                    Ok(None) => error.set(Some(format!(
-                        "El DocType hijo `{doctype}` no está registrado."
+                    Ok(None) => error.set(Some(i18n.t_with(
+                        "components.form.child_table.unregistered_doctype",
+                        &[("doctype", &doctype)],
                     ))),
                     Err(message) => error.set(Some(message)),
                 }
@@ -168,9 +174,7 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
         });
     } else {
         loading.set(false);
-        error.set(Some(
-            "El campo Table no declara el DocType hijo en `options`.".to_string(),
-        ));
+        error.set(Some(i18n.t("components.form.child_table.missing_doctype")));
     }
 
     // Mirror every edit into the field's value signal. The initial effect
@@ -269,7 +273,7 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
                         on:click=add_row
                     >
                         <Icon name="Plus" class="size-4" />
-                        "Añadir fila"
+                        {t("components.form.child_table.add_row")}
                     </Button>
                 })}
             </div>
@@ -297,7 +301,7 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
                                     }
                                 }).collect_view()}
                                 {(!read_only).then(|| view! {
-                                    <th scope="col" class="w-10 px-2 py-2"><span class="sr-only">"Acciones"</span></th>
+                                    <th scope="col" class="w-10 px-2 py-2"><span class="sr-only">{t("components.form.child_table.actions")}</span></th>
                                 })}
                             </tr>
                         </thead>
@@ -312,7 +316,7 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
                                                 class="px-3 py-6 text-center text-muted-foreground"
                                                 colspan=(columns.len() + if read_only { 0 } else { 1 }).to_string()
                                             >
-                                                "Sin filas."
+                                                {t("components.form.child_table.empty")}
                                             </td>
                                         </tr>
                                     }.into_any();
@@ -334,7 +338,11 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
                                             let cell_id = format!("child-{fieldname}-{index}");
                                             if read_only {
                                                 let text = if fieldtype == "Check" {
-                                                    if cell_bool(&row, &fieldname) { "Sí" } else { "No" }.to_string()
+                                                    if cell_bool(&row, &fieldname) {
+                                                        t("components.list.filter.yes")
+                                                    } else {
+                                                        t("components.list.filter.no")
+                                                    }
                                                 } else {
                                                     cell_text(&row, &fieldname, &fieldtype)
                                                 };
@@ -478,7 +486,7 @@ pub fn ChildTableField(field: FormField, read_only: bool) -> impl IntoView {
                                                         <Button
                                                             variant=ButtonVariant::Ghost
                                                             size=ButtonSize::IconSm
-                                                            attr:aria-label="Eliminar fila"
+                                                            attr:aria-label=t("components.form.child_table.remove_row")
                                                             on:click=move |_| remove.run(index)
                                                         >
                                                             <Icon name="Trash2" class="size-4" />

@@ -19,6 +19,7 @@ use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::dialog::{
     Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 };
+use crate::i18n::t;
 use crate::views::services::FormService;
 
 /// The leave confirmation of the layout editor.
@@ -58,11 +59,9 @@ pub(super) fn LeaveLayoutDialog(
                 close_on_backdrop_click=false
             >
                 <DialogHeader>
-                    <DialogTitle>"Salir del editor de diseño"</DialogTitle>
+                    <DialogTitle>{t("components.form.leave_layout.title")}</DialogTitle>
                     <DialogDescription>
-                        "Vas a salir del editor de diseño. Los cambios ya se han aplicado al DocType \
-                         y se conservan; al salir se cierra la sesión de edición y su historial de \
-                         deshacer."
+                        {t("components.form.leave_layout.description")}
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter class="mt-4">
@@ -71,14 +70,14 @@ pub(super) fn LeaveLayoutDialog(
                         size=ButtonSize::Sm
                         on:click=move |_| cancel.run(())
                     >
-                        "Cancelar"
+                        {t("common.cancel")}
                     </Button>
                     <Button
                         variant=ButtonVariant::Default
                         size=ButtonSize::Sm
                         on:click=move |_| confirm.run(())
                     >
-                        "Salir"
+                        {t("components.form.leave_layout.confirm")}
                     </Button>
                 </DialogFooter>
             </DialogContent>

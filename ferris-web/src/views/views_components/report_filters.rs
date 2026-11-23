@@ -8,6 +8,7 @@ use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::card::{Card, CardContent, CardDescription, CardHeader, CardTitle};
 use crate::components::ui::input::Input;
 use crate::components::ui::select_native::SelectNative;
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn ReportFilters(
@@ -15,6 +16,7 @@ pub fn ReportFilters(
     #[prop(into)] on_run: Callback<()>,
     #[prop(into)] on_export: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let period = RwSignal::new(String::new());
     let status = RwSignal::new(String::new());
     let keyword = RwSignal::new(String::new());
@@ -73,12 +75,12 @@ pub fn ReportFilters(
     view! {
         <Card>
             <CardHeader>
-                <CardTitle>"Rango y estado"</CardTitle>
-                <CardDescription>"Filtros comunes que se aplican junto a los del formulario."</CardDescription>
+                <CardTitle>{i18n.t("views.report.filters_title")}</CardTitle>
+                <CardDescription>{i18n.t("views.report.filters_description")}</CardDescription>
             </CardHeader>
             <CardContent class="flex flex-wrap items-end gap-2">
                 <div class="flex w-full min-w-0 flex-col gap-1 sm:w-auto">
-                    <label for="report_period" class="text-xs font-medium text-muted-foreground">"Periodo"</label>
+                    <label for="report_period" class="text-xs font-medium text-muted-foreground">{i18n.t("views.report.period")}</label>
                     <SelectNative
                         id="report_period"
                         class="h-8"
@@ -87,15 +89,15 @@ pub fn ReportFilters(
                             period.set(event_target_value(&ev));
                         })
                     >
-                        <option value="">"Todos"</option>
-                        <option value="today">"Hoy"</option>
-                        <option value="7d">"Últimos 7 días"</option>
-                        <option value="30d">"Últimos 30 días"</option>
-                        <option value="90d">"Últimos 90 días"</option>
+                        <option value="">{i18n.t("views.report.period_all")}</option>
+                        <option value="today">{i18n.t("views.report.period_today")}</option>
+                        <option value="7d">{i18n.t("views.report.period_7d")}</option>
+                        <option value="30d">{i18n.t("views.report.period_30d")}</option>
+                        <option value="90d">{i18n.t("views.report.period_90d")}</option>
                     </SelectNative>
                 </div>
                 <div class="flex w-full min-w-0 flex-col gap-1 sm:w-auto">
-                    <label for="report_status" class="text-xs font-medium text-muted-foreground">"Estado"</label>
+                    <label for="report_status" class="text-xs font-medium text-muted-foreground">{i18n.t("views.report.status")}</label>
                     <SelectNative
                         id="report_status"
                         class="h-8"
@@ -104,23 +106,23 @@ pub fn ReportFilters(
                             status.set(event_target_value(&ev));
                         })
                     >
-                        <option value="">"Cualquiera"</option>
-                        <option value="draft">"Borrador"</option>
-                        <option value="submitted">"Enviado"</option>
-                        <option value="cancelled">"Cancelado"</option>
+                        <option value="">{i18n.t("views.report.any")}</option>
+                        <option value="draft">{i18n.t("views.report.draft")}</option>
+                        <option value="submitted">{i18n.t("views.report.submitted_one")}</option>
+                        <option value="cancelled">{i18n.t("views.report.cancelled_one")}</option>
                     </SelectNative>
                 </div>
                 <div class="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:min-w-40">
-                    <label for="report_search" class="text-xs font-medium text-muted-foreground">"Nombre"</label>
-                    <Input id="report_search" class="h-8" bind_value=keyword placeholder="Nombre del documento…" />
+                    <label for="report_search" class="text-xs font-medium text-muted-foreground">{i18n.t("views.report.name")}</label>
+                    <Input id="report_search" class="h-8" bind_value=keyword placeholder=i18n.t("views.report.name_placeholder") />
                 </div>
                 <Button variant=ButtonVariant::Default size=ButtonSize::Sm class="w-full sm:w-auto" on:click=move |_| apply_report_filters()>
                     <Play class="size-4" />
-                    "Ejecutar"
+                    {i18n.t("views.report.run")}
                 </Button>
                 <Button variant=ButtonVariant::Outline size=ButtonSize::Sm class="w-full sm:w-auto" on:click=move |_| on_export.run(())>
                     <Download class="size-4" />
-                    "Exportar"
+                    {i18n.t("views.report.export")}
                 </Button>
             </CardContent>
         </Card>

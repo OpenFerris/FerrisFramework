@@ -14,8 +14,20 @@ use crate::ferris::framework::types::{
 /// section is used: unused `option<>` slots stay silent, and the network
 /// surface is always present but empty.
 #[test]
+fn declared_locales_are_projected_and_absent_ones_stay_silent() {
+    let mut described = filled_extension_fixture();
+    described.locales = Some(vec!["en".to_string(), "es".to_string()]);
+    let json = serde_json::to_value(DescriptorJson::from(&described)).expect("serializes");
+    assert_eq!(json.get("locales"), Some(&serde_json::json!(["en", "es"])));
+
+    described.locales = None;
+    let json = serde_json::to_value(DescriptorJson::from(&described)).expect("serializes");
+    assert!(json.get("locales").is_none());
+}
+
 fn descriptor_json_keeps_the_base_shape_when_slots_are_empty() {
     let described = Descriptor {
+        locales: None,
         capabilities: Vec::new(),
         routes: Vec::new(),
         auth_mode: RouteAuth::None,
@@ -86,6 +98,7 @@ fn descriptor_json_keeps_the_base_shape_when_slots_are_empty() {
 /// back.
 fn filled_extension_fixture() -> Descriptor {
     Descriptor {
+        locales: None,
         capabilities: vec![
             crate::ferris::framework::types::Capability::Routes,
             crate::ferris::framework::types::Capability::Http,

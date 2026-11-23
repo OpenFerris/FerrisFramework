@@ -31,6 +31,7 @@ use crate::components::ui::icon::Icon;
 use crate::components::ui::input::{Input, InputType};
 use crate::components::ui::radio_button::{RadioGroup, RadioGroupItem};
 use crate::components::ui::separator::Separator;
+use crate::i18n::{t, use_i18n};
 
 use super::toast::Toasts;
 
@@ -45,6 +46,7 @@ pub(super) fn ExportCustomizationDialog(
     open: RwSignal<bool>,
     doctype: Signal<String>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let toasts = Toasts::from_context();
 
     let loading = RwSignal::new(false);
@@ -90,10 +92,11 @@ pub(super) fn ExportCustomizationDialog(
         });
     });
 
+    let view_i18n = i18n;
     let submit = move || {
         let target_app = app.get_untracked().trim().to_string();
         if target_app.is_empty() {
-            error.set(Some("Escribe el nombre de la app.".to_string()));
+            error.set(Some(i18n.t("components.form.export.app_required")));
             return;
         }
         let scope_value = if scope.get_untracked() == SCOPE_ALL {
@@ -103,14 +106,11 @@ pub(super) fn ExportCustomizationDialog(
             let properties = picked_properties.get_untracked();
             match (fields.is_empty(), properties.is_empty()) {
                 (true, true) => {
-                    error.set(Some("Elige al menos un cambio.".to_string()));
+                    error.set(Some(i18n.t("components.form.export.pick_one")));
                     return;
                 }
                 (false, false) => {
-                    error.set(Some(
-                        "Un tipo de cambio por exportación: elige solo campos o solo propiedades."
-                            .to_string(),
-                    ));
+                    error.set(Some(i18n.t("components.form.export.one_kind")));
                     return;
                 }
                 (false, true) => Some(ExportScope::Fields(fields)),
@@ -122,16 +122,20 @@ pub(super) fn ExportCustomizationDialog(
         written.set(None);
         exporting.set(true);
         let toasts = toasts.clone();
+        let i18n = i18n;
         spawn_local(async move {
             let result = export(&dt, &target_app, scope_value).await;
             exporting.set(false);
             match result {
                 Ok(path) => {
-                    toasts.success(format!("Customización exportada a {path}"));
+                    toasts
+                        .success(i18n.t_with("components.form.export.success", &[("path", &path)]));
                     written.set(Some(path));
                 }
                 Err(message) => {
-                    toasts.error(format!("No se pudo exportar: {message}"));
+                    toasts.error(
+                        i18n.t_with("components.form.export.failed", &[("message", &message)]),
+                    );
                     error.set(Some(message));
                 }
             }
@@ -142,10 +146,14 @@ pub(super) fn ExportCustomizationDialog(
         <Dialog>
             <DialogContent open=open class="max-w-xl">
                 <DialogHeader>
-                    <DialogTitle>"Exportar fixtures"</DialogTitle>
+                    <DialogTitle>{t("components.form.menu.export_fixtures")}</DialogTitle>
                     <DialogDescription>
-                        "Guarda los cambios de " {move || doctype.get()}
-                        " en el directorio de una app, para que viajen con ella."
+                        {move || {
+                            view_i18n.t_with(
+                                "components.form.export.description",
+                                &[("doctype", &doctype.get())],
+                            )
+                        }}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -183,17 +191,17 @@ pub(super) fn ExportCustomizationDialog(
                 <Separator />
 
                 <div class="flex flex-col gap-1.5">
-                    <span class="text-sm font-medium">"App"</span>
+                    <span class="text-sm font-medium">{t("components.form.export.app")}</span>
                     <Input
                         id="export-customization-app"
                         r#type=InputType::Text
-                        placeholder="Nombre de la app"
-                        aria_label="Nombre de la app"
+                        placeholder=t("components.form.export.app_placeholder")
+                        aria_label=t("components.form.export.app_placeholder")
                         prop:value=move || app.get()
                         on_input=Callback::new(move |text: String| app.set(text))
                     />
                     <span class="text-xs text-muted-foreground">
-                        "Se escribe en plugins/<app>/customizations/, dentro del mundo de la app."
+                        {t("components.form.export.world_hint")}
                     </span>
                 </div>
 
@@ -203,7 +211,7 @@ pub(super) fn ExportCustomizationDialog(
                         size=ButtonSize::Sm
                         on:click=move |_| open.set(false)
                     >
-                        "Cancelar"
+                        {t("common.cancel")}
                     </Button>
                     <Button
                         variant=ButtonVariant::Default
@@ -211,7 +219,13 @@ pub(super) fn ExportCustomizationDialog(
                         attr:disabled=move || exporting.get() || loading.get()
                         on:click=move |_| submit()
                     >
-                        {move || if exporting.get() { "Exportando…" } else { "Exportar" }}
+                        {move || {
+                            if exporting.get() {
+                                t("components.form.export.exporting")
+                            } else {
+                                t("components.form.export.export")
+                            }
+                        }}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -232,11 +246,11 @@ fn SelectionScope(
         <RadioGroup value=scope>
             <div class="flex items-center gap-2">
                 <RadioGroupItem value=SCOPE_ALL.to_string() id="export-scope-all" />
-                <span class="text-sm">"Todo (por defecto)"</span>
+                <span class="text-sm">{t("components.form.export.scope_all")}</span>
             </div>
             <div class="flex items-center gap-2">
                 <RadioGroupItem value=SCOPE_SOME.to_string() id="export-scope-some" />
-                <span class="text-sm">"Cambios concretos"</span>
+                <span class="text-sm">{t("components.form.export.scope_some")}</span>
             </div>
         </RadioGroup>
 
@@ -245,7 +259,9 @@ fn SelectionScope(
                 <Show
                     when=move || !loading.get()
                     fallback=|| view! {
-                        <p class="px-2 py-3 text-sm text-muted-foreground">"Cargando cambios…"</p>
+                        <p class="px-2 py-3 text-sm text-muted-foreground">
+                            {t("components.form.export.loading_changes")}
+                        </p>
                     }
                 >
                     <FieldPicker picked=picked_fields customization=customization />
@@ -256,7 +272,7 @@ fn SelectionScope(
                             .is_none_or(|custom| custom.fields.is_empty() && custom.properties.is_empty())
                     }>
                         <p class="px-2 py-3 text-sm text-muted-foreground">
-                            "Esta doctype no tiene cambios que exportar."
+                            {t("components.form.export.no_changes")}
                         </p>
                     </Show>
                 </Show>
@@ -299,7 +315,7 @@ fn FieldPicker(
     view! {
         <div class="flex flex-col">
             <span class="px-2 py-1 text-xs font-semibold text-muted-foreground">
-                "Campos personalizados"
+                {t("components.form.export.custom_fields")}
             </span>
             {move || {
                 let fields = customization
@@ -343,7 +359,7 @@ fn PropertyPicker(
     view! {
         <div class="flex flex-col">
             <span class="px-2 py-1 text-xs font-semibold text-muted-foreground">
-                "Propiedades"
+                {t("components.form.export.properties")}
             </span>
             {move || {
                 let properties = customization
@@ -362,7 +378,7 @@ fn PropertyPicker(
                         let label = format!("{property} = {value}");
                         let hint = fieldname
                             .filter(|name| !name.is_empty())
-                            .unwrap_or_else(|| "(doctype)".to_string());
+                            .unwrap_or_else(|| t("components.form.export.doctype_scope"));
                         let key_for_check = key.clone();
                         let checked: Signal<bool> = Signal::from(Memo::new(move |_| {
                             picked.get().contains(&key_for_check)

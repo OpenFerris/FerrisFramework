@@ -20,9 +20,11 @@ use serde_json::Value;
 
 use crate::api::types::filters_json;
 use crate::api::{self, DocStore, Filter, FilterOp, ListParams};
+use crate::app::doctype_display;
 use crate::components::ui::badge::{Badge, BadgeVariant};
 use crate::components::ui::card::{Card, CardContent, CardDescription, CardHeader, CardTitle};
 use crate::components::ui::table as t;
+use crate::i18n::use_i18n;
 use crate::views::views_components::collection::use_collection_actions;
 use crate::views::views_components::{
     Feedback, FeedbackKind, LoadingLines, PageHeader, ReportFilters, StatCard, StatCardView,
@@ -34,6 +36,7 @@ type StatusCounts = (u64, u64, u64);
 #[component]
 pub fn ReportView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
     // Two routes reach this page: the canonical
     // `/desk/:module/:doctype/report` (doctype param) and the legacy
     // `/report/:name` (name param). The report is a doctype report, so the
@@ -147,47 +150,58 @@ pub fn ReportView() -> impl IntoView {
     let submitted = move || counts.get().1.to_string();
     let cancelled = move || counts.get().2.to_string();
     let submittable = move || meta.get().as_ref().is_some_and(|m| m.is_submittable);
+    let i18n_sv = i18n;
+    let tr = move |key: &str| {
+        i18n_sv
+            .try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n_sv
+            .try_with_value(|i| i.t_with(key, args))
+            .unwrap_or_else(|| key.to_string())
+    };
 
     view! {
         <div class="flex h-full flex-col gap-4 overflow-y-auto p-4">
             {move || view! {
                 <PageHeader
-                    title=doctype()
-                    description="Informe del tipo de documento con filtros, totales y exportación."
+                    title=doctype_display(&doctype())
+                    description=tr("views.report.description")
                 />
             }}
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCardView stat=StatCard { label: "Total".into(), value: Signal::derive(total_rows), change: None, icon: "Rows3".into() } />
+                <StatCardView stat=StatCard { label: tr("views.report.total"), value: Signal::derive(total_rows), change: None, icon: "Rows3".into() } />
                 <Show when=submittable>
-                    <StatCardView stat=StatCard { label: "Borradores".into(), value: Signal::derive(drafts), change: None, icon: "FileText".into() } />
+                    <StatCardView stat=StatCard { label: tr("views.report.drafts"), value: Signal::derive(drafts), change: None, icon: "FileText".into() } />
                 </Show>
                 <Show when=submittable>
-                    <StatCardView stat=StatCard { label: "Enviados".into(), value: Signal::derive(submitted), change: None, icon: "CircleCheck".into() } />
+                    <StatCardView stat=StatCard { label: tr("views.report.submitted"), value: Signal::derive(submitted), change: None, icon: "CircleCheck".into() } />
                 </Show>
                 <Show when=submittable>
-                    <StatCardView stat=StatCard { label: "Cancelados".into(), value: Signal::derive(cancelled), change: None, icon: "CircleX".into() } />
+                    <StatCardView stat=StatCard { label: tr("views.report.cancelled"), value: Signal::derive(cancelled), change: None, icon: "CircleX".into() } />
                 </Show>
             </div>
             <Show when=submittable>
                 <p class="text-xs text-muted-foreground">
-                    "El reparto por estado cuenta el conjunto filtrado, sin aplicar el filtro de estado de la tabla."
+                    {tr("views.report.split_note")}
                 </p>
             </Show>
 
             <Card>
                 <CardHeader>
-                    <CardTitle>"Resumen"</CardTitle>
-                    <CardDescription>"Filas del conjunto filtrado y su flujo de estado."</CardDescription>
+                    <CardTitle>{tr("views.report.summary_title")}</CardTitle>
+                    <CardDescription>{tr("views.report.summary_description")}</CardDescription>
                 </CardHeader>
                 <CardContent class="flex flex-row flex-wrap items-center gap-2">
                     <Badge variant=BadgeVariant::Secondary>
-                        {move || format!("{} filas", total.get())}
+                        {move || tr_with("views.report.rows", &[("count", &total.get().to_string())])}
                     </Badge>
                     <Show when=move || { total.get() > 500 }>
-                        <Badge variant=BadgeVariant::Warning>"Mostrando las primeras 500"</Badge>
+                        <Badge variant=BadgeVariant::Warning>{tr("views.common.showing_first_500")}</Badge>
                     </Show>
                     <Show when=submittable>
-                        <Badge variant=BadgeVariant::Info>"Con flujo de estado"</Badge>
+                        <Badge variant=BadgeVariant::Info>{tr("views.report.with_status_flow")}</Badge>
                     </Show>
                 </CardContent>
             </Card>
@@ -225,14 +239,13 @@ pub fn ReportView() -> impl IntoView {
                                 </t::TableRow>
                             </t::TableHeader>
                             <t::TableBody>
-                                {
-                                    move || {
+                                {move || {
                                         let span = ordered.get().len().max(1);
                                         rows.with(|rows| {
                                             if rows.is_empty() {
                                                 return view! {
                                                     <t::TableRow>
-                                                        <td colspan=span.to_string() class="p-8 text-center text-muted-foreground">"Sin resultados"</td>
+                                                        <td colspan=span.to_string() class="p-8 text-center text-muted-foreground">{tr("views.report.empty")}</td>
                                                     </t::TableRow>
                                                 }
                                                     .into_any();

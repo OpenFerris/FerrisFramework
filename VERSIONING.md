@@ -5,8 +5,8 @@ from the same place:
 
 | Where | Declared as |
 |---|---|
-| `Cargo.toml` | `[workspace.package] version = "0.3.0"` |
-| `ferris-wasm/wit/ferris.wit` | `package ferris:framework@0.3.0;` |
+| `Cargo.toml` | `[workspace.package] version = "0.4.0"` |
+| `ferris-wasm/wit/ferris.wit` | `package ferris:framework@0.4.0;` |
 | `test/wit/ferris.wit` | byte-identical copy of the contract |
 
 The number is a compatibility promise, not a count of changes:

@@ -24,6 +24,7 @@ use crate::components::ui::empty::{
 };
 use crate::components::ui::icon::Icon;
 use crate::components::ui::skeleton::Skeleton;
+use crate::i18n::use_i18n;
 
 /// The header of a page: title, optional description and actions.
 #[component]
@@ -165,23 +166,24 @@ pub fn LoadingLines(#[prop(default = 3)] lines: usize) -> impl IntoView {
 /// home, instead of the bare `Not Found` string the router used to draw.
 #[component]
 pub fn NotFoundPage() -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="mx-auto flex h-full w-full max-w-2xl flex-col justify-center gap-4 p-4">
             <PageHeader
-                title="Página no encontrada"
-                description="La dirección no corresponde a ninguna página de este escritorio."
+                title=i18n.t("error.not_found_title")
+                description=i18n.t("views.common.not_found_description")
             />
             <EmptyState
                 icon="FileQuestion"
-                title="Nada que mostrar aquí"
-                description="Comprueba el enlace o vuelve al escritorio para seguir navegando."
+                title=i18n.t("views.common.not_found_empty_title")
+                description=i18n.t("views.common.not_found_empty_description")
             >
                 <A
                     href=crate::app::DESK_PATH
                     attr:class="inline-flex h-9 max-md:h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 >
                     <Icon name="House" class="size-4" />
-                    "Ir al escritorio"
+                    {i18n.t("views.common.go_to_desk")}
                 </A>
             </EmptyState>
         </div>

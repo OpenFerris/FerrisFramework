@@ -28,6 +28,7 @@ use crate::components::ui::dialog::{
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 };
 use crate::components::ui::input::{Input, InputType};
+use crate::i18n::{DeskI18n, use_i18n};
 use crate::web_user::WebUser;
 
 /// The one process-wide "session expired" flag.
@@ -64,6 +65,13 @@ pub fn ReloginDialog() -> impl IntoView {
     // the transport opens the same dialog.
     let open = RwSignal::from(&relogin_required());
     let user = use_context::<RwSignal<WebUser>>();
+    // `StoredValue` keeps the translator `Copy`, so the submit callback and the
+    // static dialog markup can share it.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n.with_value(|i18n: &DeskI18n| i18n.t_with(key, args))
+    };
 
     let email = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
@@ -93,7 +101,7 @@ pub fn ReloginDialog() -> impl IntoView {
         let username = email.get_untracked().trim().to_string();
         let secret = password.get_untracked();
         if username.is_empty() || secret.is_empty() {
-            error.set(Some("Escribe tu correo y contraseña.".to_string()));
+            error.set(Some(tr("login.error.empty_credentials")));
             return;
         }
         error.set(None);
@@ -113,10 +121,9 @@ pub fn ReloginDialog() -> impl IntoView {
                         // would send the user hunting for a problem that is
                         // actually another open tab.
                         let message = if status == 429 {
-                            format!(
-                                "Demasiadas sesiones activas para este usuario. \
-                                 Cierra la sesión en otro dispositivo e inténtalo de nuevo. {}",
-                                error_message(status, &text)
+                            tr_with(
+                                "desk.relogin.too_many_sessions",
+                                &[("message", &error_message(status, &text))],
                             )
                         } else {
                             error_message(status, &text)
@@ -128,11 +135,7 @@ pub fn ReloginDialog() -> impl IntoView {
                             .and_then(serde_json::Value::as_bool)
                             == Some(true)
                         {
-                            error.set(Some(
-                                "Tu cuenta pide un código de doble factor; la sesión no se \
-                                 puede renovar desde este aviso."
-                                    .to_string(),
-                            ));
+                            error.set(Some(tr("desk.relogin.mfa_required")));
                         } else {
                             match serde_json::from_value::<WebUser>(value) {
                                 Ok(me) => {
@@ -148,9 +151,7 @@ pub fn ReloginDialog() -> impl IntoView {
                             }
                         }
                     } else {
-                        error.set(Some(
-                            "La respuesta de inicio de sesión no es válida.".into(),
-                        ));
+                        error.set(Some(tr("desk.relogin.invalid_response")));
                     }
                 }
             }
@@ -174,30 +175,29 @@ pub fn ReloginDialog() -> impl IntoView {
                 close_on_backdrop_click=false
             >
                 <DialogHeader>
-                    <DialogTitle>"Tu sesión ha caducado"</DialogTitle>
+                    <DialogTitle>{tr("desk.relogin.title")}</DialogTitle>
                     <DialogDescription>
-                        "Vuelve a iniciar sesión para seguir donde estabas. \
-                         El formulario y los cambios sin guardar se conservan."
+                        {tr("desk.relogin.description")}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div class="mt-4 flex flex-col gap-3" on:keydown=on_enter>
                     <div class="flex flex-col gap-1">
                         <span class="text-xs font-medium text-muted-foreground">
-                            "Correo o usuario"
+                            {tr("login.email")}
                         </span>
                         <Input
                             r#type=InputType::Text
-                            aria_label="Correo o usuario"
+                            aria_label=tr("login.email")
                             autocomplete="username"
                             bind_value=email
                         />
                     </div>
                     <div class="flex flex-col gap-1">
-                        <span class="text-xs font-medium text-muted-foreground">"Contraseña"</span>
+                        <span class="text-xs font-medium text-muted-foreground">{tr("login.password")}</span>
                         <Input
                             r#type=InputType::Password
-                            aria_label="Contraseña"
+                            aria_label=tr("login.password")
                             autocomplete="current-password"
                             bind_value=password
                         />
@@ -218,7 +218,7 @@ pub fn ReloginDialog() -> impl IntoView {
                             attr:disabled=move || busy.get()
                             on:click=move |_| submit.run(())
                         >
-                            {move || if busy.get() { "Entrando…" } else { "Entrar" }}
+                            {move || if busy.get() { tr("desk.relogin.submitting") } else { tr("login.submit") }}
                         </Button>
                     </div>
                 </div>

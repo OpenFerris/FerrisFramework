@@ -1,4 +1,4 @@
-// ferris:framework@0.3.0 — the app contract.
+// ferris:framework@0.4.0 — the app contract.
 //
 // A component imports six interfaces — `types` (wire and policy vocabulary),
 // `data`, `schema`, `io`, `platform` and `descriptor` — and exports the
@@ -46,7 +46,7 @@
 // table.
 
 
-package ferris:framework@0.3.0;
+package ferris:framework@0.4.0;
 
 /// Wire types and the policy vocabulary every other interface shares.
 interface types {
@@ -1329,6 +1329,14 @@ interface descriptor {
         assets: option<list<string>>,
         subscriptions: option<list<subscription>>,
         config: option<list<config-item>>,
+        /// Locales this app translates itself into, as BCP 47 tags (`en`, `es`,
+        /// `pt-BR`). The messages live in the package as `locales/<tag>.toml`
+        /// next to `plugin.toml`; the installer verifies every declared tag has
+        /// a catalogue (and refuses a catalogue the app did not declare), and
+        /// the host advertises the set through `GET /api/i18n` so the Desk can
+        /// offer it. An app that declares nothing is simply not translated: its
+        /// labels stay as written.
+        locales: option<list<string>>,
         plugin-version: option<string>,
         requires: option<list<string>>,
     }

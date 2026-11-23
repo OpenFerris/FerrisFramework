@@ -27,6 +27,7 @@ use crate::components::ui::icon::Icon;
 use crate::components::ui::spinner::Spinner;
 use crate::components::ui::table as t;
 use crate::ext::{SLOT_LIST_ROW_ACTIONS, UiCtx};
+use crate::i18n::{t, use_i18n};
 use empty::ListEmptyBlock;
 use row::ListRow;
 
@@ -34,28 +35,32 @@ use row::ListRow;
 /// next page is requested. A few rows of lookahead keeps the append invisible.
 const LOAD_MORE_THRESHOLD: usize = 4;
 
-/// Compact age in Spanish list shorthand: `"ahora"`, `"2m"`, `"3h"`, `"3d"`,
-/// `"2me"`. `elapsed` is seconds; negatives are clamped by the caller.
-fn format_age(elapsed: i64) -> String {
+/// Compact age in list shorthand: `"now"`, `"2m"`, `"3h"`, `"3d"`, `"2me"`.
+/// `elapsed` is seconds; negatives are clamped by the caller.
+fn format_age(elapsed: i64, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
     const MINUTE: i64 = 60;
     const HOUR: i64 = 60 * MINUTE;
     const DAY: i64 = 24 * HOUR;
     const MONTH: i64 = 30 * DAY;
 
-    let (step, unit) = match elapsed {
-        s if s < MINUTE => return "ahora".into(),
-        s if s < HOUR => (MINUTE, "m"),
-        s if s < DAY => (HOUR, "h"),
-        s if s < MONTH => (DAY, "d"),
-        _ => (MONTH, "me"),
+    let (step, unit_key) = match elapsed {
+        s if s < MINUTE => return i18n.t("components.time.now"),
+        s if s < HOUR => (MINUTE, "components.time.unit.minute"),
+        s if s < DAY => (HOUR, "components.time.unit.hour"),
+        s if s < MONTH => (DAY, "components.time.unit.day"),
+        _ => (MONTH, "components.time.unit.month"),
     };
-    format!("{}{unit}", elapsed / step)
+    format!("{}{}", elapsed / step, i18n.t(unit_key))
 }
 
 /// Age of a document's timestamp plus the exact date for the tooltip.
 /// Em-dash when the stamp is missing or unparseable, so a row without one
 /// still lines up with the rest.
-fn stamp_age(field: &str, row: &Value) -> (String, String) {
+fn stamp_age(
+    field: &str,
+    row: &Value,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> (String, String) {
     let Some(ts) = row
         .get(field)
         .and_then(Value::as_str)
@@ -66,7 +71,10 @@ fn stamp_age(field: &str, row: &Value) -> (String, String) {
 
     let ts = ts.with_timezone(&chrono::Utc);
     let elapsed = (chrono::Utc::now() - ts).num_seconds().max(0);
-    (format_age(elapsed), ts.format("%d/%m/%Y %H:%M").to_string())
+    (
+        format_age(elapsed, i18n),
+        ts.format("%d/%m/%Y %H:%M").to_string(),
+    )
 }
 
 /// Whether a row click landed on a control rather than on the row surface.
@@ -154,6 +162,7 @@ pub fn ListTable(
     /// Ask for the next page when the viewport gets close to the end.
     on_load_more: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let title_field_name = Memo::new(move |_| {
         meta.get()
             .as_ref()
@@ -214,7 +223,7 @@ pub fn ListTable(
                     <t::TableRow>
                         <t::TableHead class="w-[40px]">
                             <Checkbox
-                                aria_label="Seleccionar todos"
+                                aria_label=t("components.list.table.select_all")
                                 checked=Signal::derive(move || {
                                     // `rows.with` reads in place; `rows.get` would
                                     // clone every document on the page.
@@ -267,7 +276,7 @@ pub fn ListTable(
                             }
                         }).collect_view()}
 
-                        <t::TableHead class="w-[100px]">"Estado"</t::TableHead>
+                        <t::TableHead class="w-[100px]">{t("components.list.table.status")}</t::TableHead>
 
                         // Única columna para metadatos (edad + comentarios + likes).
                         // El header solo muestra el conteo de filas y el toggle
@@ -277,7 +286,12 @@ pub fn ListTable(
                                 <span class="font-normal tabular-nums text-muted-foreground">
                                     {move || {
                                         let shown = rows.with(|rows| rows.len());
-                                        format!("{shown} de {}", total.get())
+                                        let shown = shown.to_string();
+                                        let total = total.get().to_string();
+                                        i18n.t_with(
+                                            "components.list.table.shown_of",
+                                            &[("shown", &shown), ("total", &total)],
+                                        )
                                     }}
                                 </span>
                                 <button
@@ -290,8 +304,8 @@ pub fn ListTable(
                                         }
                                     }
                                     aria-pressed=move || only_liked.get().to_string()
-                                    attr:aria-label="Solo mis favoritos"
-                                    title="Solo mis favoritos"
+                                    attr:aria-label=t("components.list.table.only_liked")
+                                    title=t("components.list.table.only_liked")
                                     on:click=move |_| on_toggle_only_liked.run(())
                                 >
                                     <Icon
@@ -313,7 +327,7 @@ pub fn ListTable(
                         // while nothing declares the slot.
                         <Show when=move || row_actions_declared.get()>
                             <t::TableHead class="w-[40px]">
-                                <span class="sr-only">"Acciones"</span>
+                                <span class="sr-only">{t("components.list.table.actions")}</span>
                             </t::TableHead>
                         </Show>
                     </t::TableRow>
@@ -414,7 +428,7 @@ pub fn ListTable(
                                         >
                                             <span class="inline-flex items-center justify-center gap-2">
                                                 <Spinner class="size-4 text-muted-foreground" />
-                                                "Cargando más…"
+                                                {t("components.list.table.loading_more")}
                                             </span>
                                         </td>
                                     </tr>

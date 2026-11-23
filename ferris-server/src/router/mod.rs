@@ -12,6 +12,7 @@ mod auth_layers;
 mod build;
 mod cors;
 mod fallback;
+mod i18n;
 #[cfg(feature = "wasm")]
 mod method_bridge;
 pub(crate) mod modules;

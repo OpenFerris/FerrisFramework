@@ -29,8 +29,12 @@ pub(super) fn card_title(owner: &str, def: &WidgetDef) -> String {
 /// The preview image of a definition. The resolved source is reactive, so a
 /// feed refresh that changes `preview` re-runs the inline mount instead of
 /// keeping the stale SVG.
-pub(super) fn preview_any(title: &str, def: &WidgetDef) -> AnyView {
-    let alt = format!("Vista previa de {title}");
+pub(super) fn preview_any(
+    title: &str,
+    def: &WidgetDef,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> AnyView {
+    let alt = i18n.t_with("views.dashboard.preview_alt", &[("title", title)]);
     let src = preview_src(def);
     let source = Signal::derive(move || src.clone());
     view! { <PreviewImg alt=alt source=source /> }.into_any()
@@ -43,9 +47,10 @@ pub(super) fn widget_card(
     owner: String,
     def: WidgetDef,
     on_add: Callback<(String, WidgetDef)>,
+    i18n: &(impl crate::i18n::Translate + Sync),
 ) -> AnyView {
     let title = card_title(&owner, &def);
-    let preview = preview_any(&title, &def);
+    let preview = preview_any(&title, &def, i18n);
     // The click closure moves `owner`; the badge needs its own copy.
     let badge_owner = owner.clone();
     view! {

@@ -127,7 +127,8 @@ pub fn use_mutation() -> (
                 let n = name.clone();
                 spawn_local(async move {
                     let store_result = DocStore::runtime();
-                    let mut res: Result<Value, String> = Err("No runtime".into());
+                    let mut res: Result<Value, String> =
+                        Err(crate::i18n::t("components.error.no_runtime"));
 
                     if let Ok(store) = store_result {
                         res = match mut_type {

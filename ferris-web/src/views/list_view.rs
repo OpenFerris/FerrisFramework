@@ -31,6 +31,7 @@ use crate::components::views::list::{
     ListColumnPicker, ListFilterGroup, ListOrderByGroup, ListQuickFilters, ListTable,
 };
 use crate::ext::{SLOT_LIST_BEFORE_TABLE, SLOT_LIST_TOOLBAR_BULK, UiSlot};
+use crate::i18n::use_i18n;
 use crate::views::FormView;
 use crate::views::services::{ListService, view_core::ViewService};
 
@@ -45,6 +46,7 @@ static DEFAULT_VIEW_REDIRECTS: LazyLock<Mutex<HashSet<String>>> =
 #[component]
 pub fn ListView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
 
     // Signals, not values: the router does not rebuild this component when only the
     // params change, so the service has to re-read them or
@@ -115,6 +117,7 @@ pub fn ListView() -> impl IntoView {
             navigate.run((url, NavigateOptions::default()));
         })
     };
+    let i18n_top = i18n;
     Effect::new(move |_| {
         let svc = service.get_value();
         let Some(meta) = svc.meta().get() else {
@@ -143,7 +146,7 @@ pub fn ListView() -> impl IntoView {
         // Refresh
         out.push(TopBarAction::Button(ButtonSpec {
             label: String::new(),
-            aria_label: Some("Recargar".to_string()),
+            aria_label: Some(i18n_top.t("views.common.reload")),
             icon: Some("RefreshCw"),
             variant: ButtonVariant::Outline,
             disabled: false,
@@ -154,9 +157,12 @@ pub fn ListView() -> impl IntoView {
         // also available from the bulk menu when rows are checked.
         out.push(TopBarAction::Dropdown(DropdownSpec {
             label: String::new(),
-            aria_label: Some("Exportar".to_string()),
+            aria_label: Some(i18n_top.t("views.list.export")),
             icon: Some("Download"),
-            items: vec![DropdownItem::action("Exportar página", export_page).with_icon("FileDown")],
+            items: vec![
+                DropdownItem::action(i18n_top.t("views.list.export_page"), export_page)
+                    .with_icon("FileDown"),
+            ],
             selectable: false,
         }));
 
@@ -168,31 +174,42 @@ pub fn ListView() -> impl IntoView {
             // own re-runs cannot dispose them.
             let selection = Signal::derive({
                 let svc = svc.clone();
+                let i18n_selection = i18n_top;
                 move || {
                     let selected = svc.selected().get();
                     if selected.is_empty() {
                         return None;
                     }
 
+                    let label = if selected.len() == 1 {
+                        i18n_selection.t("views.list.selection_one")
+                    } else {
+                        i18n_selection.t_with(
+                            "views.list.selection_many",
+                            &[("count", &selected.len().to_string())],
+                        )
+                    };
                     Some(SelectionState {
-                        label: if selected.len() == 1 {
-                            "1 acción".to_string()
-                        } else {
-                            format!("{} acciones", selected.len())
-                        },
+                        label,
                         items: vec![
-                            DropdownItem::action("Eliminar", delete_selection)
-                                .with_icon("Trash2")
-                                .destructive(),
-                            DropdownItem::action("Exportar selección", export_selection)
-                                .with_icon("Download"),
+                            DropdownItem::action(
+                                i18n_selection.t("views.common.delete"),
+                                delete_selection,
+                            )
+                            .with_icon("Trash2")
+                            .destructive(),
+                            DropdownItem::action(
+                                i18n_selection.t("views.list.export_selection"),
+                                export_selection,
+                            )
+                            .with_icon("Download"),
                         ],
                     })
                 }
             });
 
             out.push(TopBarAction::SelectionMenu(SelectionMenuSpec {
-                idle_label: "Nuevo".into(),
+                idle_label: i18n_top.t("views.common.new"),
                 idle_icon: Some("Plus"),
                 on_idle_click: on_new,
                 selection,
@@ -419,10 +436,19 @@ pub fn ListView() -> impl IntoView {
 
     // "Eliminando 3 de 12…" mientras corre. Durante el borrado la selección sigue
     // intacta, así que el menú dice cuántas hay y no cuántas van.
+    let i18n_bulk = i18n;
+    let i18n_title = i18n;
     let bulk_status = Signal::derive(move || {
         let p = bulk_progress.get();
-        p.running
-            .then(|| format!("Eliminando {} de {}…", p.done, p.total))
+        p.running.then(|| {
+            i18n_bulk.t_with(
+                "views.list.deleting_progress",
+                &[
+                    ("done", &p.done.to_string()),
+                    ("total", &p.total.to_string()),
+                ],
+            )
+        })
     });
     let bulk_confirm_count = Signal::derive(move || selected.get().len());
 
@@ -507,24 +533,26 @@ pub fn ListView() -> impl IntoView {
                         >
                             <DialogHeader>
                                 <DialogTitle>
-                                    {move || {
-                                        format!(
-                                            "Eliminar {} documento{}",
-                                            bulk_confirm_count.get(),
-                                            if bulk_confirm_count.get() == 1 { "" } else { "s" }
-                                        )
+                                    {{
+                                        let i18n_title = i18n_title;
+                                        move || {
+                                            let count = bulk_confirm_count.get();
+                                            let key = if count == 1 {
+                                                "views.list.delete_title_one"
+                                            } else {
+                                                "views.list.delete_title_many"
+                                            };
+                                            i18n_title.t_with(key, &[("count", &count.to_string())])
+                                        }
                                     }}
                                 </DialogTitle>
                                 <DialogDescription>
-                                    "Esta acción no se puede deshacer. Se borrarán los documentos"
-                                    " seleccionados de este doctype."
+                                    {i18n.t("views.list.delete_warning")}
                                 </DialogDescription>
                             </DialogHeader>
                             <DialogBody>
                                 <p class="text-sm text-muted-foreground">
-                                    "Si alguno no se puede borrar —porque no tienes permiso, o"
-                                    " porque otro cambio lo bloquea— seguirá seleccionado para"
-                                    " que puedas reintentarlo."
+                                    {i18n.t("views.list.delete_partial")}
                                 </p>
                             </DialogBody>
                             <DialogFooter>
@@ -538,14 +566,14 @@ pub fn ListView() -> impl IntoView {
                                     size=ButtonSize::Default
                                     on:click=move |_| svc.core.bulk_cancel.run(())
                                 >
-                                    "Cancelar"
+                                    {i18n.t("common.cancel")}
                                 </Button>
                                 <Button
                                     variant=ButtonVariant::Destructive
                                     size=ButtonSize::Default
                                     on:click=move |_| svc.core.bulk_delete_confirm.run(())
                                 >
-                                    "Eliminar"
+                                    {i18n.t("views.common.delete")}
                                 </Button>
                             </DialogFooter>
                         </DialogContent>

@@ -6,28 +6,26 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 use crate::commands::NewArgs;
+use crate::config::CliConfig;
 
 use super::cargo_files::{write_cargo_config, write_cargo_toml};
-use super::config_files::write_config_files;
+use super::config_files::{write_app_config, write_bench_config, write_docperm};
 use super::git::init_git;
 use super::lib_rs::write_lib_rs;
-use super::project_docs::{write_gitignore, write_readme};
+use super::project_docs::{write_bench_gitignore, write_gitignore, write_readme};
 use super::structure::{create_project_structure, write_wit};
 use super::toolchain::{warn_if_target_missing, write_toolchain_toml};
 
-pub fn run(args: NewArgs) -> Result<()> {
+pub fn run(args: NewArgs, config: &CliConfig) -> Result<()> {
     validate_project_name(&args.name)?;
 
-    let project_dir = args
-        .into
-        .as_deref()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(&args.name));
+    let bench_root = config.source.bench_root.clone();
+    let app_dir = resolve_app_dir(&args, &bench_root);
 
-    if project_dir.exists() {
+    if app_dir.exists() {
         return Err(anyhow::anyhow!(
             "Directory {} already exists",
-            project_dir.display()
+            app_dir.display()
         ));
     }
 
@@ -46,46 +44,85 @@ pub fn run(args: NewArgs) -> Result<()> {
         args.name
     );
 
-    // Roll back the directory if any step fails, so `ferris new` is atomic
-    // from the user's point of view.
-    if let Err(e) = scaffold(&project_dir, &args.name, &wit_source) {
-        if let Err(cleanup_err) = fs::remove_dir_all(&project_dir) {
+    // A bench owns the config and the two fixed directories; a standalone app
+    // owns its own config and keeps the historical `plugins/` layout.
+    let created_config = if args.standalone {
+        false
+    } else {
+        write_bench_config(&bench_root)?
+    };
+    if !args.standalone {
+        fs::create_dir_all(bench_root.join("apps"))?;
+        fs::create_dir_all(bench_root.join("sites"))?;
+    }
+
+    if let Err(e) = scaffold(&app_dir, &args.name, &wit_source, args.standalone) {
+        if let Err(cleanup_err) = fs::remove_dir_all(&app_dir) {
             warn!(
                 "failed to clean up {} after scaffold error: {cleanup_err}",
-                project_dir.display()
+                app_dir.display()
             );
+        }
+        if created_config {
+            let _ = fs::remove_file(bench_root.join("config").join("ferris.toml"));
         }
         return Err(e);
     }
 
-    // After the scaffold exists, and resolved *inside it*: rustup picks the
-    // active toolchain per directory, so checking from the caller's cwd (as
-    // this used to do) reads the caller's toolchain — e.g. the framework
-    // repo's pin — and misses the one the new project will actually use.
-    warn_if_target_missing(&project_dir);
+    // One repository for the bench: a nested `.git` inside `apps/<app>` would
+    // hide the app from the bench's history and make `sites/` untrackable.
+    if args.standalone {
+        init_git(&app_dir)?;
+    } else if !bench_root.join(".git").exists() {
+        write_bench_gitignore(&bench_root)?;
+        init_git(&bench_root)?;
+    }
+
+    warn_if_target_missing(&app_dir);
 
     info!(
         "Project {} created successfully at {}",
         args.name,
-        project_dir.display()
+        app_dir.display()
     );
     info!("Next steps:");
-    info!("  cd {}", project_dir.display());
-    info!("  ferris dev");
+    if args.standalone {
+        info!("  cd {}", app_dir.display());
+        info!("  ferris dev");
+    } else {
+        info!("  cd {}", bench_root.display());
+        info!("  ferris dev --app {}", args.name);
+        info!("  ferris build --app {}", args.name);
+        info!("  ferris site new <site> --host <site>.localhost --db-type sqlite");
+    }
     Ok(())
 }
 
-fn scaffold(project_dir: &Path, name: &str, wit_source: &Path) -> Result<()> {
-    create_project_structure(project_dir)?;
+/// Where the app source goes: `<bench>/apps/<name>` unless the caller asked for
+/// a standalone app (or an explicit directory).
+fn resolve_app_dir(args: &NewArgs, bench_root: &Path) -> PathBuf {
+    if let Some(into) = args.into.as_deref() {
+        return PathBuf::from(into);
+    }
+    if args.standalone {
+        return PathBuf::from(&args.name);
+    }
+    bench_root.join("apps").join(&args.name)
+}
+
+fn scaffold(project_dir: &Path, name: &str, wit_source: &Path, standalone: bool) -> Result<()> {
+    create_project_structure(project_dir, standalone)?;
     write_cargo_toml(project_dir, name)?;
     write_cargo_config(project_dir)?;
     write_toolchain_toml(project_dir)?;
     write_wit(project_dir, wit_source)?;
     write_lib_rs(project_dir, name)?;
-    write_config_files(project_dir, name)?;
+    if standalone {
+        write_app_config(project_dir, name)?;
+    }
     write_gitignore(project_dir)?;
     write_readme(project_dir, name)?;
-    init_git(project_dir)?;
+    write_docperm(project_dir, name)?;
     Ok(())
 }
 

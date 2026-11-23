@@ -85,7 +85,7 @@ fn main() -> Result<()> {
 
     // Execute command
     let result = match cli.command {
-        Commands::New(args) => commands::new::run(args),
+        Commands::New(args) => commands::new::run(args, &config),
         #[cfg(feature = "wasm")]
         Commands::Dev(args) => commands::dev::run(args, &config, cli.verbose),
         Commands::Serve(args) => commands::serve::run(args, &config),

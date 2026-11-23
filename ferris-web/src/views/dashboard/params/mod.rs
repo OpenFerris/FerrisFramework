@@ -34,5 +34,7 @@ mod sync;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
 pub(super) use panel::param_fields;
+pub(super) use panel::param_fields_with;
 pub(super) use sync::sync_params;

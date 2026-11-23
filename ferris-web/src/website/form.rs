@@ -9,7 +9,8 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use ferris_core::{AuthzError, Error, Result, User, ValidationError, Value};
+use ferris_core::i18n::Locale;
+use ferris_core::{AuthzError, Error, I18n, Result, User, ValidationError, Value};
 use ferris_db::Db;
 use ferris_web_shared::html::escape_html;
 
@@ -66,6 +67,9 @@ pub struct WebForm {
     /// Route the form is published at, normalised (`/contact`).
     #[serde(default)]
     pub route: String,
+    /// Store front language; empty resolves through English.
+    #[serde(default)]
+    pub locale: String,
 }
 
 /// Fieldtypes that only lay out a form/document and never hold a value.
@@ -101,9 +105,30 @@ impl WebForm {
             name,
             doctype: doctype.into(),
             fields,
-            success_message: "Thank you, your submission was received.".to_string(),
+            success_message: String::new(),
             require_login: false,
+            locale: String::new(),
         }
+    }
+
+    /// The catalogue and the locale this form renders in.
+    fn catalogue(&self) -> (I18n, Locale) {
+        (
+            I18n::default(),
+            Locale::parse(&self.locale).unwrap_or_default(),
+        )
+    }
+
+    /// Translate one of the form's own messages.
+    fn tr(&self, key: &str) -> String {
+        let (i18n, locale) = self.catalogue();
+        i18n.translate(&locale, key).to_string()
+    }
+
+    /// Translate and interpolate one of the form's own messages.
+    fn tr_with(&self, key: &str, args: &[(&str, &str)]) -> String {
+        let (i18n, locale) = self.catalogue();
+        i18n.translate_with(&locale, key, args)
     }
 
     /// Build the public form a stored `Web Form` row describes.
@@ -225,14 +250,15 @@ impl WebForm {
     pub fn validate(&self, submission: &ferris_core::Value) -> Result<ferris_core::Value> {
         let ferris_core::Value::Object(input) = submission else {
             return Err(Error::Validation(ValidationError::Invalid(
-                "Submission must be an object".to_string(),
+                self.tr("components.website.form.submission_object"),
             )));
         };
 
         for key in input.keys() {
             if !self.fields.iter().any(|f| &f.fieldname == key) {
-                return Err(Error::Validation(ValidationError::Invalid(format!(
-                    "Unknown form field: {key}"
+                return Err(Error::Validation(ValidationError::Invalid(self.tr_with(
+                    "components.website.form.unknown_field",
+                    &[("field", key)],
                 ))));
             }
         }
@@ -258,7 +284,7 @@ impl WebForm {
                     if !ferris_document::is_valid_email(text) {
                         return Err(Error::Validation(ValidationError::InvalidValue {
                             field: field.label.clone(),
-                            message: "must be a valid email".to_string(),
+                            message: self.tr("components.website.form.invalid_email"),
                         }));
                     }
                 }
@@ -266,7 +292,7 @@ impl WebForm {
                     if value.as_f64().is_none() {
                         return Err(Error::Validation(ValidationError::InvalidValue {
                             field: field.label.clone(),
-                            message: "must be a number".to_string(),
+                            message: self.tr("components.website.form.invalid_number"),
                         }));
                     }
                 }
@@ -274,7 +300,7 @@ impl WebForm {
                     let Some(checked) = value.as_bool() else {
                         return Err(Error::Validation(ValidationError::InvalidValue {
                             field: field.label.clone(),
-                            message: "must be true or false".to_string(),
+                            message: self.tr("components.website.form.invalid_boolean"),
                         }));
                     };
                     if field.reqd && !checked {
@@ -370,24 +396,47 @@ impl WebForm {
              tabindex=\"-1\" autocomplete=\"off\"></div>",
         );
         if self.fields.is_empty() {
-            body.push_str("<p class=\"error\" role=\"alert\">This form declares no fields.</p>");
+            let message = self.tr("components.website.form.no_fields");
+            let _ = write!(
+                body,
+                "<p class=\"error\" role=\"alert\">{}</p>",
+                escape_html(&message)
+            );
         }
         for field in &self.fields {
             body.push_str(&field_html(field));
         }
-        body.push_str("<button type=\"submit\">Submit</button></form>");
-        html_document(&self.name, &body)
+        let _ = write!(
+            body,
+            "<button type=\"submit\">{}</button></form>",
+            escape_html(&self.tr("components.website.form.submit"))
+        );
+        self.html_document(&body)
     }
 
     /// What the caller sees after a successful submission.
     #[must_use]
     pub fn render_success(&self) -> String {
+        let message = if self.success_message.trim().is_empty() {
+            self.tr("components.website.form.success_default")
+        } else {
+            self.success_message.clone()
+        };
         let body = format!(
             "<h1>{}</h1><p role=\"status\">{}</p>",
             escape_html(&self.name),
-            escape_html(&self.success_message)
+            escape_html(&message)
         );
-        html_document(&self.name, &body)
+        self.html_document(&body)
+    }
+
+    /// Wrap `body` in the standalone public form document.
+    fn html_document(&self, body: &str) -> String {
+        let lang = Locale::parse(&self.locale)
+            .unwrap_or_default()
+            .as_str()
+            .to_string();
+        html_document(&self.name, &lang, body)
     }
 }
 
@@ -434,9 +483,9 @@ fn field_html(field: &WebFormField) -> String {
 
 /// A standalone document for the public form. System colours, like the 404
 /// page: the site has no stylesheet at this layer.
-fn html_document(title: &str, body: &str) -> String {
+fn html_document(title: &str, lang: &str, body: &str) -> String {
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+        "<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
          <title>{}</title>\
          <style>body{{font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;\
@@ -444,6 +493,7 @@ fn html_document(title: &str, body: &str) -> String {
          margin-bottom:.25rem}}input,select,textarea{{width:100%;padding:.4rem;\
          margin-bottom:.75rem}}.error{{color:FireBrick}}</style></head>\
          <body>{body}</body></html>",
+        escape_html(lang),
         escape_html(title)
     )
 }

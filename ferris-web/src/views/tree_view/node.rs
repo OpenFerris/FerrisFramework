@@ -31,6 +31,7 @@ pub(super) fn render_node(
     doctype: &str,
     label_field: &str,
     toggle: Callback<String>,
+    i18n: &(impl crate::i18n::Translate + Sync),
 ) -> AnyView {
     let name = node.name.clone();
     let open = expanded.contains(&name);
@@ -49,7 +50,12 @@ pub(super) fn render_node(
         path_segment(&name)
     );
     let toggle_name = name.clone();
-    let aria_label = format!("{} «{label}»", if open { "Contraer" } else { "Expandir" });
+    let aria_key = if open {
+        "views.tree.collapse_aria"
+    } else {
+        "views.tree.expand_aria"
+    };
+    let aria_label = i18n.t_with(aria_key, &[("label", &label)]);
     let subtree = (open && has_children).then(|| {
         node.children
             .into_iter()
@@ -62,6 +68,7 @@ pub(super) fn render_node(
                     doctype,
                     label_field,
                     toggle,
+                    i18n,
                 )
             })
             .collect_view()

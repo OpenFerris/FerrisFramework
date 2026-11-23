@@ -16,13 +16,14 @@ use tw_merge::tw_merge;
 
 use crate::api::users;
 use crate::components::ui::avatar::{Avatar, AvatarFallback, AvatarSize};
+use crate::i18n::use_i18n;
 
 /// The label of `id`: cached value first, then a single fetch.
 ///
 /// Blank until the lookup answers: printing the id first would flash a UUID in
 /// the very place the name belongs. [`users::display`] falls back to the id
 /// itself, so a failed lookup still renders something after the fetch.
-fn resolve(id: String, label: RwSignal<String>) {
+fn resolve(id: String, label: RwSignal<String>, i18n: crate::i18n::I18n) {
     if id.trim().is_empty() {
         label.set(String::new());
         return;
@@ -33,7 +34,7 @@ fn resolve(id: String, label: RwSignal<String>) {
     }
     label.set(String::new());
     spawn_local(async move {
-        let resolved = users::display(&id).await;
+        let resolved = users::display(&id, &i18n).await;
         label.set(resolved);
     });
 }
@@ -95,8 +96,9 @@ pub fn UserName(
     #[prop(into)] id: Signal<String>,
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let label = RwSignal::new(String::new());
-    Effect::new(move |_| resolve(id.get(), label));
+    Effect::new(move |_| resolve(id.get(), label, i18n));
     view! { <NameText id=id label=label class=class /> }
 }
 
@@ -109,8 +111,9 @@ pub fn UserAvatar(
     #[prop(into)] id: Signal<String>,
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let label = RwSignal::new(String::new());
-    Effect::new(move |_| resolve(id.get(), label));
+    Effect::new(move |_| resolve(id.get(), label, i18n));
     let initials = move || users::initials(&label.get());
     let avatar_class = tw_merge!("size-8", class.clone());
     view! {
@@ -123,8 +126,9 @@ pub fn UserAvatar(
 /// Avatar + name, the shape the assignment and share lists use.
 #[component]
 pub fn UserIdentity(#[prop(into)] id: Signal<String>) -> impl IntoView {
+    let i18n = use_i18n();
     let label = RwSignal::new(String::new());
-    Effect::new(move |_| resolve(id.get(), label));
+    Effect::new(move |_| resolve(id.get(), label, i18n));
     let initials = move || users::initials(&label.get());
     view! {
         <span class="flex min-w-0 items-center gap-2">

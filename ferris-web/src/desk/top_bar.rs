@@ -35,10 +35,12 @@ use crate::components::ui::dropdown_menu::{
     DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 };
 use crate::components::ui::icon::Icon;
+use crate::desk::LanguagePicker;
 use crate::desk::notifications_panel::NotificationFeedList;
 use crate::desk::session::{self as desk_session, NotificationFeed, NotificationSettings};
 use crate::desk::theme_dialog::ThemeDialog;
 use crate::desk::user_menu::logout_callback;
+use crate::i18n::{DeskI18n, use_i18n};
 use icons::{Bell, Search};
 
 /// The built-in Users module, as registered by `ferris-auth`.
@@ -65,6 +67,13 @@ pub fn DeskTopBar(
     let nav = expect_context::<DeskNav>();
     let navigate = use_navigate();
     let mobile_menu = use_context::<TopBarMobileMenu>();
+    // `StoredValue` keeps the translator `Copy`, so the reactive bell label and
+    // the static menu rows can share it.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n.with_value(|i18n: &DeskI18n| i18n.t_with(key, args))
+    };
 
     let theme_open = RwSignal::new(false);
     let on_themes = Callback::new(move |_| theme_open.set(true));
@@ -105,9 +114,12 @@ pub fn DeskTopBar(
     let notification_label = move || {
         let count = unread.get();
         if count > 0 {
-            format!("Avisos ({count} sin leer)")
+            tr_with(
+                "desk.notifications.label_unread",
+                &[("count", &count.to_string())],
+            )
         } else {
-            "Avisos".to_string()
+            tr("desk.notifications.title")
         }
     };
 
@@ -124,7 +136,7 @@ pub fn DeskTopBar(
                         <Show when=move || menu.available.get()>
                             <button
                                 type="button"
-                                aria-label="Abrir menú"
+                                aria-label=tr("desk.topbar.open_menu")
                                 class="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:hidden"
                                 on:click=move |_| menu.open.update(|open| *open = !*open)
                             >
@@ -138,7 +150,7 @@ pub fn DeskTopBar(
                         href=crate::app::DESK_PATH
                         attr:class="flex size-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                         attr:title="Ferris Desk"
-                        attr:aria-label="Inicio del escritorio"
+                        attr:aria-label=tr("desk.topbar.home")
                     >
                         "F"
                     </A>
@@ -148,11 +160,11 @@ pub fn DeskTopBar(
                     <button
                         type="button"
                         class="flex h-9 max-md:h-10 w-full max-w-md items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                        aria-label="Buscar en el escritorio"
+                        aria-label=tr("desk.topbar.search")
                         on:click=move |_| search_open.set(true)
                     >
                         <Search class="size-4 shrink-0" />
-                        <span class="min-w-0 flex-1 truncate text-left">"Buscar…"</span>
+                        <span class="min-w-0 flex-1 truncate text-left">{tr("desk.topbar.search_placeholder")}</span>
                         <kbd class="hidden shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
                             "Ctrl K"
                         </kbd>
@@ -184,7 +196,7 @@ pub fn DeskTopBar(
 
                         <DropdownMenuContent class="w-[24rem] max-w-[calc(100vw-1rem)] p-0">
                             <div class="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                                <span class="text-sm font-semibold">"Avisos"</span>
+                                <span class="text-sm font-semibold">{tr("desk.notifications.title")}</span>
                                 <Button
                                     variant=ButtonVariant::Ghost
                                     size=ButtonSize::Sm
@@ -194,7 +206,7 @@ pub fn DeskTopBar(
                                     }
                                 >
                                     <Icon name="check-check" class="size-3.5" />
-                                    "Marcar todo como leído"
+                                    {tr("desk.notifications.mark_all_read")}
                                 </Button>
                             </div>
                             <div class="max-h-96 overflow-y-auto p-1">
@@ -209,7 +221,7 @@ pub fn DeskTopBar(
                                 type="button"
                                 class="flex size-9 items-center justify-center rounded-full transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:size-10"
                                 title=full_name
-                                aria-label="Abrir menú de usuario"
+                                aria-label=tr("desk.topbar.user_menu")
                             >
                                 <Avatar>
                                     <AvatarFallback class="bg-primary/10 text-primary">
@@ -228,15 +240,16 @@ pub fn DeskTopBar(
                             <DropdownMenuItem>
                                 <DropdownMenuAction on_click=on_edit_profile>
                                     <Icon name="user-round" class="size-4" />
-                                    "Mi perfil"
+                                    {tr("desk.user_menu.profile")}
                                 </DropdownMenuAction>
                             </DropdownMenuItem>
                             <DropdownMenuItem>
                                 <DropdownMenuAction on_click=on_themes>
                                     <Icon name="palette" class="size-4" />
-                                    "Cambiar tema"
+                                    {tr("desk.theme.change")}
                                 </DropdownMenuAction>
                             </DropdownMenuItem>
+                            <LanguagePicker />
                             <DropdownMenuSeparator />
                             <DropdownMenuItem>
                                 <DropdownMenuAction
@@ -244,7 +257,7 @@ pub fn DeskTopBar(
                                     on_click=on_logout
                                 >
                                     <Icon name="log-out" class="size-4" />
-                                    "Cerrar sesión"
+                                    {tr("nav.logout")}
                                 </DropdownMenuAction>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -320,6 +333,7 @@ mod tests {
             username: Some("ada".into()),
             roles: vec!["System Manager".into()],
             user_type: "System User".into(),
+            language: None,
         }
     }
 

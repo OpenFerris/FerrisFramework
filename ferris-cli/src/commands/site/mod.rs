@@ -25,6 +25,7 @@ use ferris_core::{DatabaseConfig as CoreDatabaseConfig, tenant};
 use tracing::{info, warn};
 
 mod args;
+mod docperm;
 pub use args::{SiteArgs, SiteCommand};
 
 use crate::config::CliConfig;
@@ -37,7 +38,7 @@ use crate::config::CliConfig;
 /// database that cannot be opened, an app that is not in the catalogue, or an
 /// I/O failure under `sites/`.
 pub fn run(args: SiteArgs, config: &CliConfig) -> Result<()> {
-    let manager = manager();
+    let manager = manager(config);
     match args.command {
         SiteCommand::New {
             name,
@@ -71,14 +72,19 @@ pub fn run(args: SiteArgs, config: &CliConfig) -> Result<()> {
     }
 }
 
-/// The sites registry of this project.
+/// The sites registry of this bench.
 ///
-/// [`SiteManager::default`] is `FERRIS_SITES_DIR`/`FERRIS_APPS_DIR`, else
-/// `<project>/sites` and `<project>/apps` from `FERRIS_PROJECT_DIR` or the
-/// working directory. `main` moves to the project before dispatching, so the
-/// default and `--dir` agree without a second configuration source.
-pub(in crate::commands) fn manager() -> SiteManager {
-    SiteManager::default()
+/// `FERRIS_SITES_DIR`/`FERRIS_APPS_DIR` win when set; otherwise the roots are
+/// `<bench>/sites` and `<bench>/apps`. Resolving them from the bench root (not
+/// the current directory) is what lets `ferris app install` work from inside
+/// `apps/<app>/` without creating a second, empty catalogue there.
+pub(in crate::commands) fn manager(config: &CliConfig) -> SiteManager {
+    let root = &config.source.bench_root;
+    let sites = std::env::var_os("FERRIS_SITES_DIR")
+        .map_or_else(|| root.join("sites"), std::path::PathBuf::from);
+    let apps = std::env::var_os("FERRIS_APPS_DIR")
+        .map_or_else(|| root.join("apps"), std::path::PathBuf::from);
+    SiteManager::new(sites, apps)
 }
 
 /// The arguments of `site new`, grouped so the provisioning function keeps a
@@ -119,9 +125,13 @@ fn create_site(manager: &SiteManager, cli: &CliConfig, new: NewSite) -> Result<(
     let db_name = new.db_name.unwrap_or_else(|| site.database.name.clone());
     site.database = database_for(cli, db_name, new.db_type.as_deref())?;
     site.redis_url.clone_from(&cli.redis.url);
+    // A new site starts with the bench's language policy; the operator can
+    // still edit `site_config.json` afterwards.
+    site.default_locale.clone_from(&cli.i18n.default_locale);
+    site.supported_locales.clone_from(&cli.i18n.normalized());
 
     ensure_host_free(manager, &site)?;
-    provision_operator(&site, &new.admin_email, &new.admin_password)?;
+    provision_operator(manager, &site, &new.admin_email, &new.admin_password)?;
 
     let site = manager.create(site)?;
     info!("Site '{}' created", site.name);
@@ -183,10 +193,40 @@ fn ensure_host_free(manager: &SiteManager, site: &SiteConfig) -> Result<()> {
 /// a database that already exists is supported, so the login is looked up first
 /// and an existing one is reported instead of duplicated (a second row for the
 /// same email is not a second account, it is a broken install).
-fn provision_operator(site: &SiteConfig, admin_email: &str, admin_password: &str) -> Result<()> {
+/// The site's database with a relative SQLite file anchored at the bench root.
+///
+/// `site_config.json` keeps the name the operator wrote (a relative file moves
+/// with the bench). Opening it from an app directory must still hit the file
+/// `site new` created, so the path is resolved here, once, for every command
+/// that opens a site pool.
+pub(super) fn site_database(
+    manager: &SiteManager,
+    site: &SiteConfig,
+) -> ferris_core::DatabaseConfig {
+    let mut database = site.database.clone();
+    if database.r#type == ferris_core::DatabaseType::SQLite
+        && !database.name.is_empty()
+        && Path::new(&database.name).is_relative()
+    {
+        let bench_root = manager
+            .sites_root()
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
+        database.name = bench_root.join(&database.name).display().to_string();
+    }
+    database
+}
+
+fn provision_operator(
+    manager: &SiteManager,
+    site: &SiteConfig,
+    admin_email: &str,
+    admin_password: &str,
+) -> Result<()> {
+    let database = site_database(manager, site);
     let rt = crate::runtime::block_on_runtime(None)?;
     rt.block_on(async {
-        let pool = match ferris_db::create_pool(&site.database).await {
+        let pool = match ferris_db::create_pool(&database).await {
             Ok(pool) => pool,
             Err(error) => anyhow::bail!(
                 "cannot open the database `{}` of site `{}` (create it first): {error}",
@@ -269,6 +309,16 @@ fn site_info(manager: &SiteManager, name: &str) -> Result<()> {
     println!("files:      {}", site.files_path.display());
     println!("plugins:    {}", plugins.display());
     println!("apps:       {}", site.apps.join(", "));
+    let versions: Vec<String> = site
+        .apps
+        .iter()
+        .map(|app| {
+            site.app_versions
+                .get(app)
+                .map_or_else(|| format!("{app}=?"), |version| format!("{app}={version}"))
+        })
+        .collect();
+    println!("versions:   {}", versions.join(", "));
     let overrides: Vec<&str> = site.plugins.keys().map(String::as_str).collect();
     println!("overrides:  {}", overrides.join(", "));
     println!("created:    {}", site.created_at);
@@ -323,10 +373,18 @@ fn set_enabled(manager: &SiteManager, name: &str, enabled: bool) -> Result<()> {
 /// exported customization effective on a fresh database.
 fn migrate_site(manager: &SiteManager, name: &str, target: Option<u32>) -> Result<()> {
     let site = manager.get(name)?;
+    let materialized = manager.materialize_instance_components(name)?;
+    if materialized > 0 {
+        info!(
+            "Site '{}': materialized {} legacy symlinked component(s) into copies",
+            site.name, materialized
+        );
+    }
     let plugins = manager.plugins_root(&site.name)?;
+    let database = site_database(manager, &site);
     let rt = crate::runtime::block_on_runtime(None)?;
     rt.block_on(async {
-        let pool = ferris_db::create_pool(&site.database).await?;
+        let pool = ferris_db::create_pool(&database).await?;
 
         let mut runner = ferris_schema::MigrationRunner::for_db(&pool);
         runner.add_schema_migrations()?;
@@ -375,7 +433,21 @@ fn migrate_site(manager: &SiteManager, name: &str, target: Option<u32>) -> Resul
 }
 
 fn install_app(manager: &SiteManager, site: &str, app: &str, force: bool) -> Result<()> {
+    let catalogue = manager.app_manifest(app)?;
+    #[cfg(feature = "wasm")]
+    super::app::validate_component(&catalogue.wasm, &catalogue.name)?;
+    // The catalogue was validated when it was installed; this catches a file
+    // edited in place (or copied by hand) before it reaches the site's boot.
+    let package = manager.global_app_dir(app)?;
+    let tags = super::app_catalogues::validate(&package, None)?;
+    if !tags.is_empty() {
+        info!("App '{app}' translates itself into: {}", tags.join(", "));
+    }
     let manifest = manager.install_app(site, app, force)?;
+    let applied = docperm::apply(manager, site, app)?;
+    if applied > 0 {
+        info!("Applied {applied} permission row(s) from the app package");
+    }
     let instance = manager.instance_world(site, app)?;
     info!(
         "Installed {} {} in site '{}' at {}",
@@ -419,7 +491,7 @@ fn uninstall_app(manager: &SiteManager, site: &str, app: &str, purge: bool) -> R
 /// process is authoritative for `host_name` and must answer `421` to anything
 /// else.
 pub(in crate::commands) fn apply_site_by_name(config: &mut CliConfig, name: &str) -> Result<()> {
-    let manager = manager();
+    let manager = manager(config);
     if !manager.exists(name) {
         anyhow::bail!(
             "site `{name}` does not exist in {}; run `ferris site list`",
@@ -428,6 +500,18 @@ pub(in crate::commands) fn apply_site_by_name(config: &mut CliConfig, name: &str
     }
     let mut site = manager.get(name)?;
     usable(&site)?;
+    // Upgrade a pre-copy installation in place: the site keeps serving its
+    // pinned component instead of whatever the catalogue contains next.
+    let materialized = manager.materialize_instance_components(name)?;
+    if materialized > 0 {
+        info!(
+            "Site '{}': materialized {} legacy symlinked component(s) into copies",
+            site.name, materialized
+        );
+    }
+    // Anchor a relative SQLite file before it is copied into the CLI config,
+    // even when `FERRIS_SITES_DIR` points somewhere other than `<bench>/sites`.
+    site.database = site_database(&manager, &site);
     let plugins = manager.plugins_root(&site.name)?;
     // A `site_config.json` copied from Frappe carries no `files_path`. Empty
     // means "this site's private root", never "the process working directory".
@@ -469,10 +553,28 @@ pub(in crate::commands) fn apply_site(
     plugins_root: &Path,
 ) {
     apply_database(config, &site.database);
+    // `site new` created the SQLite file at the bench root. A command run from
+    // an app directory must open that same file, not a second one next to the
+    // app, so a relative name is anchored before any pool exists.
+    if config.database.r#type == "sqlite"
+        && !config.database.name.is_empty()
+        && Path::new(&config.database.name).is_relative()
+    {
+        config.database.name = config
+            .source
+            .bench_root
+            .join(&config.database.name)
+            .display()
+            .to_string();
+    }
     config.redis.url.clone_from(&site.redis_url);
     config.files.local_path = site.files_path.display().to_string();
     config.apps.enabled.clone_from(&site.apps);
     config.apps.wasm_dir = plugins_root.to_path_buf();
+    // The site is the deployment unit: its language policy wins over the
+    // bench default exactly like its database and files root.
+    config.i18n.default_locale.clone_from(&site.default_locale);
+    config.i18n.supported.clone_from(&site.supported_locales);
 }
 
 /// Map the core database config back onto the CLI's string-typed one.

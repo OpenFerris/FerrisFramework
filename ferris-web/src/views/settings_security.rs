@@ -14,10 +14,16 @@ use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::card::{Card, CardContent, CardDescription, CardHeader, CardTitle};
 use crate::components::ui::input::{Input, InputType};
 use crate::desk::session::{self as desk_session, MfaEnrollment};
+use crate::i18n::use_i18n;
 use crate::views::views_components::{Feedback, FeedbackKind, LoadingLines};
 
 #[component]
 pub fn SecuritySection() -> impl IntoView {
+    let i18n = use_i18n();
+    let t = move |key: &str| {
+        i18n.try_with_value(|i18n| i18n.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     let loading = RwSignal::new(true);
     let busy = RwSignal::new(false);
     let enabled = RwSignal::new(false);
@@ -72,7 +78,7 @@ pub fn SecuritySection() -> impl IntoView {
     let activate = move || {
         let value = code.get_untracked().trim().to_string();
         if value.is_empty() {
-            error.set(Some("Escribe el código de 6 dígitos.".to_string()));
+            error.set(Some(t("views.security.code_required")));
             return;
         }
         error.set(None);
@@ -85,7 +91,7 @@ pub fn SecuritySection() -> impl IntoView {
                     enrollment.set(None);
                     code.set(String::new());
                     enabled.set(true);
-                    notice.set(Some("Autenticación en dos pasos activada.".to_string()));
+                    notice.set(Some(t("views.security.activated")));
                 }
                 Err(message) => {
                     busy.set(false);
@@ -98,9 +104,7 @@ pub fn SecuritySection() -> impl IntoView {
     let disable = move || {
         let value = disable_code.get_untracked().trim().to_string();
         if value.is_empty() {
-            error.set(Some(
-                "Escribe un código de la app o uno de respaldo.".to_string(),
-            ));
+            error.set(Some(t("views.security.disable_code_required")));
             return;
         }
         error.set(None);
@@ -112,7 +116,7 @@ pub fn SecuritySection() -> impl IntoView {
                     busy.set(false);
                     enabled.set(false);
                     disable_code.set(String::new());
-                    notice.set(Some("Autenticación en dos pasos desactivada.".to_string()));
+                    notice.set(Some(t("views.security.deactivated")));
                 }
                 Err(message) => {
                     busy.set(false);
@@ -125,9 +129,9 @@ pub fn SecuritySection() -> impl IntoView {
     view! {
         <Card>
             <CardHeader>
-                <CardTitle>"Autenticación en dos pasos"</CardTitle>
+                <CardTitle>{t("views.security.title")}</CardTitle>
                 <CardDescription>
-                    "Protege tu cuenta con un código de tu aplicación de autenticación (TOTP)."
+                    {t("views.security.description")}
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -151,7 +155,7 @@ pub fn SecuritySection() -> impl IntoView {
                                         fallback=move || {
                                             view! {
                                                 <p class="text-sm text-muted-foreground">
-                                                    "Ahora mismo no está activada."
+                                                    {t("views.security.not_enabled")}
                                                 </p>
                                                 <div>
                                                     <Button
@@ -160,7 +164,7 @@ pub fn SecuritySection() -> impl IntoView {
                                                         attr:disabled=move || busy.get()
                                                         on:click=move |_| begin()
                                                     >
-                                                        "Activar"
+                                                        {t("views.security.enable")}
                                                     </Button>
                                                 </div>
                                             }
@@ -173,7 +177,7 @@ pub fn SecuritySection() -> impl IntoView {
                                                     view! {
                                                         <div class="flex flex-col gap-3 rounded-lg border bg-muted/40 p-3">
                                                             <p class="text-sm">
-                                                                "1. Añade esta cuenta a tu aplicación de autenticación:"
+                                                                {t("views.security.step_add")}
                                                             </p>
                                                             <code class="block overflow-x-auto rounded bg-background px-2 py-1 text-xs">
                                                                 {pending.secret.clone()}
@@ -182,7 +186,7 @@ pub fn SecuritySection() -> impl IntoView {
                                                                 {pending.otpauth_uri.clone()}
                                                             </code>
                                                             <p class="text-sm">
-                                                                "2. Guarda estos códigos de respaldo (no se vuelven a mostrar):"
+                                                                {t("views.security.step_codes")}
                                                             </p>
                                                             <ul class="grid grid-cols-2 gap-1 font-mono text-xs">
                                                                 {pending
@@ -193,7 +197,7 @@ pub fn SecuritySection() -> impl IntoView {
                                                                     })
                                                                     .collect_view()}
                                                             </ul>
-                                                            <p class="text-sm">"3. Escribe el código de 6 dígitos:"</p>
+                                                            <p class="text-sm">{t("views.security.step_code")}</p>
                                                             <div class="flex flex-wrap items-center gap-2">
                                                                 <Input
                                                                     id="mfa-activate-code"
@@ -208,25 +212,26 @@ pub fn SecuritySection() -> impl IntoView {
                                                                     attr:disabled=move || busy.get()
                                                                     on:click=move |_| activate()
                                                                 >
-                                                                    "Confirmar"
+                                                                    {t("views.common.confirm")}
                                                                 </Button>
                                                             </div>
                                                         </div>
                                                     }
                                                 })
-                                        }}
+                                            }
+                                        }
                                     </Show>
                                 }
                             }
                         >
                             <p class="text-sm text-muted-foreground">
-                                "Activada. Para desactivarla, escribe un código de tu aplicación o uno de respaldo."
+                                {t("views.security.enabled_hint")}
                             </p>
                             <div class="flex flex-wrap items-center gap-2">
                                 <Input
                                     id="mfa-disable-code"
                                     r#type=InputType::Text
-                                    placeholder="Código"
+                                    placeholder=t("views.security.code_placeholder")
                                     prop:value=move || disable_code.get()
                                     on_input=Callback::new(move |text: String| disable_code.set(text))
                                 />
@@ -236,7 +241,7 @@ pub fn SecuritySection() -> impl IntoView {
                                     attr:disabled=move || busy.get()
                                     on:click=move |_| disable()
                                 >
-                                    "Desactivar"
+                                    {t("views.security.disable")}
                                 </Button>
                             </div>
                         </Show>

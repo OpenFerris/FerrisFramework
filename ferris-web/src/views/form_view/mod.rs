@@ -39,6 +39,7 @@ use crate::ext::{
     DoctypeViewHost, SLOT_FORM_BEFORE_FIELDS, SLOT_FORM_SIDEBAR_BOTTOM, SLOT_FORM_SIDEBAR_TOP,
     UiCtx, UiExtension, UiSlot,
 };
+use crate::i18n::use_i18n;
 use crate::views::DashboardDocView;
 use crate::views::services::FormService;
 use crate::views::views_components::{Feedback, FeedbackKind};
@@ -114,6 +115,13 @@ pub fn FormView() -> impl IntoView {
 #[component]
 fn MetadataFormView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
+    let i18n_sv = i18n;
+    let tr = move |key: &str| {
+        i18n_sv
+            .try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     // Signals, not values: the router does not rebuild this component when only
     // the params change, so the service has to re-read them
     // to follow `/…/TASK00001` → `/…/TASK00002`.
@@ -308,11 +316,11 @@ fn MetadataFormView() -> impl IntoView {
                                     </span>
                                     <div class="flex min-w-0 flex-col gap-2">
                                         <h2 class="text-base font-semibold">
-                                            "No se pudo cargar el documento"
+                                            {i18n.t("views.form.load_error_title")}
                                         </h2>
                                         <ListErrorBanner error=failed_error.read_only() />
                                         <p class="text-sm text-muted-foreground">
-                                            "Vuelve a la lista y elige otro, o inténtalo de nuevo."
+                                            {i18n.t("views.form.load_error_body")}
                                         </p>
                                     </div>
                                 </div>
@@ -323,7 +331,7 @@ fn MetadataFormView() -> impl IntoView {
                                         on:click=move |_| failed_service.reload()
                                     >
                                         <Icon name="refresh-cw" class="size-4" />
-                                        "Reintentar"
+                                        {i18n.t("views.common.retry")}
                                     </Button>
                                 </div>
                             </div>
@@ -363,7 +371,7 @@ fn MetadataFormView() -> impl IntoView {
                     // any doctype, so a custom-view doctype must still reach the
                     // layout editor instead of the "nothing to open" refusal.
                     if view_kind == DocView::Custom && !svc_view.layout_mode.get() {
-                        return custom_view_missing().into_any();
+                        return custom_view_missing(&i18n).into_any();
                     }
 
                     let sidebar_visible = svc_view.sidebar_visible;
@@ -490,7 +498,7 @@ fn MetadataFormView() -> impl IntoView {
                                             >
                                                 <Icon name="layout-panel-left" class="mt-0.5 size-4 shrink-0" />
                                                 <p class="min-w-0">
-                                                    "Modo diseño. Haz clic en un campo para editar sus propiedades, arrástralo para moverlo o usa + para añadir uno."
+                                                    {tr("views.form.layout_hint")}
                                                 </p>
                                             </div>
                                         </Show>

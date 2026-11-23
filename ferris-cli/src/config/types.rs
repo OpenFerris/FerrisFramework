@@ -12,6 +12,7 @@ use super::auth::AuthConfig;
 use super::cli::CliSettings;
 use super::database::DatabaseConfig;
 use super::files::FilesConfig;
+use super::i18n::I18nConfig;
 use super::project::ProjectConfig;
 use super::redis::RedisConfig;
 use super::server::ServerConfig;
@@ -56,6 +57,9 @@ pub struct CliConfig {
     /// keyring the server does, and so an operator can see it redacted.
     #[serde(default)]
     pub secrets: ferris_core::SecretsConfig,
+    /// Locale policy (`[i18n]`): default locale and advertised set.
+    #[serde(default)]
+    pub i18n: I18nConfig,
     /// CLI-specific settings and feature unlocks.
     #[serde(default)]
     pub cli: CliSettings,
@@ -104,6 +108,7 @@ impl fmt::Debug for CliConfig {
             .field("features", &self.features)
             .field("apps", &self.apps)
             .field("secrets", &self.secrets)
+            .field("i18n", &self.i18n)
             .field("cli", &self.cli)
             .field("custom", &custom)
             .field("source", &self.source)
@@ -134,8 +139,11 @@ fn is_secret_key(key: &str) -> bool {
 pub struct ConfigSource {
     /// The file `ferris config` reads and writes.
     pub config_path: PathBuf,
-    /// The project root, for the commands that touch the filesystem.
+    /// Where the command was invoked (the app directory for `build`/`dev`).
     pub project_dir: PathBuf,
+    /// The bench root: the directory holding `config/ferris.toml`, `apps/` and
+    /// `sites/`, found by walking up from the invocation directory.
+    pub bench_root: PathBuf,
 }
 
 impl Default for ConfigSource {
@@ -143,6 +151,7 @@ impl Default for ConfigSource {
         let project_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
             config_path: project_dir.join("config").join("ferris.toml"),
+            bench_root: project_dir.clone(),
             project_dir,
         }
     }

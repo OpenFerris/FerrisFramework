@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use wit_parser::{Resolve, Type, TypeDefKind, TypeOwner, WorldItem, WorldKey};
 
 /// Package version every copy of the contract must declare.
-const PACKAGE: &str = "package ferris:framework@0.3.0;";
+const PACKAGE: &str = "package ferris:framework@0.4.0;";
 
 /// The interfaces the contract declares, in declaration order.
 const SERVICES: [&str; 6] = ["types", "data", "schema", "io", "platform", "descriptor"];
@@ -590,6 +590,7 @@ fn describe_is_typed() {
             ("assets", "option<list<string>>".to_string()),
             ("subscriptions", "option<list<subscription>>".to_string()),
             ("config", "option<list<config-item>>".to_string()),
+            ("locales", "option<list<string>>".to_string()),
             ("plugin-version", "option<string>".to_string()),
             ("requires", "option<list<string>>".to_string()),
         ],
@@ -1145,7 +1146,7 @@ fn stream_lifecycle_has_its_own_export() {
     );
 }
 
-/// 0.3.0 adds the host-executed datagram and process surfaces. The guest never
+/// 0.4.0 adds the app-declared locales (`descriptor.locales`); 0.3.0 added the host-executed datagram and process surfaces. The guest never
 /// holds a socket or a fork: it receives datagrams through `handle-datagram`,
 /// asks for a DNS zone by records and gets a program's captured output. `threads`
 /// is the one new capability with no WIT call — the guest uses its own runtime

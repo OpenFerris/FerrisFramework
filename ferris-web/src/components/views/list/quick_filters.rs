@@ -16,6 +16,7 @@ use super::filter_ops::{FilterValueEditor, OperatorPicker, operators_for};
 use crate::api::meta::Column;
 use crate::api::types::{Filter, FilterOp};
 use crate::components::ui::button_group::{ButtonGroup, ButtonGroupText};
+use crate::i18n::use_i18n;
 
 /// Build the wire filter for one row. `None` means "this row is empty, drop
 /// it", which is what keeps a cleared box from sending `field equals ""`.
@@ -137,7 +138,8 @@ fn QuickFilterRow(
         })
     };
 
-    let placeholder = format!("Valor de {label}");
+    let i18n = use_i18n();
+    let placeholder = i18n.t_with("components.list.filter.value_of", &[("field", &label)]);
     let aria_label = placeholder.clone();
     let picker_fieldtype = fieldtype.clone();
 

@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use ferris_core::{DocumentError, Error, Result, ValidationError};
+use ferris_core::i18n::Locale;
+use ferris_core::{DocumentError, Error, I18n, Result, ValidationError};
 
 /// A blog post (Frappe `Blog Post`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -131,9 +132,13 @@ fn normalize_slug(slug: &str) -> Result<String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(Error::Validation(ValidationError::Invalid(format!(
-            "Invalid slug: {slug}"
-        ))));
+        let i18n = I18n::default();
+        let message = i18n.translate_with(
+            &Locale::default(),
+            "components.website.blog.invalid_slug",
+            &[("slug", &slug)],
+        );
+        return Err(Error::Validation(ValidationError::Invalid(message)));
     }
     Ok(slug)
 }

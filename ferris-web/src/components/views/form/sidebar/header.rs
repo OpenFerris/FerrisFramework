@@ -7,6 +7,7 @@ use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
 use crate::components::views::time;
 use crate::components::views::user_identity::UserName;
+use crate::i18n::{t, use_i18n};
 
 /// The card at the top: the document itself — picture (or initials), title and
 /// subtitle — with the document actions on the right.
@@ -25,6 +26,7 @@ pub(super) fn SidebarHeader(
     on_like: Callback<()>,
     on_print: Callback<()>,
 ) -> impl IntoView {
+    let like_i18n = use_i18n();
     let initials = move || users::initials(&title.get());
     let has_image = Signal::derive(move || !image.get().trim().is_empty());
     let has_subtitle = Signal::derive(move || !subtitle.get().trim().is_empty());
@@ -53,8 +55,8 @@ pub(super) fn SidebarHeader(
                     <Button
                         variant=ButtonVariant::Ghost
                         size=ButtonSize::IconSm
-                        attr:aria-label="Imprimir"
-                        attr:title="Imprimir"
+                        attr:aria-label=t("components.form.sidebar.print")
+                        attr:title=t("components.form.sidebar.print")
                         attr:disabled=move || is_new.get()
                         on:click=move |_| on_print.run(())
                     >
@@ -63,8 +65,14 @@ pub(super) fn SidebarHeader(
                     <Button
                         variant=ButtonVariant::Ghost
                         size=ButtonSize::IconSm
-                        attr:aria-label="Me gusta"
-                        attr:title=move || format!("Me gusta ({})", like_count.get())
+                        attr:aria-label=t("components.form.sidebar.like")
+                        attr:title=move || {
+                            let count = like_count.get().to_string();
+                            like_i18n.t_with(
+                                "components.form.sidebar.like_with_count",
+                                &[("count", &count)],
+                            )
+                        }
                         attr:aria-pressed=move || liked.get().to_string()
                         attr:disabled=move || is_new.get()
                         on:click=move |_| on_like.run(())
@@ -103,11 +111,12 @@ pub(super) fn SidebarHeader(
 #[component]
 fn ProvenanceLine(
     icon: &'static str,
-    label: &'static str,
+    label: String,
     who: Signal<String>,
     at: Signal<String>,
 ) -> impl IntoView {
-    let relative = Signal::derive(move || time::relative(&at.get()));
+    let i18n = use_i18n();
+    let relative = Signal::derive(move || time::relative(&at.get(), &i18n));
     let exact = Signal::derive(move || time::exact(&at.get()));
     let has_who = Signal::derive(move || !who.get().trim().is_empty());
     view! {
@@ -137,9 +146,19 @@ pub(super) fn SidebarProvenance(
     modified: Signal<String>,
 ) -> impl IntoView {
     view! {
-        <section class="flex flex-col gap-3" aria-label="Procedencia">
-            <ProvenanceLine icon="pencil" label="Última edición por" who=edited_by at=modified />
-            <ProvenanceLine icon="user-round" label="Creado por" who=owner at=creation />
+        <section class="flex flex-col gap-3" aria-label=t("components.form.sidebar.provenance")>
+            <ProvenanceLine
+                icon="pencil"
+                label=t("components.form.sidebar.last_edited_by")
+                who=edited_by
+                at=modified
+            />
+            <ProvenanceLine
+                icon="user-round"
+                label=t("components.form.sidebar.created_by")
+                who=owner
+                at=creation
+            />
         </section>
     }
 }

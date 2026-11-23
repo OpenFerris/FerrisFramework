@@ -25,7 +25,7 @@ pub(super) fn render_lib_rs(name: &str) -> String {
 //! framework through the `wit/ferris.wit` imports. The app never touches the
 //! database directly.
 //!
-//! The contract is `ferris:framework@0.3.0`: six interfaces (`types`, `data`,
+//! The contract is `ferris:framework@0.4.0`: six interfaces (`types`, `data`,
 //! `schema`, `io`, `platform`, `descriptor`) and an explicit capability
 //! declaration in `describe()`. The primordial capabilities (the app's world,
 //! its routes, outbound HTTP, the document store, config, schema, the
@@ -82,17 +82,17 @@ impl Guest for MyComponent {{
                 types::Capability::Notifications,
                 types::Capability::Pubsub,
             ],
-            // The mounted surface. `path` is a **prefix** matched segment-wise
-            // under `/plugins/{{name}}`; the longest match wins and `"/"` claims
-            // the whole namespace. The host interprets no placeholders: it
-            // dispatches with the matched `route-id` and the guest parses
-            // `http-request.path`. An app that declares no route never sees
-            // `handle-request`.
+            // The mounted surface. `path` is a **prefix** matched at the router
+            // root; the longest match wins. `/` is refused (it would shadow the
+            // whole framework), so the scaffold owns `/apps/{name}` — unique
+            // per app and outside the Desk's routes. The host interprets no
+            // placeholders: it dispatches with the matched `route-id` and the
+            // guest parses `http-request.path`.
             routes: vec![
                 descriptor::Route {{
                     id: "app".to_string(),
                     method: "*".to_string(),
-                    path: "/".to_string(),
+                    path: "/apps/{name}".to_string(),
                     kind: descriptor::RouteKind::Http,
                     auth: None,
                     body_limit: None,
@@ -166,8 +166,30 @@ impl Guest for MyComponent {{
                 list_default_order: None,
             }}],
             themes: Vec::new(),
-            folders: Vec::new(),
-            workspaces: Vec::new(),
+            // A folder + workspace is what makes the app visible in the Desk;
+            // a DocType alone is reachable by URL but has no sidebar entry.
+            folders: vec![descriptor::Folder {{
+                name: "apps".to_string(),
+                label: "Apps".to_string(),
+                icon: Some("package".to_string()),
+            }}],
+            workspaces: vec![descriptor::Workspace {{
+                name: "{name}".to_string(),
+                label: "{name}".to_string(),
+                module: "{name}".to_string(),
+                icon: Some("package".to_string()),
+                folder: Some("apps".to_string()),
+                items: vec![descriptor::WorkspaceItem {{
+                    id: 1,
+                    parent: None,
+                    label: "Task".to_string(),
+                    icon: Some("check".to_string()),
+                    doctype: Some("Task".to_string()),
+                    route: None,
+                    href: None,
+                    open_in_new_tab: false,
+                }}],
+            }}],
             methods: Vec::new(),
             ui_extensions: None,
             dashboards: None,
@@ -184,7 +206,7 @@ impl Guest for MyComponent {{
                 channel: "app:announcements".to_string(),
             }}]),
             config: None,
-            plugin_version: None,
+            plugin_version: Some("0.1.0".to_string()),
             requires: None,
         }})
     }}

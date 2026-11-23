@@ -337,7 +337,10 @@ pub fn build_router(
             .with_features(settings.config.features.clone())
             // Native modules contribute their documented paths from the same
             // registry the router is built from.
-            .with_openapi_fragments(modules.openapi_fragments()),
+            .with_openapi_fragments(modules.openapi_fragments())
+            // Metadata endpoints project registry labels; they translate
+            // against the same catalogue set the Desk shell negotiates.
+            .with_i18n(settings.i18n.clone()),
         auth: auth_state.clone(),
         session: session_handlers.clone(),
         oauth: oauth_state,
@@ -346,6 +349,7 @@ pub fn build_router(
         api_log_base_origin,
         #[cfg(feature = "wasm")]
         plugins: settings.plugins.clone(),
+        i18n: settings.i18n.clone(),
     };
 
     // While wiring handlers we keep `Router<AppState>`; at the end we resolve
@@ -375,6 +379,12 @@ pub fn build_router(
     // layer — a cross-site form must not be able to log a user out. Login,
     // session and the MFA challenge-step complete it deliberately stay open:
     // there is no session yet to hold a token.
+    // Public locale negotiation: the login page needs the catalogue before a
+    // session exists, and the payload is the static catalog the binary embeds.
+    router = router
+        .route("/api/i18n", get(super::i18n::available))
+        .route("/api/i18n/{locale}", get(super::i18n::catalog));
+
     router = router.merge(
         Router::new()
             .route("/api/auth/login", axum::routing::post(ferris_api::login))
@@ -389,6 +399,12 @@ pub fn build_router(
                     .route(
                         "/api/auth/logout-all",
                         axum::routing::post(ferris_api::logout_all),
+                    )
+                    // The account's locale is a self-service mutation: it is
+                    // behind the same CSRF gate as logout.
+                    .route(
+                        "/api/auth/language",
+                        axum::routing::put(ferris_api::set_language),
                     )
                     .route_layer(from_fn_with_state(auth_state.clone(), require_csrf)),
             ),
@@ -558,7 +574,8 @@ pub fn build_router(
                 route_list,
                 {
                     let pool = app_state.api.pool.clone();
-                    move || provide_desk_context(pool.clone())
+                    let i18n = app_state.i18n.clone();
+                    move || provide_desk_context(pool.clone(), &i18n)
                 },
                 || view! { <ferris_web::DeskShell /> },
             )
@@ -585,11 +602,12 @@ pub fn build_router(
         // paths nothing else claimed.
         if let Some(catch_all) = catch_all {
             let pool = app_state.api.pool.clone();
+            let i18n = app_state.i18n.clone();
             let dynamic_pages: Router<AppState> = Router::new()
                 .leptos_routes_with_context(
                     &app_state,
                     vec![catch_all],
-                    move || provide_desk_context(pool.clone()),
+                    move || provide_desk_context(pool.clone(), &i18n),
                     || view! { <ferris_web::DeskShell /> },
                 )
                 // A published `Web Form` also answers POST. The GET splat is

@@ -149,6 +149,10 @@ pub struct DescriptorJson {
     pub subscriptions: Option<Vec<SubscriptionJson>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config: Option<Vec<ConfigJson>>,
+    /// Locales the app declares (`descriptor.locales`); the catalogues travel
+    /// in the package under `locales/<tag>.toml`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locales: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -207,6 +211,7 @@ impl From<&Descriptor> for DescriptorJson {
                 .config
                 .as_ref()
                 .map(|items| items.iter().map(ConfigJson::from).collect()),
+            locales: described.locales.clone(),
             plugin_version: described.plugin_version.clone(),
             requires: described.requires.clone(),
         }

@@ -37,6 +37,7 @@ use crate::components::hooks::use_click_outside::use_click_outside;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::input::{Input, InputType};
 use crate::components::ui::spinner::Spinner;
+use crate::i18n::{t, use_i18n};
 
 /// One document offered by the listbox.
 #[derive(Clone, PartialEq, Eq)]
@@ -109,6 +110,9 @@ pub fn DocPicker(
     #[prop(optional, into)]
     on_select: Option<Callback<Vec<String>>>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let chip_i18n = i18n;
+    let empty_i18n = i18n;
     let has_target = !target.is_empty();
     let multiple = mode == PickerMode::Multiple;
     let input_id = id.clone();
@@ -397,9 +401,9 @@ pub fn DocPicker(
         .filter(|text| !text.trim().is_empty())
         .unwrap_or_else(|| {
             if has_target {
-                format!("Buscar en {target}…")
+                i18n.t_with("components.doc_picker.search_in", &[("doctype", &target)])
             } else {
-                "Escribir…".to_string()
+                i18n.t("components.doc_picker.type")
             }
         });
 
@@ -426,7 +430,10 @@ pub fn DocPicker(
                                         <button
                                             type="button"
                                             class="shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:-me-1.5 max-md:flex max-md:size-7 max-md:items-center max-md:justify-center"
-                                            aria-label=format!("Quitar {}", name)
+                                            aria-label=chip_i18n.t_with(
+                                                "components.doc_picker.remove",
+                                                &[("name", &name)],
+                                            )
                                             on:click={
                                                 let name = name.clone();
                                                 move |_| remove.run(name.clone())
@@ -476,7 +483,7 @@ pub fn DocPicker(
                                 variant=ButtonVariant::Ghost
                                 size=ButtonSize::IconXs
                                 class="pointer-events-auto text-muted-foreground"
-                                attr:aria-label="Limpiar"
+                                attr:aria-label=t("components.doc_picker.clear")
                                 on:click=move |_| {
                                     values.set(Vec::new());
                                     query.set(String::new());
@@ -502,9 +509,9 @@ pub fn DocPicker(
                     <Show when=move || rows.get().is_empty() && !loading.get()>
                         <p class="px-3 py-2 text-sm text-muted-foreground">
                             {if allow_free_text {
-                                "Sin resultados. Pulsa Enter para añadirlo."
+                                empty_i18n.t("components.doc_picker.empty_free_text")
                             } else {
-                                "Sin resultados"
+                                empty_i18n.t("components.doc_picker.empty")
                             }}
                         </p>
                     </Show>

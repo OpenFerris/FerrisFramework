@@ -21,6 +21,7 @@ use crate::components::ui::icon::Icon;
 use crate::components::ui::input::{Input, InputType};
 use crate::components::ui::skeleton::Skeleton;
 use crate::components::ui::spinner::Spinner;
+use crate::i18n::{t, use_i18n};
 
 /// Dialog bound to `open`; `on_pick` receives the chosen file.
 #[component]
@@ -33,6 +34,9 @@ pub fn FilePicker(
     #[prop(optional, into)]
     accept: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    #[cfg(target_arch = "wasm32")]
+    let read_error = i18n.t("components.file_picker.read_error");
     let items = RwSignal::new(Vec::<FileItem>::new());
     let query = RwSignal::new(String::new());
     let loading = RwSignal::new(false);
@@ -116,9 +120,10 @@ pub fn FilePicker(
             uploading.set(true);
             error.set(None);
             let input_for_reset = input.clone();
+            let read_error = read_error.clone();
             spawn_local(async move {
                 let Ok(buffer) = JsFuture::from(file.array_buffer()).await else {
-                    error.set(Some("No se pudo leer el archivo.".to_string()));
+                    error.set(Some(read_error.clone()));
                     uploading.set(false);
                     return;
                 };
@@ -150,9 +155,9 @@ pub fn FilePicker(
                 close_on_backdrop_click=true
             >
                 <DialogHeader>
-                    <DialogTitle>"Elegir archivo"</DialogTitle>
+                    <DialogTitle>{t("components.file_picker.title")}</DialogTitle>
                     <DialogDescription>
-                        "Selecciona uno ya subido o sube uno nuevo."
+                        {t("components.file_picker.description")}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -161,7 +166,7 @@ pub fn FilePicker(
                         <Input
                             id="file-picker-search"
                             r#type=InputType::Search
-                            placeholder="Buscar archivo…"
+                            placeholder=t("components.file_picker.search")
                             prop:value=move || query.get()
                             on_input=Callback::new(move |text: String| query.set(text))
                         />
@@ -179,7 +184,7 @@ pub fn FilePicker(
                                 view! { <Icon name="upload" class="size-4" /> }.into_any()
                             }
                         }}
-                        "Subir archivo"
+                        {t("components.file_picker.upload")}
                     </Button>
                     <input
                         type="file"
@@ -217,7 +222,7 @@ pub fn FilePicker(
                         if rows.is_empty() {
                             return view! {
                                 <p class="py-4 text-center text-sm text-muted-foreground">
-                                    "No hay archivos. Sube el primero."
+                                    {t("components.file_picker.empty")}
                                 </p>
                             }
                             .into_any();
@@ -227,7 +232,7 @@ pub fn FilePicker(
                                 let href = files::url_of(&item);
                                 let image = item.content_type.starts_with("image/");
                                 let name = if item.name.is_empty() {
-                                    "archivo".to_string()
+                                    i18n.t("components.file_picker.unnamed")
                                 } else {
                                     item.name.clone()
                                 };

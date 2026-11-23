@@ -22,6 +22,18 @@ use crate::api::{DynMeta, ViewSpec, can_create, view_modes};
 use crate::components::desk::top_bar::{ButtonSpec, TopBarAction, use_top_bar_actions};
 use crate::components::ui::button::ButtonVariant;
 use crate::desk::session::path_segment;
+use crate::i18n::use_i18n;
+
+fn unresolved_pairs(meta: &DynMeta, configured: &[(&str, Option<&str>)]) -> Vec<(String, String)> {
+    configured
+        .iter()
+        .filter_map(|(label, field)| {
+            let field = (*field).filter(|field| !field.is_empty())?;
+            (!meta.fields.iter().any(|found| found.fieldname == field))
+                .then(|| ((*label).to_string(), field.to_string()))
+        })
+        .collect()
+}
 
 /// The configured field names a view cannot resolve against the effective
 /// metadata.
@@ -33,12 +45,26 @@ use crate::desk::session::path_segment;
 /// see a board grouped by something they never chose.
 #[must_use]
 pub fn unresolved_fields(meta: &DynMeta, configured: &[(&str, Option<&str>)]) -> Vec<String> {
-    configured
-        .iter()
-        .filter_map(|(label, field)| {
-            let field = (*field).filter(|field| !field.is_empty())?;
-            (!meta.fields.iter().any(|found| found.fieldname == field))
-                .then(|| format!("{label}: el campo «{field}» no existe en este DocType."))
+    unresolved_pairs(meta, configured)
+        .into_iter()
+        .map(|(label, field)| format!("{label}: el campo «{field}» no existe en este DocType."))
+        .collect()
+}
+
+/// [`unresolved_fields`] with the label and the sentence translated.
+#[must_use]
+pub fn unresolved_fields_i18n(
+    meta: &DynMeta,
+    configured: &[(&str, Option<&str>)],
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<String> {
+    unresolved_pairs(meta, configured)
+        .into_iter()
+        .map(|(label, field)| {
+            i18n.t_with(
+                "views.common.unresolved_field",
+                &[("label", &i18n.t(&label)), ("field", &field)],
+            )
         })
         .collect()
 }
@@ -51,6 +77,20 @@ pub fn stale_settings_message(unresolved: &[String]) -> Option<String> {
         format!(
             "La configuración de esta vista apunta a campos que ya no existen. {}",
             unresolved.join(" ")
+        )
+    })
+}
+
+/// [`stale_settings_message`] with the sentence translated.
+#[must_use]
+pub fn stale_settings_message_i18n(
+    unresolved: &[String],
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Option<String> {
+    (!unresolved.is_empty()).then(|| {
+        i18n.t_with(
+            "views.common.stale_settings",
+            &[("details", &unresolved.join(" "))],
         )
     })
 }
@@ -77,6 +117,7 @@ pub fn use_collection_actions(
         });
     let top_actions = use_top_bar_actions();
     let user = use_context::<RwSignal<WebUser>>();
+    let i18n = use_i18n();
 
     Effect::new(move |_| {
         let Some(current) = meta.get() else {
@@ -100,7 +141,7 @@ pub fn use_collection_actions(
         }
         out.push(TopBarAction::Button(ButtonSpec {
             label: String::new(),
-            aria_label: Some("Recargar".to_string()),
+            aria_label: Some(i18n.t("views.common.reload")),
             icon: Some("RefreshCw"),
             variant: ButtonVariant::Outline,
             disabled: false,
@@ -117,8 +158,8 @@ pub fn use_collection_actions(
                 path_segment(&doctype)
             );
             out.push(TopBarAction::Button(ButtonSpec {
-                label: "Nuevo".to_string(),
-                aria_label: Some("Crear documento".to_string()),
+                label: i18n.t("views.common.new"),
+                aria_label: Some(i18n.t("views.common.create_document")),
                 icon: Some("Plus"),
                 variant: ButtonVariant::Default,
                 disabled: false,

@@ -9,6 +9,7 @@ use super::auth::AuthConfig;
 use super::cli::CliSettings;
 use super::database::DatabaseConfig;
 use super::files::FilesConfig;
+use super::i18n::I18nConfig;
 use super::project::ProjectConfig;
 use super::redis::RedisConfig;
 use super::server::{ServerConfig, default_body_limit_mb};
@@ -77,6 +78,7 @@ impl Default for CliConfig {
             features: FeatureFlags::default(),
             apps: ferris_core::AppsConfig::default(),
             secrets: ferris_core::SecretsConfig::default(),
+            i18n: I18nConfig::default(),
             cli: CliSettings::default(),
             custom: HashMap::new(),
             source: ConfigSource::default(),

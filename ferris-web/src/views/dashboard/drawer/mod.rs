@@ -27,12 +27,13 @@ use ferris_schema::contract::WidgetDef;
 
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::ext::UiCtx;
+use crate::i18n::use_i18n;
 
 use super::model;
 use cards::{card_title, preview_any, widget_card};
 
-/// The title of the "every widget" card and of its level-two shelf.
-const ALL: &str = "Todos los widgets";
+/// The catalogue key of the "every widget" card and of its level-two shelf.
+const ALL: &str = "views.dashboard.all_widgets";
 
 /// Where the browser is: the root shelf, one category's shelf, or every
 /// widget flat. Reset to `Root` on every close, so the next open starts
@@ -53,6 +54,7 @@ pub(super) fn WidgetPalette(
     on_add: Callback<(String, WidgetDef)>,
 ) -> impl IntoView {
     let apps = expect_context::<UiCtx>().apps;
+    let i18n = use_i18n();
     let groups = Signal::derive(move || model::catalog_by_category(&apps.get()));
     let browse: RwSignal<Browse> = RwSignal::new(Browse::Root);
     // One close path for the backdrop, the X and a finished add: closing also
@@ -79,18 +81,19 @@ pub(super) fn WidgetPalette(
             let current = browse.get();
             let at_root = matches!(&current, Browse::Root);
             let heading = match &current {
-                Browse::Root => "Añadir widget".to_string(),
+                Browse::Root => i18n.t("views.dashboard.add_widget"),
+                Browse::Category(category) if category == model::UNGROUPED => i18n.t(category),
                 Browse::Category(category) => category.clone(),
-                Browse::All => ALL.to_string(),
+                Browse::All => i18n.t(ALL),
             };
             let body = match current {
                 Browse::Root if groups.is_empty() => view! {
                     <p class="text-xs text-muted-foreground">
-                        "El catálogo está vacío: ninguna app ha publicado widgets."
+                        {i18n.t("views.dashboard.catalog_empty")}
                     </p>
                 }
                 .into_any(),
-                Browse::Root => root_shelf(&groups, browse).into_any(),
+                Browse::Root => root_shelf(&groups, browse, &i18n).into_any(),
                 Browse::Category(category) => {
                     let entries = groups
                         .iter()
@@ -102,12 +105,12 @@ pub(super) fn WidgetPalette(
                         // category disappeared with it.
                         view! {
                             <p class="text-xs text-muted-foreground">
-                                "Esta categoría ya no tiene widgets publicados."
+                                {i18n.t("views.dashboard.category_empty")}
                             </p>
                         }
                         .into_any()
                     } else {
-                        widget_shelf(entries.to_vec(), add_and_close).into_any()
+                        widget_shelf(entries.to_vec(), add_and_close, &i18n).into_any()
                     }
                 }
                 Browse::All => {
@@ -115,7 +118,7 @@ pub(super) fn WidgetPalette(
                         .iter()
                         .flat_map(|(_, entries)| entries.iter().cloned())
                         .collect();
-                    widget_shelf(entries, add_and_close).into_any()
+                    widget_shelf(entries, add_and_close, &i18n).into_any()
                 }
             };
             view! {
@@ -124,12 +127,12 @@ pub(super) fn WidgetPalette(
                         type="button"
                         class="absolute inset-0 bg-foreground/40 animate-in fade-in duration-200 motion-reduce:animate-none"
                         on:click=close
-                        aria-label="Cerrar la paleta"
+                        aria-label=i18n.t("views.dashboard.close_palette")
                     ></button>
                     <aside
                         role="dialog"
                         aria-modal="true"
-                        aria-label="Añadir widget"
+                        aria-label=i18n.t("views.dashboard.add_widget")
                         class="absolute inset-y-0 right-0 flex w-96 max-w-[92vw] flex-col border-l border-border bg-card text-card-foreground shadow-lg animate-in fade-in slide-in-from-right-4 duration-200 motion-reduce:animate-none"
                     >
                         <header class="flex items-center gap-2 border-b border-border px-4 py-3">
@@ -138,8 +141,8 @@ pub(super) fn WidgetPalette(
                                     variant=ButtonVariant::Ghost
                                     size=ButtonSize::IconSm
                                     on:click=move |_| browse.set(Browse::Root)
-                                    attr:aria-label="Volver a categorías"
-                                    attr:title="Volver"
+                                    attr:aria-label=i18n.t("views.dashboard.back_categories")
+                                    attr:title=i18n.t("views.dashboard.back")
                                 >
                                     <icons::ArrowLeft class="size-4" />
                                 </Button>
@@ -149,7 +152,7 @@ pub(super) fn WidgetPalette(
                                 variant=ButtonVariant::Ghost
                                 size=ButtonSize::IconSm
                                 on:click=close
-                                attr:aria-label="Cerrar la paleta"
+                                attr:aria-label=i18n.t("views.dashboard.close_palette")
                             >
                                 <icons::X class="size-4" />
                             </Button>
@@ -168,6 +171,7 @@ pub(super) fn WidgetPalette(
 fn root_shelf(
     groups: &[(String, Vec<(String, WidgetDef)>)],
     browse: RwSignal<Browse>,
+    i18n: &(impl crate::i18n::Translate + Sync),
 ) -> impl IntoView {
     let total: usize = groups.iter().map(|(_, entries)| entries.len()).sum();
     let first_four: Vec<(String, WidgetDef)> = groups
@@ -178,23 +182,30 @@ fn root_shelf(
     view! {
         <ul class="flex flex-col gap-3">
             {shelf_card(
-                ALL.to_string(),
+                i18n.t(ALL),
                 total,
                 first_four,
                 browse,
                 Browse::All,
+                i18n,
             )}
             {groups
                 .iter()
                 .map(|(name, entries)| {
                     let mosaic: Vec<(String, WidgetDef)> =
                         entries.iter().take(4).cloned().collect();
+                    let display = if name == model::UNGROUPED {
+                        i18n.t(name)
+                    } else {
+                        name.clone()
+                    };
                     shelf_card(
-                        name.clone(),
+                        display,
                         entries.len(),
                         mosaic,
                         browse,
                         Browse::Category(name.clone()),
+                        i18n,
                     )
                 })
                 .collect_view()}
@@ -210,10 +221,11 @@ fn shelf_card(
     defs: Vec<(String, WidgetDef)>,
     browse: RwSignal<Browse>,
     target: Browse,
+    i18n: &(impl crate::i18n::Translate + Sync),
 ) -> impl IntoView {
     let previews: Vec<_> = defs
         .iter()
-        .map(|(owner, def)| preview_any(&card_title(owner, def), def))
+        .map(|(owner, def)| preview_any(&card_title(owner, def), def, i18n))
         .collect();
     // Two literal classes, never a runtime-built one (Tailwind purge): a
     // single widget takes the full row instead of half of an empty grid.
@@ -232,7 +244,7 @@ fn shelf_card(
             >
                 <span class="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
                     <span class="min-w-0 truncate text-sm font-medium">{title}</span>
-                    <span class="shrink-0 text-xs text-muted-foreground">{format!("{count} widgets")}</span>
+                    <span class="shrink-0 text-xs text-muted-foreground">{i18n.t_with("views.dashboard.widget_count", &[("count", &count.to_string())])}</span>
                 </span>
                 <span class=grid_class>{previews.into_iter().collect_view()}</span>
             </button>
@@ -244,12 +256,13 @@ fn shelf_card(
 fn widget_shelf(
     entries: Vec<(String, WidgetDef)>,
     on_add: Callback<(String, WidgetDef)>,
+    i18n: &(impl crate::i18n::Translate + Sync),
 ) -> impl IntoView {
     view! {
         <ul class="grid grid-cols-2 gap-3">
             {entries
                 .into_iter()
-                .map(|(owner, def)| widget_card(owner, def, on_add))
+                .map(|(owner, def)| widget_card(owner, def, on_add, i18n))
                 .collect_view()}
         </ul>
     }

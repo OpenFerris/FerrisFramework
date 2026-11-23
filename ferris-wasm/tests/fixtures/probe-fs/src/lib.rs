@@ -26,6 +26,7 @@ fn text(body: String) -> Response {
 impl Guest for Probe {
     fn describe() -> Result<ferris::framework::descriptor::Descriptor, Error> {
         Ok(ferris::framework::descriptor::Descriptor {
+            locales: None,
             capabilities: vec![
                 ferris::framework::types::Capability::Routes,
                 ferris::framework::types::Capability::Filesystem,

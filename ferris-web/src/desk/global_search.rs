@@ -14,8 +14,10 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::api::drive;
+use crate::app::{doctype_display, module_display};
 use crate::components::ui::icon::Icon;
 use crate::desk::session::{self as desk_session, DeskSearchHit};
+use crate::i18n::{DeskI18n, use_i18n};
 use icons::Search;
 
 const RECENT_KEY: &str = "ferris.search.recents";
@@ -45,6 +47,10 @@ struct Item {
 /// Palette overlay bound to shared signals from the Desk shell.
 #[component]
 pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoView {
+    // `StoredValue` keeps the translator `Copy`, so it can be captured by the
+    // effect and by every closure in the palette.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
     let results = RwSignal::new(Vec::<DeskSearchHit>::new());
     let recents = RwSignal::new(Vec::<SavedEntry>::new());
     let favorites = RwSignal::new(Vec::<SavedEntry>::new());
@@ -96,8 +102,7 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                     }
                     match found {
                         Ok(hits) => results.set(hits),
-                        Err(_) => search_error
-                            .set(Some("La búsqueda no está disponible ahora.".to_string())),
+                        Err(_) => search_error.set(Some(tr("desk.search.unavailable"))),
                     }
                     set_loading.set(false);
                 });
@@ -148,7 +153,7 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                     route: entry.route.clone(),
                     subtitle: subtitle_of(entry),
                     favorite: true,
-                    group: "Favoritos",
+                    group: "desk.search.group.favorites",
                     saved: entry.clone(),
                 });
             }
@@ -158,7 +163,7 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                     route: entry.route.clone(),
                     subtitle: subtitle_of(&entry),
                     favorite: favs.iter().any(|f| f.route == entry.route),
-                    group: "Recientes",
+                    group: "desk.search.group.recents",
                     saved: entry,
                 });
             }
@@ -173,9 +178,13 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
             out.push(Item {
                 label: label.clone(),
                 route: hit.route.clone(),
-                subtitle: format!("{} · {}", hit.module, hit.doctype),
+                subtitle: format!(
+                    "{} · {}",
+                    module_display(&hit.module),
+                    doctype_display(&hit.doctype)
+                ),
                 favorite: favs.iter().any(|f| f.route == hit.route),
-                group: "Resultados",
+                group: "desk.search.group.results",
                 saved: SavedEntry {
                     label,
                     route: hit.route,
@@ -238,7 +247,7 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                     <div
                         role="dialog"
                         aria-modal="true"
-                        aria-label="Búsqueda global"
+                        aria-label=tr("desk.search.dialog")
                         class="relative flex max-h-[85dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
                         on:click=move |ev| ev.stop_propagation()
                     >
@@ -247,8 +256,8 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                             <input
                                 node_ref=input_ref
                                 type="text"
-                                placeholder="Buscar documentos, informes…"
-                                aria-label="Buscar documentos, informes y registros"
+                                placeholder=tr("desk.search.placeholder")
+                                aria-label=tr("desk.search.input_label")
                                 aria-controls="global-search-results"
                                 class="min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground md:text-sm"
                                 value=query
@@ -292,14 +301,14 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                         <div
                             id="global-search-results"
                             role="region"
-                            aria-label="Resultados de búsqueda"
+                            aria-label=tr("desk.search.results")
                             class="min-h-0 flex-1 overflow-y-auto overscroll-contain"
                         >
                             {move || {
                                 if loading.get() && !query.get().trim().is_empty() {
                                     return view! {
                                         <p class="px-4 py-6 text-sm text-muted-foreground">
-                                            "Buscando…"
+                                            {tr("desk.search.searching")}
                                         </p>
                                     }
                                     .into_any();
@@ -322,7 +331,7 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                                     } else {
                                         view! {
                                             <p class="px-4 py-6 text-sm text-muted-foreground">
-                                                "Sin resultados."
+                                                {tr("desk.search.no_results")}
                                             </p>
                                         }
                                         .into_any()
@@ -350,7 +359,7 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                                         view! {
                                             {heading.map(|group| view! {
                                                 <p class="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">
-                                                    {group}
+                                                    {tr(group)}
                                                 </p>
                                             })}
                                             <div
@@ -378,9 +387,9 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                                                     class="shrink-0 px-3 text-muted-foreground transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                                                     aria-pressed=fav.to_string()
                                                     aria-label=if fav {
-                                                        "Quitar de favoritos"
+                                                        tr("desk.search.favorite_remove")
                                                     } else {
-                                                        "Añadir a favoritos"
+                                                        tr("desk.search.favorite_add")
                                                     }
                                                     on:click=move |_| {
                                                         favorites.set(toggle_list(
@@ -408,8 +417,8 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
                         </div>
 
                         <div class="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2 text-xs text-muted-foreground">
-                            <span>"↑↓ mover · Enter abrir · Esc cerrar"</span>
-                            <span class="ml-auto hidden sm:inline">"Ctrl+K abre y cierra"</span>
+                            <span>{tr("desk.search.hint_nav")}</span>
+                            <span class="ml-auto hidden sm:inline">{tr("desk.search.hint_toggle")}</span>
                         </div>
                     </div>
                 </div>
@@ -422,9 +431,10 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
 /// blank panel would read as a broken search rather than an empty history.
 #[component]
 fn EmptyHint() -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <p class="px-4 py-6 text-sm text-muted-foreground">
-            "Escribe para buscar documentos, informes y páginas. Lo que abras quedará en Recientes."
+            {i18n.t("desk.search.empty_hint")}
         </p>
     }
 }

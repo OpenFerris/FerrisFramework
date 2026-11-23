@@ -21,6 +21,7 @@ use crate::components::ui::bottom_nav::{
     BottomNav, BottomNavButton, BottomNavGrid, BottomNavLabel,
 };
 use crate::components::ui::icon::Icon;
+use crate::i18n::{DeskI18n, use_i18n};
 
 /// Bottom navigation: `Escritorio`, `Buscar`, `Avisos` and `Menú`.
 #[component]
@@ -35,6 +36,10 @@ pub fn MobileNav(
     unread: Memo<u64>,
 ) -> impl IntoView {
     let prefs = use_mobile_prefs();
+    // `StoredValue` keeps the translator `Copy`, so the reactive fallback and
+    // the static labels can share it.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
     // `/login` and app-declared bare pages own the whole page: no bar there.
     let bare_chrome = use_bare_chrome();
     // A full-screen board owns the viewport, bar included.
@@ -70,29 +75,29 @@ pub fn MobileNav(
         }>
             <BottomNav
                 class="fixed inset-x-0 bottom-0 md:hidden"
-                attr:aria-label="Navegación del escritorio"
+                attr:aria-label=tr("desk.nav.label")
             >
                 <BottomNavGrid>
                     <BottomNavButton
-                        attr:aria-label="Escritorio"
+                        attr:aria-label=tr("nav.desk")
                         attr:aria-current=move || if desk_active() { "page" } else { "false" }
                         on:click=move |_| go_desk.run(())
                     >
                         <Icon name="LayoutGrid" class="size-5" />
-                        <BottomNavLabel>"Escritorio"</BottomNavLabel>
+                        <BottomNavLabel>{tr("nav.desk")}</BottomNavLabel>
                     </BottomNavButton>
 
                     <BottomNavButton
-                        attr:aria-label="Buscar"
+                        attr:aria-label=tr("desk.nav.search")
                         on:click=move |_| search_open.set(true)
                     >
                         <Icon name="Search" class="size-5" />
-                        <BottomNavLabel>"Buscar"</BottomNavLabel>
+                        <BottomNavLabel>{tr("desk.nav.search")}</BottomNavLabel>
                     </BottomNavButton>
 
                     <BottomNavButton
                         class="relative"
-                        attr:aria-label="Avisos"
+                        attr:aria-label=tr("desk.nav.notifications")
                         attr:aria-expanded=move || notifications_open.get().to_string()
                         on:click=move |_| notifications_open.update(|open| *open = !*open)
                     >
@@ -107,7 +112,7 @@ pub fn MobileNav(
                                 aria-hidden="true"
                             ></span>
                         </Show>
-                        <BottomNavLabel>"Avisos"</BottomNavLabel>
+                        <BottomNavLabel>{tr("desk.nav.notifications")}</BottomNavLabel>
                     </BottomNavButton>
 
                     // Without the drawer the rail is unreachable on a phone, so
@@ -117,21 +122,21 @@ pub fn MobileNav(
                         when=move || prefs.get().sidebar_drawer
                         fallback=move || view! {
                             <BottomNavButton
-                                attr:aria-label="Ajustes"
+                                attr:aria-label=tr("nav.settings")
                                 on:click=move |_| go_settings.run(())
                             >
                                 <Icon name="Settings" class="size-5" />
-                                <BottomNavLabel>"Ajustes"</BottomNavLabel>
+                                <BottomNavLabel>{tr("nav.settings")}</BottomNavLabel>
                             </BottomNavButton>
                         }
                     >
                         <BottomNavButton
-                            attr:aria-label="Menú"
+                            attr:aria-label=tr("desk.nav.menu")
                             attr:aria-expanded=move || menu_open.get().to_string()
                             on:click=move |_| menu_open.update(|open| *open = !*open)
                         >
                             <Icon name="Menu" class="size-5" />
-                            <BottomNavLabel>"Menú"</BottomNavLabel>
+                            <BottomNavLabel>{tr("desk.nav.menu")}</BottomNavLabel>
                         </BottomNavButton>
                     </Show>
                 </BottomNavGrid>

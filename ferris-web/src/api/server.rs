@@ -33,6 +33,11 @@ pub struct DocStoreApi {
     /// `Client` variant; inlining it made the enum's two variants differ by
     /// hundreds of bytes on every value a view holds.
     user: Option<Box<ferris_auth::User>>,
+    /// The render's catalogue set and negotiated locale. Metadata labels are
+    /// projected in the caller's language, so the server-rendered markup and
+    /// the hydrated tree carry the same strings.
+    i18n: ferris_core::i18n::I18n,
+    locale: ferris_core::i18n::Locale,
 }
 
 impl DocStoreApi {
@@ -45,7 +50,17 @@ impl DocStoreApi {
         let user = leptos::prelude::use_context::<ferris_auth::User>()
             .filter(|user| user.user_type != ferris_auth::UserType::Guest)
             .map(Box::new);
-        Ok(Self { pool, user })
+        // `provide_desk_context` fills both for every SSR render; the defaults
+        // keep an embedder or a test without them on English metadata.
+        let i18n = leptos::prelude::use_context::<ferris_core::i18n::I18n>().unwrap_or_default();
+        let locale =
+            leptos::prelude::use_context::<ferris_core::i18n::Locale>().unwrap_or_default();
+        Ok(Self {
+            pool,
+            user,
+            i18n,
+            locale,
+        })
     }
 
     /// Run an engine call under the render's identity.
@@ -66,9 +81,14 @@ impl DocStoreApi {
     pub async fn meta(&self, doctype: &str) -> Result<Option<DynMeta>, String> {
         // The same resolver the REST handler uses, so SSR carries the stored
         // Actions/Links/Permission Types instead of only the registry mirror.
-        ferris_api::doc_meta::effective_dyn_meta(&self.pool, doctype)
-            .await
-            .map_err(|e| e.to_string())
+        ferris_api::doc_meta::effective_dyn_meta_localized(
+            &self.pool,
+            doctype,
+            &self.i18n,
+            &self.locale,
+        )
+        .await
+        .map_err(|e| e.to_string())
     }
 
     pub async fn form_tours(&self, doctype: &str) -> Result<Vec<Value>, String> {

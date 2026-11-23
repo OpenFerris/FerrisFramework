@@ -12,10 +12,13 @@ use super::params::HOST_OWNER;
 /// the same reason): a dashed placeholder that says so, with no mount anchor.
 /// The dashed frame marks a placeholder, not a widget card; the host header
 /// still carries the title.
-pub(super) fn unresolved_widget(reference: &str) -> AnyView {
+pub(super) fn unresolved_widget(
+    reference: &str,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> AnyView {
     view! {
         <div class="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-            "Widget pendiente: " <code>{reference.to_string()}</code>
+            {i18n.t_with("views.widget.pending", &[("reference", reference)])}
         </div>
     }
     .into_any()
@@ -24,10 +27,13 @@ pub(super) fn unresolved_widget(reference: &str) -> AnyView {
 /// A resolved widget whose `Widget` row has no code and no native renderer:
 /// the seed never migrated a module for it. Naming the reference is more
 /// useful than mounting nothing, and it keeps the rest of the dashboard alive.
-pub(super) fn missing_code_widget(reference: &str) -> AnyView {
+pub(super) fn missing_code_widget(
+    reference: &str,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> AnyView {
     view! {
         <div class="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-            "Widget sin código: " <code>{reference.to_string()}</code>
+            {i18n.t_with("views.widget.missing_code", &[("reference", reference)])}
         </div>
     }
     .into_any()
@@ -36,13 +42,18 @@ pub(super) fn missing_code_widget(reference: &str) -> AnyView {
 /// A host widget whose required param (like `doctype`) was never set: name
 /// the missing one instead of asking the DocStore for a doctype-less list
 /// that can only fail.
-pub(super) fn missing_param(def: &WidgetDef, missing: &str) -> AnyView {
+pub(super) fn missing_param(
+    def: &WidgetDef,
+    missing: &str,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> AnyView {
+    let widget = format!("{HOST_OWNER}.{}", def.name);
     view! {
         <div class="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-            "Falta el parámetro "
-            <code>{missing.to_string()}</code>
-            " de "
-            <code>{format!("{HOST_OWNER}.{}", def.name)}</code>
+            {i18n.t_with(
+                "views.widget.missing_param",
+                &[("param", missing), ("widget", &widget)],
+            )}
         </div>
     }
     .into_any()
@@ -50,11 +61,14 @@ pub(super) fn missing_param(def: &WidgetDef, missing: &str) -> AnyView {
 
 /// A `host.*` name with no native renderer (the catalog gained one this
 /// Desk predates): the placeholder says so instead of mounting nothing.
-pub(super) fn unknown_host_widget(def: &WidgetDef) -> AnyView {
+pub(super) fn unknown_host_widget(
+    def: &WidgetDef,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> AnyView {
+    let widget = format!("{HOST_OWNER}.{}", def.name);
     view! {
         <div class="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-            "Renderer nativo desconocido para "
-            <code>{format!("{HOST_OWNER}.{}", def.name)}</code>
+            {i18n.t_with("views.widget.unknown_renderer", &[("widget", &widget)])}
         </div>
     }
     .into_any()

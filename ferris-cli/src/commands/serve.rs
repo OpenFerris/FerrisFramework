@@ -1,6 +1,7 @@
 //! `ferris serve`: run the unified server on a single port with flag-selected roles.
 
 use anyhow::Result;
+use ferris_core::i18n::{I18n, Locale};
 use ferris_core::{Config as CoreConfig, DatabaseConfig as CoreDatabaseConfig};
 use ferris_server::{Server, ServerRole, ServerRoles, ServerSettings};
 
@@ -9,7 +10,10 @@ use crate::config::{CliConfig, DatabaseConfig};
 use crate::features;
 
 pub fn run(args: ServeArgs, config: &CliConfig) -> Result<()> {
-    let roles = roles_from_flags(&args)?;
+    if args.all_sites {
+        return super::multi_site::run(args, config);
+    }
+    let roles = roles_from_flags(&args, config)?;
 
     // `--cors-origin` flags extend (and imply) the config-driven allow-list.
     let mut effective = config.clone();
@@ -37,7 +41,21 @@ pub fn run(args: ServeArgs, config: &CliConfig) -> Result<()> {
         }
         apply_allowed_hosts(&effective)?;
     }
-    let settings = settings_for(args.host, args.port, roles, &effective)?;
+    // A site serves its own copies (`sites/<site>/plugins/<app>/locales`), so a
+    // per-site install translates that site only; a bench without a site reads
+    // the catalogue (`apps/<app>/locales`).
+    let catalogues = match args.site.as_deref() {
+        Some(name) => Some(super::site::manager(&effective).plugins_root(name)?),
+        None => None,
+    };
+    let settings = settings_for_with_features(
+        args.host,
+        args.port,
+        roles,
+        &effective,
+        &features::compiled(),
+        catalogues.as_deref(),
+    )?;
     start(settings, &effective)
 }
 
@@ -53,7 +71,7 @@ pub(in crate::commands) fn apply_allowed_hosts(config: &CliConfig) -> Result<()>
     Ok(())
 }
 
-fn roles_from_flags(args: &ServeArgs) -> Result<ServerRoles> {
+fn roles_from_flags(args: &ServeArgs, config: &CliConfig) -> Result<ServerRoles> {
     if args.all {
         return Ok(ServerRoles::all());
     }
@@ -69,13 +87,19 @@ fn roles_from_flags(args: &ServeArgs) -> Result<ServerRoles> {
             selected.push(role.as_str().to_string());
         }
     }
-    let roles = ServerRoles::parse(&selected)?;
-    if roles.is_empty() {
-        anyhow::bail!(
-            "no roles selected: pass --all or at least one of --api/--web/--realtime/--worker/--scheduler"
-        );
+    // No flag falls back to `[server] roles`, the same source `ferris run`
+    // reads: `ferris serve --site <name>` is a documented command and must not
+    // fail because it omitted the roles the config already names.
+    if selected.is_empty() {
+        if config.server.roles.is_empty() {
+            anyhow::bail!(
+                "no roles selected: pass --all, one of --api/--web/--realtime/--worker/--scheduler, \
+                 or list them in [server] roles"
+            );
+        }
+        return ServerRoles::parse(&config.server.roles);
     }
-    Ok(roles)
+    ServerRoles::parse(&selected)
 }
 
 /// Build `ServerSettings` from CLI flags plus the project config.
@@ -85,7 +109,30 @@ pub(in crate::commands) fn settings_for(
     roles: ServerRoles,
     config: &CliConfig,
 ) -> Result<ServerSettings> {
-    settings_for_with_features(host, port, roles, config, &features::compiled())
+    settings_for_with_features(
+        host,
+        port,
+        roles,
+        config,
+        &features::compiled(),
+        default_catalogue_root(config).as_deref(),
+    )
+}
+
+/// The catalogue directory a bench-level command reads.
+///
+/// `apps/` when the bench has one; for a standalone project (`--standalone`),
+/// its own directory, where `locales/` sits next to `plugin.toml`.
+fn default_catalogue_root(config: &CliConfig) -> Option<std::path::PathBuf> {
+    let apps = super::site::manager(config).apps_root().to_path_buf();
+    if apps.is_dir() {
+        return Some(apps);
+    }
+    let standalone = config.source.project_dir.clone();
+    standalone
+        .join(ferris_core::site::LOCALES_DIR)
+        .is_dir()
+        .then_some(standalone)
 }
 
 /// [`settings_for`] with an explicit feature set.
@@ -100,6 +147,7 @@ pub(in crate::commands) fn settings_for_with_features(
     roles: ServerRoles,
     config: &CliConfig,
     compiled: &ferris_core::host_features::HostFeatures,
+    catalogues: Option<&std::path::Path>,
 ) -> Result<ServerSettings> {
     // The feature matrix is checked first: a config that asks for any
     // other subsystem) this binary was not built with must fail before a
@@ -127,7 +175,28 @@ pub(in crate::commands) fn settings_for_with_features(
     settings.body_limit_mb = config.server.body_limit_mb;
     settings.enable_cors = config.server.enable_cors;
     settings.cors_origins = config.server.cors_origins.clone();
+    settings.i18n = build_i18n(&config.i18n, catalogues);
     Ok(settings)
+}
+
+/// Build the locale policy from `[i18n]`.
+///
+/// An unparseable tag is dropped (and the default falls back to English)
+/// instead of refusing to boot: a locale is presentation, and a typo in
+/// `supported` must not take the API down. `ferris doctor` prints the set, so
+/// the typo is still visible.
+fn build_i18n(config: &crate::config::I18nConfig, catalogues: Option<&std::path::Path>) -> I18n {
+    let default = Locale::parse(&config.default_locale).unwrap_or_default();
+    let supported: Vec<Locale> = config
+        .supported
+        .iter()
+        .filter_map(|tag| Locale::parse(tag))
+        .collect();
+    let i18n = I18n::new(default, supported);
+    match catalogues {
+        Some(root) => crate::config::merge_installed_app_catalogues(i18n, root),
+        None => i18n,
+    }
 }
 
 fn build_core_config(cli_config: &CliConfig) -> Result<CoreConfig> {
@@ -271,12 +340,25 @@ mod tests {
             cors_origin: Vec::new(),
             site: None,
             tenant: None,
+            all_sites: false,
         }
     }
 
     #[test]
-    fn no_flags_is_an_error() {
-        assert!(roles_from_flags(&serve_args()).is_err());
+    fn no_flags_uses_the_configured_roles() {
+        let mut config = CliConfig::default();
+        config.server.roles = vec!["api".into(), "web".into()];
+        let roles = roles_from_flags(&serve_args(), &config).unwrap();
+        assert!(roles.has(ServerRole::Api));
+        assert!(roles.has(ServerRole::Web));
+        assert!(!roles.has(ServerRole::Realtime));
+    }
+
+    #[test]
+    fn no_flags_and_no_configured_roles_is_an_error() {
+        let mut config = CliConfig::default();
+        config.server.roles.clear();
+        assert!(roles_from_flags(&serve_args(), &config).is_err());
     }
 
     #[test]
@@ -284,7 +366,7 @@ mod tests {
         let mut args = serve_args();
         args.api = true;
         args.web = true;
-        let roles = roles_from_flags(&args).unwrap();
+        let roles = roles_from_flags(&args, &CliConfig::default()).unwrap();
         assert!(roles.has(ServerRole::Api));
         assert!(roles.has(ServerRole::Web));
         assert!(!roles.has(ServerRole::Realtime));
@@ -294,7 +376,7 @@ mod tests {
     fn all_flag_enables_every_role() {
         let mut args = serve_args();
         args.all = true;
-        let roles = roles_from_flags(&args).unwrap();
+        let roles = roles_from_flags(&args, &CliConfig::default()).unwrap();
         for role in ServerRole::ALL {
             assert!(roles.has(role));
         }
@@ -411,8 +493,9 @@ mod tests {
 
         let roles = ServerRoles::parse(&["api".to_string()]).unwrap();
         let compiled = ferris_core::host_features::HostFeatures::new(["api"]);
-        let settings = settings_for_with_features("127.0.0.1".into(), 0, roles, &cli, &compiled)
-            .expect("an api-only build with nothing else requested is valid");
+        let settings =
+            settings_for_with_features("127.0.0.1".into(), 0, roles, &cli, &compiled, None)
+                .expect("an api-only build with nothing else requested is valid");
         assert!(settings.roles.has(ServerRole::Api));
         assert!(!settings.roles.has(ServerRole::Web));
     }

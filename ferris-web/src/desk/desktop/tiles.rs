@@ -15,6 +15,7 @@ use leptos::prelude::*;
 use crate::components::ui::icon::Icon;
 use crate::desk::icon::DeskGlyph;
 use crate::desk::session::DeskIcon;
+use crate::i18n::{DeskI18n, use_i18n};
 
 use super::dom::Seam;
 
@@ -119,6 +120,12 @@ fn WorkspaceTile(
     // something that is off the desk is not a move.
     let parked = move || hidden;
     let liftable = move || editing.get() && !hidden;
+    // `StoredValue` keeps the translator `Copy`, so the two reactive labels can
+    // share it.
+    let i18n = use_i18n();
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n.with_value(|i18n: &DeskI18n| i18n.t_with(key, args))
+    };
 
     view! {
         <li
@@ -130,9 +137,19 @@ fn WorkspaceTile(
                 type="button"
                 data-name="WorkspaceIcon"
                 data-workspace=name.clone()
-                title=move || if hidden { format!("{label} (oculto)") } else { label.clone() }
+                title=move || {
+                    if hidden {
+                        tr_with("desk.desktop.hidden_marker", &[("label", &label)])
+                    } else {
+                        label.clone()
+                    }
+                }
                 aria-label=move || {
-                    if hidden { format!("{accessible} (oculto)") } else { accessible.clone() }
+                    if hidden {
+                        tr_with("desk.desktop.hidden_marker", &[("label", &accessible)])
+                    } else {
+                        accessible.clone()
+                    }
                 }
                 draggable=move || liftable().to_string()
                 class=format!("{TILE} bg-primary/10 text-primary")
@@ -154,7 +171,11 @@ fn WorkspaceTile(
                             action=if hidden { "unhide" } else { "hide" }
                             icon=controls.clone()
                             name=if hidden { "eye" } else { "eye-off" }
-                            label=if hidden { "Mostrar espacio de trabajo" } else { "Ocultar espacio de trabajo" }
+                            label=if hidden {
+                                "desk.desktop.show_workspace"
+                            } else {
+                                "desk.desktop.hide_workspace"
+                            }
                         />
                     </div>
                 }
@@ -214,8 +235,8 @@ fn FolderTile(
                 }
                 view! {
                     <div class="absolute -right-1.5 -top-1.5 flex gap-0.5">
-                        <TileButton action="edit-folder" icon=actions.clone() name="pencil" label="Renombrar carpeta" />
-                        <TileButton action="delete-folder" icon=actions.clone() name="trash-2" label="Eliminar carpeta" />
+                        <TileButton action="edit-folder" icon=actions.clone() name="pencil" label="desk.folder.rename" />
+                        <TileButton action="delete-folder" icon=actions.clone() name="trash-2" label="desk.folder.delete_title" />
                     </div>
                 }
                 .into_any()
@@ -230,31 +251,37 @@ fn FolderTile(
 /// `set-icon` stores and what the folder reads back — so only the accessible name
 /// is translated here. Without this the icon picker announced English words in an
 /// otherwise Spanish dialog.
-pub(super) fn folder_icon_label(value: &str) -> &str {
+pub(super) fn folder_icon_label(
+    i18n: &(impl crate::i18n::Translate + Sync),
+    value: &str,
+) -> String {
     match value {
-        "Folder" => "Carpeta",
-        "Boxes" => "Cajas",
-        "Briefcase" => "Maletín",
-        "Building2" => "Edificio",
-        "Truck" => "Camión",
-        "Receipt" => "Recibo",
-        "Users" => "Usuarios",
-        "Wrench" => "Llave inglesa",
-        other => other,
+        "Folder" => i18n.t("desk.folder.icon.folder"),
+        "Boxes" => i18n.t("desk.folder.icon.boxes"),
+        "Briefcase" => i18n.t("desk.folder.icon.briefcase"),
+        "Building2" => i18n.t("desk.folder.icon.building"),
+        "Truck" => i18n.t("desk.folder.icon.truck"),
+        "Receipt" => i18n.t("desk.folder.icon.receipt"),
+        "Users" => i18n.t("desk.folder.icon.users"),
+        "Wrench" => i18n.t("desk.folder.icon.wrench"),
+        other => other.to_string(),
     }
 }
 
 /// The spoken name of a folder colour swatch; the `value` is the accent key the
 /// arrangement stores, not a translated word.
-pub(super) fn folder_color_label(value: &str) -> &str {
+pub(super) fn folder_color_label(
+    i18n: &(impl crate::i18n::Translate + Sync),
+    value: &str,
+) -> String {
     match value {
-        "slate" => "Pizarra",
-        "blue" => "Azul",
-        "emerald" => "Esmeralda",
-        "amber" => "Ámbar",
-        "rose" => "Rosa",
-        "violet" => "Violeta",
-        other => other,
+        "slate" => i18n.t("desk.folder.color.slate"),
+        "blue" => i18n.t("desk.folder.color.blue"),
+        "emerald" => i18n.t("desk.folder.color.emerald"),
+        "amber" => i18n.t("desk.folder.color.amber"),
+        "rose" => i18n.t("desk.folder.color.rose"),
+        "violet" => i18n.t("desk.folder.color.violet"),
+        other => other.to_string(),
     }
 }
 
@@ -267,8 +294,9 @@ pub(super) fn folder_color_label(value: &str) -> &str {
 /// label to two lines rather than letting it grow the tile without bound.
 #[component]
 fn TileCaption(label: String, #[prop(optional)] count: Option<usize>) -> impl IntoView {
+    let i18n = use_i18n();
     let text = match count {
-        Some(0) => format!("{label} (vacía)"),
+        Some(0) => i18n.t_with("desk.folder.empty_caption", &[("label", &label)]),
         Some(count) => format!("{label} ({count})"),
         None => label,
     };
@@ -318,12 +346,13 @@ fn TileButton(
     name: &'static str,
     label: &'static str,
 ) -> impl IntoView {
+    let label = use_i18n().t(label);
     view! {
         <button
             type="button"
             data-action=action
             data-icon=icon
-            title=label
+            title=label.clone()
             aria-label=label
             class="flex size-8 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:after:absolute max-md:after:-inset-1 max-md:after:content-['']"
         >

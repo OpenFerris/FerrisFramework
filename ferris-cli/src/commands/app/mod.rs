@@ -39,10 +39,10 @@ use crate::config::CliConfig;
 /// catalogue app that a site still installs, or an I/O failure under
 /// `apps/`/`[apps] wasm_dir`.
 pub fn run(args: AppArgs, config: &CliConfig) -> Result<()> {
-    let dir = plugins_dir(&config.source.project_dir, &config.apps);
+    let dir = plugins_dir(&config.source.bench_root, &config.apps);
     // The catalogue is the two-scope layout; anything else is an install that
     // still publishes the flat `plugins/` directory.
-    let catalogue = SiteManager::default();
+    let catalogue = super::site::manager(config);
     let global = dir == catalogue.apps_root();
     match args.command {
         AppCommand::List { site } => {
@@ -114,6 +114,24 @@ pub fn run(args: AppArgs, config: &CliConfig) -> Result<()> {
 fn install_package(catalogue: &SiteManager, source: &Path, name: Option<&str>) -> Result<()> {
     let known = catalogue.global_apps()?;
     let manifest = if source.is_dir() {
+        // Validate before publishing: a component that cannot instantiate
+        // against this binary must not replace a working one and take every
+        // site down on its next boot.
+        let package = AppManifest::read(source)?;
+        let described = validate_component(&package.wasm, &package.name)?;
+        // Declared locales and shipped catalogues must agree before the
+        // catalogue (and every site that copies it) is touched.
+        let declared = described.get("locales").and_then(|value| {
+            value.as_array().map(|tags| {
+                tags.iter()
+                    .filter_map(|tag| tag.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+        });
+        let tags = super::app_catalogues::validate(source, declared.as_deref())?;
+        if !tags.is_empty() {
+            tracing::info!("Package ships catalogues for: {}", tags.join(", "));
+        }
         catalogue.install_global_app(source)?
     } else {
         install_component(catalogue, source, name)?
@@ -163,6 +181,7 @@ fn install_component(
     if !is_valid_app_name(&name) {
         anyhow::bail!("invalid app name `{name}`: use letters, digits, `-` or `_` (at most 64)");
     }
+    validate_component(source, &name)?;
 
     let package = std::env::temp_dir().join(format!("ferris-app-{}", uuid::Uuid::new_v4()));
     let result = build_package(&package, source, &name).and_then(|()| {
@@ -174,6 +193,49 @@ fn install_component(
     // and the install result is what the caller reports.
     let _ = fs::remove_dir_all(&package);
     result
+}
+
+/// Prove the component belongs to the contract this binary links.
+///
+/// `is_component` only checks the binary shape; a component built against
+/// `ferris:framework@0.2.0` passes that and then aborts the site's boot with
+/// `component imports instance ... not found in the linker`. Instantiating it
+/// against an in-memory host moves the failure to the install command, before
+/// the catalogue (and every site that will copy it) is touched.
+pub(super) fn validate_component(path: &Path, name: &str) -> Result<serde_json::Value> {
+    // `plugin_boot::load` parks a worker with `block_in_place`, which a
+    // current-thread runtime rejects; the runtime must be multi-threaded.
+    let rt = crate::runtime::block_on_runtime(Some(2))?;
+    let pool = rt.block_on(ferris_db::memory_db())?;
+    // The guest's `filesystem` capability becomes a WASI preopen, so a store
+    // with no world refuses to instantiate every app that uses it (the
+    // scaffold does). Give the probe a throwaway world, then delete it.
+    let worlds = std::env::temp_dir().join(format!("ferris-validate-{}", uuid::Uuid::new_v4()));
+    ferris_core::plugins::ensure_world_at(&worlds, name)?;
+    let store = super::plugin_boot::new_store(pool, Some(&worlds))?;
+    let result = super::plugin_boot::load(
+        &rt,
+        &store,
+        &super::plugin_boot::AppComponent {
+            name: name.to_string(),
+            path: path.to_path_buf(),
+        },
+    )
+    .with_context(|| {
+        format!(
+            "`{}` is not compatible with this ferris binary; rebuild it against \
+             `wit/ferris.wit` from the same release",
+            path.display()
+        )
+    });
+    let described = result.and_then(|()| store.describe_json_for(name));
+    let _ = fs::remove_dir_all(&worlds);
+    described
+        .with_context(|| format!("`{}` did not describe itself", path.display()))
+        .and_then(|json| {
+            serde_json::from_str(&json)
+                .with_context(|| format!("`{}` described an unreadable projection", path.display()))
+        })
 }
 
 /// Assemble the one-app package `install_global_app` expects.

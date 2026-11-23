@@ -62,8 +62,9 @@ pub fn url_of(item: &FileItem) -> String {
 /// label. Existing plain URLs keep working.
 #[must_use]
 pub fn display_url(item: &FileItem) -> String {
+    let fallback = crate::i18n::t("components.file_picker.unnamed");
     let name = if item.name.is_empty() {
-        "archivo"
+        fallback.as_str()
     } else {
         item.name.as_str()
     };
@@ -136,7 +137,7 @@ pub async fn upload(name: &str, content_type: &str, bytes: Vec<u8>) -> Result<Fi
         // The native build has no `File`/`fetch`: refuse loudly instead of
         // pretending the upload happened.
         let _ = (name, content_type, bytes);
-        Err("La subida de archivos solo está disponible en el navegador.".to_string())
+        Err(crate::i18n::t("components.file_picker.upload_native_only"))
     }
 }
 

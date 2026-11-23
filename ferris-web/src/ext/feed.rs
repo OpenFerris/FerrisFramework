@@ -5,6 +5,7 @@ use leptos::prelude::*;
 
 use super::slots::SLOT_FORM_VIEW;
 use super::{AppUi, UiExtension, UiFeed, WidgetDef};
+use crate::i18n::t;
 
 /// Shared OpenUI state: the apps' registered UI sets from `/api/ui-extensions`.
 #[derive(Clone, Copy)]
@@ -38,15 +39,11 @@ impl UiCtx {
         crate::api::drive(async move {
             let Ok(value) = crate::api::client::api_json("GET", "/api/ui-extensions", None).await
             else {
-                ctx.error.set(Some(
-                    "No se pudo cargar el catálogo de extensiones de las apps.".to_string(),
-                ));
+                ctx.error.set(Some(t("components.ext.feed_load_error")));
                 return;
             };
             let Some((revision, apps)) = parse_feed(value) else {
-                ctx.error.set(Some(
-                    "El catálogo de extensiones llegó en un formato inesperado.".to_string(),
-                ));
+                ctx.error.set(Some(t("components.ext.feed_format_error")));
                 return;
             };
             ctx.error.set(None);

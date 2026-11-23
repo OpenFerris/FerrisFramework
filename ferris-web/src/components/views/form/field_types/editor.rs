@@ -12,6 +12,7 @@ use leptos::prelude::*;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::textarea::Textarea;
 use crate::ext::vendor::Vendor;
+use crate::i18n::t;
 // The escaping bridge only exists on wasm and in the unit tests; the native
 // build has no `marked` renderer to install it into.
 #[cfg(any(target_arch = "wasm32", test))]
@@ -26,7 +27,7 @@ use ferris_web_shared::html::sanitize_html;
 /// already in the CSP) safe to ship. wasm-and-tests only: a native build has
 /// no editor to configure.
 #[cfg(any(target_arch = "wasm32", test))]
-const QUILL_OPTIONS: &str = r#"{"theme":"snow","placeholder":"Escribe aquí…","modules":{"toolbar":[["bold","italic","underline","link"],["blockquote","code-block"],[{"list":"ordered"},{"list":"bullet"}],["clean"]]}}"#;
+const QUILL_OPTIONS: &str = r#"{"theme":"snow","placeholder":"__FERRIS_PLACEHOLDER__","modules":{"toolbar":[["bold","italic","underline","link"],["blockquote","code-block"],[{"list":"ordered"},{"list":"bullet"}],["clean"]]}}"#;
 
 /// Rich text (`Text Editor`): Quill over a contenteditable div.
 ///
@@ -40,13 +41,15 @@ const QUILL_OPTIONS: &str = r#"{"theme":"snow","placeholder":"Escribe aquí…",
 #[component]
 pub fn TextEditorField(id: String, value: RwSignal<String>, read_only: bool) -> impl IntoView {
     let editor_id = format!("{id}-quill");
+    let i18n = crate::i18n::use_i18n();
+    let placeholder = i18n.t("components.form.editor.placeholder");
     // Rendered once: Quill owns this subtree from `init` onwards, so an
     // attribute that kept re-rendering would fight its DOM. Parity holds
     // because server and client render the same *untracked* initial value.
     let initial = sanitize_html(&value.get_untracked());
     {
         let init_id = editor_id.clone();
-        Effect::new(move |_| init_when_ready(&init_id, value, read_only));
+        Effect::new(move |_| init_when_ready(&init_id, value, read_only, placeholder.clone()));
     }
     // External changes (document reload, fetch_from, another widget) flow
     // back into the editor; changes made here flow out through Quill's own
@@ -69,16 +72,22 @@ pub fn TextEditorField(id: String, value: RwSignal<String>, read_only: bool) -> 
 
 /// Build the Quill instance the first time the bundle is on the page.
 #[cfg(target_arch = "wasm32")]
-fn init_when_ready(editor_id: &str, value: RwSignal<String>, read_only: bool) {
+fn init_when_ready(editor_id: &str, value: RwSignal<String>, read_only: bool, placeholder: String) {
     let editor_id = editor_id.to_string();
     crate::ext::vendor::ensure(Vendor::Quill, move || {
-        wasm::init_editor(&editor_id, value, read_only);
+        wasm::init_editor(&editor_id, value, read_only, &placeholder);
     });
 }
 
 /// Native twin: SSR renders the raw HTML; effects never run there.
 #[cfg(not(target_arch = "wasm32"))]
-fn init_when_ready(_editor_id: &str, _value: RwSignal<String>, _read_only: bool) {}
+fn init_when_ready(
+    _editor_id: &str,
+    _value: RwSignal<String>,
+    _read_only: bool,
+    _placeholder: String,
+) {
+}
 
 /// Paste an external value into the editor, if it is there and differs.
 ///
@@ -115,6 +124,7 @@ pub fn MarkdownField(
     #[prop(default = 6u32)] rows: u32,
     #[prop(default = None)] max_length: Option<u32>,
 ) -> impl IntoView {
+    let toggle_i18n = crate::i18n::use_i18n();
     let showing = RwSignal::new(false);
     let preview = RwSignal::new(String::new());
     let loading = RwSignal::new(false);
@@ -148,7 +158,7 @@ pub fn MarkdownField(
                         when=move || loading.get()
                         fallback=move || view! { <div inner_html=move || preview.get()></div> }
                     >
-                        <p class="text-sm text-muted-foreground">"Cargando previsualización…"</p>
+                        <p class="text-sm text-muted-foreground">{t("components.form.field.preview_loading")}</p>
                     </Show>
                 </div>
             </Show>
@@ -158,7 +168,13 @@ pub fn MarkdownField(
                     size=ButtonSize::Sm
                     on:click=move |_| showing.update(|s| *s = !*s)
                 >
-                    {move || if showing.get() { "Editar" } else { "Previsualizar" }}
+                    {move || {
+                        if showing.get() {
+                            toggle_i18n.t("components.form.field.edit")
+                        } else {
+                            toggle_i18n.t("components.form.field.preview")
+                        }
+                    }}
                 </Button>
             </div>
         </div>
@@ -269,7 +285,12 @@ mod wasm {
         static EDITORS: RefCell<HashMap<String, EditorHandle>> = RefCell::new(HashMap::new());
     }
 
-    pub(super) fn init_editor(editor_id: &str, value: RwSignal<String>, read_only: bool) {
+    pub(super) fn init_editor(
+        editor_id: &str,
+        value: RwSignal<String>,
+        read_only: bool,
+        placeholder: &str,
+    ) {
         if EDITORS.with(|editors| editors.borrow().contains_key(editor_id)) {
             return;
         }
@@ -282,8 +303,13 @@ mod wasm {
         };
         // The options are a const, so the parse cannot fail — if it ever does,
         // that is a build bug and it must be loud.
-        let Ok(options) = js_sys::JSON::parse(QUILL_OPTIONS) else {
-            js::error("text editor: the QUILL_OPTIONS const does not parse");
+        // The placeholder is the only user/locale string in the options; the
+        // rest is the fixed toolbar. `serde_json` quotes it, so a translation
+        // with quotes cannot break the JSON.
+        let placeholder = serde_json::to_string(placeholder).unwrap_or_else(|_| "\"\"".to_string());
+        let options_json = QUILL_OPTIONS.replace("\"__FERRIS_PLACEHOLDER__\"", &placeholder);
+        let Ok(options) = js_sys::JSON::parse(&options_json) else {
+            js::error("text editor: the QUILL_OPTIONS template does not parse");
             return;
         };
         let Some(quill) = js::construct(&quill_ctor, &[container.into(), options]) else {

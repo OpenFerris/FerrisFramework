@@ -330,14 +330,15 @@ pub(super) fn new_folder_id(icons: &[DeskIcon]) -> String {
 }
 
 /// The grid with an empty folder added at the end, ready to be named, and the id
-/// it was given.
-pub(super) fn add_folder(icons: &[DeskIcon]) -> (Vec<DeskIcon>, String) {
+/// it was given. `label` is the default name the desk's catalogue supplies; the
+/// user replaces it in the form before the save leaves the browser.
+pub(super) fn add_folder(icons: &[DeskIcon], label: &str) -> (Vec<DeskIcon>, String) {
     let id = new_folder_id(icons);
     let mut next = icons.to_vec();
     next.push(DeskIcon {
         id: id.clone(),
         kind: "folder".to_string(),
-        label: "Nueva carpeta".to_string(),
+        label: label.to_string(),
         icon: Some(DEFAULT_FOLDER_ICON.to_string()),
         color: None,
         items: Vec::new(),

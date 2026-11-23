@@ -46,6 +46,7 @@ use ferris_schema::contract::{
 };
 
 use crate::ext::UiCtx;
+use crate::i18n::use_i18n;
 use crate::views::DashboardGrid;
 use crate::views::plugin_page::placeholder;
 
@@ -139,14 +140,14 @@ fn declared_style(doc: &Value) -> Option<DashboardStyle> {
 /// A document that names no dashboard yet — the wrapper's field is empty.
 /// Saying so is the point: an empty grid would read as "this panel has no
 /// widgets", which is a different statement.
-fn unlinked_state(field: &str) -> AnyView {
+fn unlinked_state(field: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> AnyView {
     view! {
         <div class="rounded-xl border border-dashed p-6 space-y-2" data-name="DashboardDocUnlinked">
-            <div class="text-sm font-medium">"Este documento todavía no tiene un panel"</div>
+            <div class="text-sm font-medium">{i18n.t("views.dashboard_doc.unlinked_title")}</div>
             <div class="text-xs text-muted-foreground">
-                "Asigna uno en el campo "
+                {i18n.t("views.dashboard_doc.unlinked_before")}
                 <code>{field.to_string()}</code>
-                " y se abrirá aquí."
+                {i18n.t("views.dashboard_doc.unlinked_after")}
             </div>
         </div>
     }
@@ -155,14 +156,14 @@ fn unlinked_state(field: &str) -> AnyView {
 
 /// A fixed declaration naming a dashboard no app publishes: a broken
 /// declaration, reported rather than drawn as an empty grid.
-fn missing_state(id: &str) -> AnyView {
+fn missing_state(id: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> AnyView {
     view! {
         <div class="rounded-xl border border-destructive/40 bg-destructive/10 p-6 space-y-2" data-name="DashboardDocMissing">
-            <div class="text-sm font-medium">"No existe el panel declarado"</div>
+            <div class="text-sm font-medium">{i18n.t("views.dashboard_doc.missing_title")}</div>
             <div class="text-xs text-muted-foreground">
-                "La doctype declara el panel "
+                {i18n.t("views.dashboard_doc.missing_before")}
                 <code>{id.to_string()}</code>
-                ", pero ningún set de la app lo publica."
+                {i18n.t("views.dashboard_doc.missing_after")}
             </div>
         </div>
     }
@@ -218,6 +219,7 @@ pub fn DashboardDocView(
     // feed to resolve against, and the engine itself would panic on the
     // missing context — so this draws the loading box and never reaches it.
     let apps = use_context::<UiCtx>().map(|ctx| ctx.apps);
+    let i18n = use_i18n();
 
     view! {
         <div class="space-y-3" data-name="DashboardDocView">
@@ -233,7 +235,7 @@ pub fn DashboardDocView(
                 let doctype = doctype.get();
                 let feed = apps.get();
                 match resolve(&meta.dashboard, &doc, &docname) {
-                    Resolved::Unlinked { field } => unlinked_state(&field),
+                    Resolved::Unlinked { field } => unlinked_state(&field, &i18n),
                     // The document is the dashboard: its bound fields supply
                     // the label and the seed, and the grid targets the
                     // document so its own save path applies. The feed is not
@@ -278,7 +280,7 @@ pub fn DashboardDocView(
                         // A fixed declaration: only the feed can place its
                         // id, so an empty feed is still an unanswered one.
                         None if feed.is_empty() => placeholder(),
-                        None => missing_state(&id),
+                        None => missing_state(&id, &i18n),
                     },
                 }
             }}

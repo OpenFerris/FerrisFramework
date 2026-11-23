@@ -5,7 +5,9 @@ use crate::api::drive;
 use crate::app::DeskNav;
 use crate::components::ui::avatar::{Avatar, AvatarFallback};
 use crate::components::ui::separator::Separator;
+use crate::desk::LanguagePicker;
 use crate::desk::session as desk_session;
+use crate::i18n::{DeskI18n, use_i18n};
 use icons::ChevronDown;
 use leptos::prelude::*;
 use leptos_router::components::A;
@@ -38,6 +40,8 @@ pub(crate) fn logout_callback(user: RwSignal<WebUser>) -> Callback<()> {
 #[component]
 pub fn UserMenu(user: RwSignal<WebUser>, expanded: ReadSignal<bool>) -> impl IntoView {
     let (open, set_open) = signal(false);
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
     let nav = expect_context::<DeskNav>();
     let full_name = move || user.with(|u| u.full_name.clone());
     let email = move || user.with(|u| u.email.clone());
@@ -117,14 +121,15 @@ pub fn UserMenu(user: RwSignal<WebUser>, expanded: ReadSignal<bool>) -> impl Int
                                     <p class="text-sm font-medium text-foreground">{full_name}</p>
                                     <p class="text-xs text-muted-foreground">{email}</p>
                                 </div>
-                                <A href=profile_href.clone() attr:class="block px-4 py-2 text-sm text-popover-foreground hover:bg-accent">"Mi perfil"</A>
-                                <A href="/settings" attr:class="block px-4 py-2 text-sm text-popover-foreground hover:bg-accent">"Ajustes"</A>
+                                <A href=profile_href.clone() attr:class="block px-4 py-2 text-sm text-popover-foreground hover:bg-accent">{tr("desk.user_menu.profile")}</A>
+                                <A href="/settings" attr:class="block px-4 py-2 text-sm text-popover-foreground hover:bg-accent">{tr("nav.settings")}</A>
+                                <LanguagePicker />
                                 <Separator class="my-1" />
                                 <button
                                     class="w-full text-left block px-4 py-2 text-sm text-destructive hover:bg-accent"
                                     on:click=move |_| on_logout.run(())
                                 >
-                                    "Cerrar sesión"
+                                    {tr("nav.logout")}
                                 </button>
                             </div>
                         </div>

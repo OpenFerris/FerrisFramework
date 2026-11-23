@@ -46,12 +46,17 @@ pub fn hydrate() {
         // dropdowns, dialogs and sheets call it from their inline <script> tags.
         use_scroll_lock::init();
         let user = bootstrap_user();
+        // The shell serialized the locale it rendered with; reading it back
+        // here keeps the first client render in the same language as SSR
+        // instead of falling back to the empty English catalogue.
+        let i18n = crate::i18n::from_meta().unwrap_or_default();
         leptos::mount::hydrate_body(move || {
             // Seed with the identity the server rendered (stamped on the
             // bootstrap `<meta>`), so the first client render matches SSR.
             // `DeskApp` then revalidates with `/api/auth/session` and redirects
             // to `/login` only if the session is really gone.
             provide_context(RwSignal::new(user));
+            provide_context(i18n);
             view! {
                 <Router>
                     <DeskApp />

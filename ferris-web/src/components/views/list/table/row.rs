@@ -21,6 +21,7 @@ use crate::components::ui::icon::Icon;
 use crate::components::ui::table as t;
 use crate::components::views::user_identity::UserName;
 use crate::ext::{SLOT_LIST_ROW_ACTIONS, UiSlot};
+use crate::i18n::{t, use_i18n};
 
 #[component]
 pub(super) fn ListRow(
@@ -37,6 +38,7 @@ pub(super) fn ListRow(
     on_toggle_like: Callback<String>,
     navigate: Callback<(String, NavigateOptions)>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let ds = row.get("docstatus").map(docstatus_rank).unwrap_or(0);
     let name = record_name(&row);
     // Derived, not captured: the router reuses this view when only the route
@@ -55,7 +57,7 @@ pub(super) fn ListRow(
             )
         })
     };
-    let (age, exact) = stamp_age("modified", &row);
+    let (age, exact) = stamp_age("modified", &row, &i18n);
 
     // The row is the largest click target, but the controls inside it keep
     // their own behaviour and the title link stays the keyboard path. Enter on
@@ -78,7 +80,7 @@ pub(super) fn ListRow(
         ev.prevent_default();
         navigate.run((url.get_untracked(), NavigateOptions::default()));
     };
-    let row_label = format!("Abrir {}", name);
+    let row_label = i18n.t_with("components.list.row.open", &[("name", &name)]);
 
     let name_for_check = name.clone();
     let row_id = name.clone();
@@ -107,7 +109,7 @@ pub(super) fn ListRow(
                         // hover: the stored RFC 3339 stamp is unreadable in a
                         // dense list.
                         if c.fieldtype == "Datetime" {
-                            let (age, exact) = stamp_age(&c.fieldname, &row);
+                            let (age, exact) = stamp_age(&c.fieldname, &row, &i18n);
                             return view! {
                                 <t::TableCell class=cell_class>
                                     <span title={exact}>{age}</span>
@@ -156,6 +158,7 @@ pub(super) fn ListRow(
     // closure must be `Fn` and so rejects moving `row_id`). The row document is
     // owned (R-7) so a `$field` prop can be projected from it.
     let row_data = row.clone();
+    let favorite_i18n = i18n;
     let actions_cell = row_actions_declared.then(move || {
         view! {
             <t::TableCell attr:data-row-action="true">
@@ -184,7 +187,7 @@ pub(super) fn ListRow(
         >
             <t::TableCell class="w-[40px]">
                 <Checkbox
-                    aria_label=format!("Seleccionar {}", name)
+                    aria_label=i18n.t_with("components.list.row.select", &[("name", &name)])
                     checked=checked_row
                     on_checked_change=Callback::new(toggle_row)
                 />
@@ -197,9 +200,9 @@ pub(super) fn ListRow(
                     _ => BadgeVariant::Secondary,
                 }>
                     {match ds {
-                        1 => "Enviado",
-                        2 => "Cancelado",
-                        _ => "Borrador",
+                        1 => t("components.list.status.submitted"),
+                        2 => t("components.list.status.cancelled"),
+                        _ => t("components.list.status.draft"),
                     }}
                 </Badge>
             </t::TableCell>
@@ -245,10 +248,13 @@ pub(super) fn ListRow(
                         }
                         aria-pressed=move || liked.get().to_string()
                         aria-label=move || {
+                            let name = docname.get();
                             if liked.get() {
-                                format!("Quitar de favoritos {}", docname.get())
+                                favorite_i18n
+                                    .t_with("components.list.row.unfavorite", &[("name", &name)])
                             } else {
-                                format!("Marcar como favorito {}", docname.get())
+                                favorite_i18n
+                                    .t_with("components.list.row.favorite", &[("name", &name)])
                             }
                         }
                         disabled=move || pending_like.get()

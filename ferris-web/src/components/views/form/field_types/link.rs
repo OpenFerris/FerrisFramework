@@ -9,6 +9,7 @@
 use leptos::prelude::*;
 
 use crate::components::pickers::{DocPicker, PickerMode};
+use crate::i18n::t;
 use crate::views::services::parse_name_list;
 
 /// A `Link` field: one document name, picked from `target`.
@@ -140,7 +141,7 @@ pub fn TagsField(id: String, value: RwSignal<String>, read_only: bool) -> impl I
             target="Tag".to_string()
             values=selected
             mode=PickerMode::Multiple
-            placeholder="Buscar o escribir una etiqueta…"
+            placeholder=t("components.form.field.tags_placeholder")
             read_only=read_only
             allow_free_text=true
             on_change=on_change

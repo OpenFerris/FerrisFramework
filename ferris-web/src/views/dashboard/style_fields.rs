@@ -31,47 +31,49 @@ use leptos::prelude::*;
 use ferris_schema::contract::WidgetInstance;
 use ferris_schema::contract::style::{MAX_BORDER_WIDTH, MAX_PADDING, MAX_RADIUS, StyleSpec};
 
+use crate::i18n::use_i18n;
+
 /// The semantic tokens offered as a surface. A closed list on purpose: a
 /// free-form token name would emit `var(--…)` for a property no theme
 /// defines, and the render would silently paint nothing.
 pub(super) const SURFACE_TOKENS: &[(&str, &str)] = &[
-    ("card", "Tarjeta"),
-    ("muted", "Atenuado"),
-    ("accent", "Acento"),
-    ("secondary", "Secundario"),
-    ("background", "Fondo"),
-    ("primary", "Primario"),
-    ("surface", "Superficie"),
-    ("info", "Info"),
-    ("success", "Éxito"),
-    ("warning", "Aviso"),
-    ("destructive", "Destructivo"),
+    ("card", "views.dashboard.surface.card"),
+    ("muted", "views.dashboard.surface.muted"),
+    ("accent", "views.dashboard.surface.accent"),
+    ("secondary", "views.dashboard.surface.secondary"),
+    ("background", "views.dashboard.surface.background"),
+    ("primary", "views.dashboard.surface.primary"),
+    ("surface", "views.dashboard.surface.surface"),
+    ("info", "views.dashboard.surface.info"),
+    ("success", "views.dashboard.surface.success"),
+    ("warning", "views.dashboard.surface.warning"),
+    ("destructive", "views.dashboard.surface.destructive"),
 ];
 
 /// The tokens offered for a border. `"none"` is the explicit "no border"; the
 /// rest are the theme's line and accent colours.
 pub(super) const BORDER_TOKENS: &[(&str, &str)] = &[
-    ("none", "Sin borde"),
-    ("border", "Borde"),
-    ("input", "Campo"),
-    ("primary", "Primario"),
-    ("secondary", "Secundario"),
-    ("muted", "Atenuado"),
-    ("accent", "Acento"),
-    ("destructive", "Destructivo"),
-    ("success", "Éxito"),
-    ("warning", "Aviso"),
-    ("info", "Info"),
+    ("none", "views.dashboard.border.none"),
+    ("border", "views.dashboard.border.border"),
+    ("input", "views.dashboard.border.input"),
+    ("primary", "views.dashboard.border.primary"),
+    ("secondary", "views.dashboard.border.secondary"),
+    ("muted", "views.dashboard.border.muted"),
+    ("accent", "views.dashboard.border.accent"),
+    ("destructive", "views.dashboard.border.destructive"),
+    ("success", "views.dashboard.border.success"),
+    ("warning", "views.dashboard.border.warning"),
+    ("info", "views.dashboard.border.info"),
 ];
 
 /// The elevation scale: the render maps exactly these tokens to a shadow and
 /// ignores anything else, so the list the user sees is the list that works.
 pub(super) const SHADOW_TOKENS: &[(&str, &str)] = &[
-    ("none", "Sin sombra"),
-    ("xs", "Muy suave"),
-    ("sm", "Suave"),
-    ("md", "Media"),
-    ("lg", "Alta"),
+    ("none", "views.dashboard.shadow.none"),
+    ("xs", "views.dashboard.shadow.xs"),
+    ("sm", "views.dashboard.shadow.sm"),
+    ("md", "views.dashboard.shadow.md"),
+    ("lg", "views.dashboard.shadow.lg"),
 ];
 
 /// The colour a "personalizado" surface starts from when the user has not
@@ -83,10 +85,10 @@ const DEFAULT_CUSTOM: &str = "#ffffff";
 /// A bounded number where an empty field means "inherit" (`None`).
 #[component]
 pub(super) fn NumberField(
-    label: &'static str,
+    #[prop(into)] label: String,
     value: Signal<Option<u8>>,
     max: u8,
-    hint: &'static str,
+    #[prop(into)] hint: String,
     on_change: Callback<Option<u8>>,
 ) -> impl IntoView {
     view! {
@@ -108,11 +110,12 @@ pub(super) fn NumberField(
 /// A closed list of semantic tokens, with "Por defecto" for "inherit".
 #[component]
 pub(super) fn TokenChoice(
-    label: &'static str,
+    #[prop(into)] label: String,
     value: Signal<Option<String>>,
     tokens: &'static [(&'static str, &'static str)],
     on_change: Callback<Option<String>>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     // A token this list does not know (an app's own declared default) stays
     // selectable: opening the panel must not silently rewrite it to "inherit"
     // just because the option was missing from the markup.
@@ -130,10 +133,10 @@ pub(super) fn TokenChoice(
                     on_change.run((!picked.is_empty()).then_some(picked));
                 }
             >
-                <option value="">"Por defecto"</option>
+                <option value="">{i18n.t("views.dashboard.style.default")}</option>
                 {tokens
                     .iter()
-                    .map(|(token, label)| view! { <option value=*token>{*label}</option> })
+                    .map(|(token, label)| view! { <option value=*token>{i18n.t(*label)}</option> })
                     .collect_view()}
                 {unknown.map(|token| {
                     let label = token.clone();
@@ -147,11 +150,12 @@ pub(super) fn TokenChoice(
 /// A surface: semantic token, no surface, or a free-form colour.
 #[component]
 pub(super) fn BackgroundFields(
-    label: &'static str,
+    #[prop(into)] label: String,
     value: Signal<Option<String>>,
     custom: Signal<Option<String>>,
     on_change: Callback<(Option<String>, Option<String>)>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let unknown = value
         .get_untracked()
         .filter(|token| token != "none" && !SURFACE_TOKENS.iter().any(|(known, _)| known == token));
@@ -180,17 +184,17 @@ pub(super) fn BackgroundFields(
                     on_change.run(pair);
                 }
             >
-                <option value="">"Por defecto"</option>
-                <option value="none">"Sin fondo"</option>
+                <option value="">{i18n.t("views.dashboard.style.default")}</option>
+                <option value="none">{i18n.t("views.dashboard.style.no_background")}</option>
                 {SURFACE_TOKENS
                     .iter()
-                    .map(|(token, label)| view! { <option value=*token>{*label}</option> })
+                    .map(|(token, label)| view! { <option value=*token>{i18n.t(*label)}</option> })
                     .collect_view()}
                 {unknown.map(|token| {
                     let label = token.clone();
                     view! { <option value=token>{label}</option> }
                 })}
-                <option value="custom">"Personalizado…"</option>
+                <option value="custom">{i18n.t("views.dashboard.style.custom")}</option>
             </select>
         </label>
         {move || {
@@ -198,7 +202,7 @@ pub(super) fn BackgroundFields(
                 .then(|| {
                     view! {
                         <label class="block space-y-1">
-                            <span class="block text-xs font-medium">"Color personalizado"</span>
+                            <span class="block text-xs font-medium">{i18n.t("views.dashboard.style.custom_color")}</span>
                             <input
                                 type="color"
                                 class="h-8 w-full cursor-pointer rounded-md border border-input bg-transparent"
@@ -227,6 +231,7 @@ pub(super) fn BackgroundFields(
 /// parameters above it.
 #[component]
 pub(super) fn WidgetStyleFields(draft: RwSignal<Option<WidgetInstance>>) -> impl IntoView {
+    let i18n = use_i18n();
     let style = Signal::derive(move || {
         draft.with(|slot| {
             slot.as_ref()
@@ -237,10 +242,10 @@ pub(super) fn WidgetStyleFields(draft: RwSignal<Option<WidgetInstance>>) -> impl
     view! {
         <section class="space-y-3">
             <h3 class="text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
-                "Estilo"
+                {i18n.t("views.dashboard.style.section")}
             </h3>
             <BackgroundFields
-                label="Fondo"
+                label=i18n.t("views.dashboard.style.background")
                 value=Signal::derive(move || style.get().background)
                 custom=Signal::derive(move || style.get().background_custom)
                 on_change=Callback::new(move |(background, custom)| {
@@ -251,7 +256,7 @@ pub(super) fn WidgetStyleFields(draft: RwSignal<Option<WidgetInstance>>) -> impl
                 })
             />
             <TokenChoice
-                label="Borde"
+                label=i18n.t("views.dashboard.style.border")
                 value=Signal::derive(move || style.get().border_color)
                 tokens=BORDER_TOKENS
                 on_change=Callback::new(move |border_color| {
@@ -259,34 +264,34 @@ pub(super) fn WidgetStyleFields(draft: RwSignal<Option<WidgetInstance>>) -> impl
                 })
             />
             <NumberField
-                label="Ancho del borde"
+                label=i18n.t("views.dashboard.style.border_width")
                 value=Signal::derive(move || style.get().border_width)
                 max=MAX_BORDER_WIDTH
-                hint="Vacío = sin borde."
+                hint=i18n.t("views.dashboard.style.border_width_hint")
                 on_change=Callback::new(move |width| {
                     update_style(draft, |style| style.border_width = width);
                 })
             />
             <NumberField
-                label="Radio"
+                label=i18n.t("views.dashboard.style.radius")
                 value=Signal::derive(move || style.get().border_radius)
                 max=MAX_RADIUS
-                hint="Vacío = el radio del tema."
+                hint=i18n.t("views.dashboard.style.radius_hint")
                 on_change=Callback::new(move |radius| {
                     update_style(draft, |style| style.border_radius = radius);
                 })
             />
             <NumberField
-                label="Padding"
+                label=i18n.t("views.dashboard.style.padding")
                 value=Signal::derive(move || style.get().padding)
                 max=MAX_PADDING
-                hint="Vacío = sin padding."
+                hint=i18n.t("views.dashboard.style.padding_hint")
                 on_change=Callback::new(move |padding| {
                     update_style(draft, |style| style.padding = padding);
                 })
             />
             <TokenChoice
-                label="Sombra"
+                label=i18n.t("views.dashboard.style.shadow")
                 value=Signal::derive(move || style.get().shadow)
                 tokens=SHADOW_TOKENS
                 on_change=Callback::new(move |shadow| {

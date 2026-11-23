@@ -29,7 +29,7 @@ use crate::api::meta::docstatus_rank;
 
 use super::{
     FormService, build_form_payload, duplicate_payload, payload_fingerprint, set_form_error,
-    strip_virtual_fields, validate_form,
+    strip_virtual_fields, validate_form_with,
 };
 
 /// The `mutate` handle [`crate::api::hooks::use_mutation`] returns.
@@ -67,35 +67,35 @@ pub enum WriteVerb {
 impl WriteVerb {
     /// What the toast says when the write landed.
     #[must_use]
-    pub fn done_message(self) -> &'static str {
+    pub fn done_key(self) -> &'static str {
         match self {
-            WriteVerb::Save => "Documento guardado.",
-            WriteVerb::Submit => "Documento enviado.",
-            WriteVerb::Cancel => "Documento cancelado.",
-            WriteVerb::Amend => "Documento reabierto como borrador.",
-            WriteVerb::Delete => "Documento eliminado.",
-            WriteVerb::Duplicate => "Documento duplicado.",
-            WriteVerb::Undo => "Cambio deshecho.",
-            WriteVerb::Redo => "Cambio rehecho.",
-            WriteVerb::Move => "Campo movido.",
-            WriteVerb::Settings => "Ajustes del DocType guardados.",
+            WriteVerb::Save => "components.form.write.done.save",
+            WriteVerb::Submit => "components.form.write.done.submit",
+            WriteVerb::Cancel => "components.form.write.done.cancel",
+            WriteVerb::Amend => "components.form.write.done.amend",
+            WriteVerb::Delete => "components.form.write.done.delete",
+            WriteVerb::Duplicate => "components.form.write.done.duplicate",
+            WriteVerb::Undo => "components.form.write.done.undo",
+            WriteVerb::Redo => "components.form.write.done.redo",
+            WriteVerb::Move => "components.form.write.done.move",
+            WriteVerb::Settings => "components.form.write.done.settings",
         }
     }
 
     /// How the toast opens when the write failed; the server's message follows.
     #[must_use]
-    pub fn error_prefix(self) -> &'static str {
+    pub fn error_key(self) -> &'static str {
         match self {
-            WriteVerb::Save => "No se pudo guardar",
-            WriteVerb::Submit => "No se pudo enviar",
-            WriteVerb::Cancel => "No se pudo cancelar",
-            WriteVerb::Amend => "No se pudo reabrir",
-            WriteVerb::Delete => "No se pudo eliminar",
-            WriteVerb::Duplicate => "No se pudo duplicar",
-            WriteVerb::Undo => "No se pudo deshacer",
-            WriteVerb::Redo => "No se pudo rehacer",
-            WriteVerb::Move => "No se pudo mover el campo",
-            WriteVerb::Settings => "No se pudieron guardar los ajustes del DocType",
+            WriteVerb::Save => "components.form.write.error.save",
+            WriteVerb::Submit => "components.form.write.error.submit",
+            WriteVerb::Cancel => "components.form.write.error.cancel",
+            WriteVerb::Amend => "components.form.write.error.amend",
+            WriteVerb::Delete => "components.form.write.error.delete",
+            WriteVerb::Duplicate => "components.form.write.error.duplicate",
+            WriteVerb::Undo => "components.form.write.error.undo",
+            WriteVerb::Redo => "components.form.write.error.redo",
+            WriteVerb::Move => "components.form.write.error.move",
+            WriteVerb::Settings => "components.form.write.error.settings",
         }
     }
 }
@@ -266,12 +266,13 @@ impl FormService {
         // Save (create/update)
         let save_action = {
             let mutate = mutate.clone();
+            let i18n = self.i18n;
             Box::new(move || {
                 saving.set(true);
                 error.set(None);
                 notice.set(None);
-                if !validate_form(&fields.get()) {
-                    let message = "Revisa los campos marcados".to_string();
+                if !validate_form_with(&fields.get(), &i18n) {
+                    let message = i18n.t("components.form.validation.check_fields");
                     set_form_error(error, message.clone());
                     saving.set(false);
                     // The inline banner says where, the toast says that the

@@ -9,6 +9,7 @@
 use leptos::prelude::*;
 
 use crate::components::ui::select_native::SelectNative;
+use crate::i18n::{t, use_i18n};
 
 /// One selectable field: the stored name and the label the user reads.
 #[derive(Clone, PartialEq, Eq)]
@@ -44,6 +45,7 @@ pub(super) fn FieldPicker(
     #[prop(default = true)]
     allow_empty: bool,
 ) -> impl IntoView {
+    let missing_i18n = use_i18n();
     let id = format!(
         "doctype-setting-{}",
         title.to_lowercase().replace([' ', '«', '»'], "-")
@@ -62,7 +64,7 @@ pub(super) fn FieldPicker(
                     value.set(event_target_value(&ev));
                 })
             >
-                {allow_empty.then(|| view! { <option value="">"— sin declarar —"</option> })}
+                {allow_empty.then(|| view! { <option value="">{t("components.form.settings.not_declared")}</option> })}
                 {move || {
                     let current = value.get();
                     let mut out: Vec<AnyView> = options
@@ -87,7 +89,10 @@ pub(super) fn FieldPicker(
                             .iter()
                             .any(|option| option.name == current)
                     {
-                        let label = format!("{current} (ya no existe)");
+                        let label = missing_i18n.t_with(
+                            "components.form.settings.field_missing",
+                            &[("field", &current)],
+                        );
                         out.push(view! { <option value=current>{label}</option> }.into_any());
                     }
                     out.into_iter().collect_view()

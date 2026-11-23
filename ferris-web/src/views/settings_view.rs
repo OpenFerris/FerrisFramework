@@ -19,6 +19,7 @@ use crate::components::ui::card::{Card, CardContent, CardDescription, CardHeader
 use crate::components::ui::checkbox::Checkbox;
 use crate::components::ui::table as t;
 use crate::desk::session;
+use crate::i18n::use_i18n;
 use crate::views::settings_permissions::CustomPermissionManager;
 use crate::views::settings_security::SecuritySection;
 use crate::views::views_components::{Feedback, FeedbackKind, LoadingLines, PageHeader};
@@ -26,6 +27,11 @@ use crate::views::views_components::{Feedback, FeedbackKind, LoadingLines, PageH
 #[component]
 pub fn SettingsView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
+    let tr = move |key: &str| {
+        i18n.try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     let section = Signal::derive(move || {
         params.with(|params| {
             params
@@ -59,22 +65,22 @@ pub fn SettingsView() -> impl IntoView {
     view! {
         <div class="mx-auto flex h-full w-full max-w-6xl flex-col gap-4 overflow-y-auto p-4">
             <PageHeader
-                title="Ajustes"
-                description="Configuración del sitio, seguridad de la cuenta, diagnóstico del motor y permisos personalizados."
+                title=tr("nav.settings")
+                description=tr("views.settings.description")
             />
 
             <nav
                 class="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-surface p-1"
-                aria-label="Secciones de ajustes"
+                aria-label=tr("views.settings.sections_aria")
             >
-                <SettingsTab href="/settings" label="General" active=general />
+                <SettingsTab href="/settings" label=tr("views.settings.tab_general") active=general />
                 <SettingsTab
                     href="/settings/permissions"
-                    label="Permisos"
+                    label=tr("views.settings.tab_permissions")
                     active=permissions
                 />
-                <SettingsTab href="/settings/security" label="Seguridad" active=security />
-                <SettingsTab href="/settings/about" label="Acerca de" active=about />
+                <SettingsTab href="/settings/security" label=tr("views.settings.tab_security") active=security />
+                <SettingsTab href="/settings/about" label=tr("views.settings.tab_about") active=about />
             </nav>
 
             <Show when=move || general.get()>
@@ -117,6 +123,15 @@ fn SettingsTab(
 #[component]
 fn GeneralSection() -> impl IntoView {
     let site = use_site_state();
+    let i18n = use_i18n();
+    let tr = move |key: &str| {
+        i18n.try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n.try_with_value(|i| i.t_with(key, args))
+            .unwrap_or_else(|| key.to_string())
+    };
     let checking = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let healthy = RwSignal::new(None::<String>);
@@ -148,7 +163,10 @@ fn GeneralSection() -> impl IntoView {
                     healthy.set(Some(status));
                 }
                 Err(message) => {
-                    error.set(Some(format!("/health no respondió: {message}")));
+                    error.set(Some(tr_with(
+                        "views.settings.health_failed",
+                        &[("message", &message)],
+                    )));
                     checking.set(false);
                     return;
                 }
@@ -174,19 +192,19 @@ fn GeneralSection() -> impl IntoView {
         <div class="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
             <Card>
                 <CardHeader>
-                    <CardTitle>"Sitio"</CardTitle>
+                    <CardTitle>{tr("views.settings.site_title")}</CardTitle>
                     <CardDescription>
-                        "Valores de Website Settings y Navbar Settings que usa el Desk."
+                        {tr("views.settings.site_description")}
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="p-0">
                     <t::Table class="[&_th:first-child]:pl-4 [&_td:first-child]:pl-4 sm:[&_th:first-child]:pl-6 sm:[&_td:first-child]:pl-6 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4 sm:[&_th:last-child]:pr-6 sm:[&_td:last-child]:pr-6">
                         <t::TableBody>
-                            <SettingRow label="Nombre" value=Signal::derive(move || text(&site.with(|s| s.title_prefix.clone()))) />
-                            <SettingRow label="Página de inicio" value=Signal::derive(move || text(&site.with(|s| s.home_page.clone()))) />
-                            <SettingRow label="Idioma" value=Signal::derive(move || text(&site.with(|s| s.language.clone()))) />
-                            <SettingRow label="Ayuda" value=Signal::derive(move || text(&site.with(|s| s.help_link.clone()))) />
-                            <SettingRow label="Anuncio" value=Signal::derive(move || text(&site.with(|s| s.announcement.clone()))) />
+                            <SettingRow label=tr("views.settings.field_name") value=Signal::derive(move || text(&site.with(|s| s.title_prefix.clone()))) />
+                            <SettingRow label=tr("views.settings.field_home") value=Signal::derive(move || text(&site.with(|s| s.home_page.clone()))) />
+                            <SettingRow label=tr("views.settings.field_language") value=Signal::derive(move || text(&site.with(|s| s.language.clone()))) />
+                            <SettingRow label=tr("views.settings.field_help") value=Signal::derive(move || text(&site.with(|s| s.help_link.clone()))) />
+                            <SettingRow label=tr("views.settings.field_announcement") value=Signal::derive(move || text(&site.with(|s| s.announcement.clone()))) />
                         </t::TableBody>
                     </t::Table>
                 </CardContent>
@@ -194,9 +212,9 @@ fn GeneralSection() -> impl IntoView {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>"Diagnóstico"</CardTitle>
+                    <CardTitle>{tr("views.settings.diagnostics_title")}</CardTitle>
                     <CardDescription>
-                        "Llama a /health y comprueba que el catálogo de workspaces responde."
+                        {tr("views.settings.diagnostics_description")}
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-4">
@@ -207,10 +225,10 @@ fn GeneralSection() -> impl IntoView {
                             attr:disabled=checking
                             on:click=check
                         >
-                            "Comprobar servidor"
+                            {tr("views.settings.check_server")}
                         </Button>
                         <Show when=move || checking.get()>
-                            <span class="text-sm text-muted-foreground">"Comprobando…"</span>
+                            <span class="text-sm text-muted-foreground">{tr("views.settings.checking")}</span>
                         </Show>
                     </div>
 
@@ -226,11 +244,13 @@ fn GeneralSection() -> impl IntoView {
                         <Feedback
                             kind=FeedbackKind::Success
                             message=Signal::derive(move || {
-                                Some(format!(
-                                    "Servidor: {} · {} workspaces · {} entradas",
-                                    healthy.get().unwrap_or_else(|| "ok".to_string()),
-                                    workspaces.get().unwrap_or_default(),
-                                    entries.get().unwrap_or_default(),
+                                Some(tr_with(
+                                    "views.settings.check_result",
+                                    &[
+                                        ("status", &healthy.get().unwrap_or_else(|| "ok".to_string())),
+                                        ("workspaces", &workspaces.get().unwrap_or_default().to_string()),
+                                        ("entries", &entries.get().unwrap_or_default().to_string()),
+                                    ],
                                 ))
                             })
                         />
@@ -241,15 +261,15 @@ fn GeneralSection() -> impl IntoView {
 
         <Card>
             <CardHeader>
-                <CardTitle>"Apariencia"</CardTitle>
+                <CardTitle>{tr("views.settings.appearance_title")}</CardTitle>
                 <CardDescription>
-                    "El tema se aplica al instante y se conserva entre sesiones."
+                    {tr("views.settings.appearance_description")}
                 </CardDescription>
             </CardHeader>
             <CardContent class="flex flex-wrap items-center gap-3">
                 <crate::components::ui::theme_toggle::ThemeToggle />
                 <span class="text-sm text-muted-foreground">
-                    "Claro, oscuro o el que prefiera el sistema."
+                    {tr("views.settings.appearance_hint")}
                 </span>
             </CardContent>
         </Card>
@@ -266,6 +286,11 @@ fn GeneralSection() -> impl IntoView {
 #[component]
 fn MobileCard() -> impl IntoView {
     let prefs = use_mobile_prefs();
+    let i18n = use_i18n();
+    let tr = move |key: &str| {
+        i18n.try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     // Built in the component body, not inside the `view!`: a callback created
     // inside a re-running render closure would be disposed with that closure.
     let set_bottom_nav = Callback::new(move |on: bool| prefs.update(|p| p.bottom_nav = on));
@@ -275,27 +300,27 @@ fn MobileCard() -> impl IntoView {
     view! {
         <Card>
             <CardHeader>
-                <CardTitle>"Móvil"</CardTitle>
+                <CardTitle>{tr("views.settings.mobile_title")}</CardTitle>
                 <CardDescription>
-                    "Preferencias de este dispositivo. Se guardan en el navegador y se aplican al instante."
+                    {tr("views.settings.mobile_description")}
                 </CardDescription>
             </CardHeader>
             <CardContent class="flex flex-col gap-4">
                 <PrefRow
-                    label="Navegación inferior"
-                    description="Muestra la barra inferior en pantallas pequeñas."
+                    label=tr("views.settings.mobile_bottom_nav")
+                    description=tr("views.settings.mobile_bottom_nav_desc")
                     checked=Signal::derive(move || prefs.get().bottom_nav)
                     on_change=set_bottom_nav
                 />
                 <PrefRow
-                    label="Menú lateral deslizable"
-                    description="Permite abrir la barra lateral como panel en móvil."
+                    label=tr("views.settings.mobile_sidebar")
+                    description=tr("views.settings.mobile_sidebar_desc")
                     checked=Signal::derive(move || prefs.get().sidebar_drawer)
                     on_change=set_sidebar_drawer
                 />
                 <PrefRow
-                    label="Panel lateral del formulario"
-                    description="Muestra el panel de información del formulario en móvil."
+                    label=tr("views.settings.mobile_form_sidebar")
+                    description=tr("views.settings.mobile_form_sidebar_desc")
                     checked=Signal::derive(move || prefs.get().form_sidebar)
                     on_change=set_form_sidebar
                 />
@@ -307,16 +332,17 @@ fn MobileCard() -> impl IntoView {
 /// One checkbox with its label and the sentence that explains the trade-off.
 #[component]
 fn PrefRow(
-    label: &'static str,
-    description: &'static str,
+    label: String,
+    description: String,
     checked: Signal<bool>,
     on_change: Callback<bool>,
 ) -> impl IntoView {
+    let aria = label.clone();
     view! {
         <div class="flex items-start gap-3">
             <Checkbox
                 class="mt-1"
-                aria_label=label
+                aria_label=aria
                 checked=checked
                 on_checked_change=on_change
             />
@@ -337,21 +363,26 @@ fn PrefRow(
 /// above, which actually asks it.
 #[component]
 fn AboutSection() -> impl IntoView {
+    let i18n = use_i18n();
+    let tr = move |key: &str| {
+        i18n.try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     view! {
         <Card>
             <CardHeader>
-                <CardTitle>"Acerca de Ferris"</CardTitle>
+                <CardTitle>{tr("views.settings.about_title")}</CardTitle>
                 <CardDescription>
-                    "Framework de aplicaciones metadata-driven, escrito en Rust."
+                    {tr("views.settings.about_description")}
                 </CardDescription>
             </CardHeader>
             <CardContent class="space-y-2 text-sm">
                 <p>
-                    <span class="text-muted-foreground">"Versión del Desk: " </span>
+                    <span class="text-muted-foreground">{tr("views.settings.desk_version")}</span>
                     {env!("CARGO_PKG_VERSION")}
                 </p>
                 <p class="text-muted-foreground">
-                    "Los datos de compilación no describen el servidor; usa «Comprobar servidor» en General para eso."
+                    {tr("views.settings.about_note")}
                 </p>
             </CardContent>
         </Card>
@@ -359,7 +390,7 @@ fn AboutSection() -> impl IntoView {
 }
 
 #[component]
-fn SettingRow(label: &'static str, value: Signal<String>) -> impl IntoView {
+fn SettingRow(label: String, value: Signal<String>) -> impl IntoView {
     view! {
         <t::TableRow>
             <t::TableCell class="w-1/3 text-muted-foreground">{label}</t::TableCell>

@@ -40,6 +40,7 @@ use crate::api::DocStore;
 use crate::api::types::Customization;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 
 pub(crate) use create::CreateFieldDialog;
@@ -76,6 +77,7 @@ pub struct FieldEditCtx {
 /// The properties panel of the form's edit mode: exactly one field.
 #[component]
 pub fn InspectorPanel(service: FormService) -> impl IntoView {
+    let i18n = use_i18n();
     let Some(edit) = use_context::<FieldEditCtx>() else {
         // The panel only exists inside the form's edit context: without it there
         // is no selection to follow and no dialog to open.
@@ -124,7 +126,7 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
             <button
                 type="button"
                 class="fixed inset-0 z-30 bg-overlay/40 lg:hidden"
-                aria-label="Cerrar las propiedades"
+                aria-label=t("components.form.edit_mode.close_properties")
                 on:click=move |_| selected.set(None)
             ></button>
         </Show>
@@ -134,7 +136,7 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
         <Show when=move || selected.get().is_some()>
             <aside
                 class="flex w-full min-w-0 flex-col gap-3 rounded-xl border bg-card text-sm shadow-xs max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[85dvh] max-lg:overflow-y-auto max-lg:rounded-t-2xl max-lg:border-t max-lg:shadow-2xl"
-                aria-label="Propiedades del campo"
+                aria-label=t("components.form.edit_mode.field_properties")
                 data-name="FieldInspectorPanel"
             >
                 // The header stays at the top of the panel while the properties
@@ -142,12 +144,12 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
                 // controls must never be the thing that scrolled away.
                 <div class="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-xl border-b bg-card px-4 pt-3 pb-2">
                     <div class="flex min-w-0 items-center gap-1">
-                        <h3 class="truncate text-sm font-semibold">"Propiedades"</h3>
+                        <h3 class="truncate text-sm font-semibold">{t("components.form.edit_mode.properties")}</h3>
                         <Button
                             variant=ButtonVariant::Ghost
                             size=ButtonSize::IconSm
-                            attr:aria-label="Exportar este campo"
-                            attr:title="Exportar este campo a una app"
+                            attr:aria-label=t("components.form.export_field.title")
+                            attr:title=t("components.form.export_field.tooltip")
                             on:click=move |_| export_open.set(true)
                         >
                             <Icon name="download" class="size-4" />
@@ -156,8 +158,8 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
                     <Button
                         variant=ButtonVariant::Ghost
                         size=ButtonSize::IconSm
-                        attr:aria-label="Cerrar propiedades"
-                        attr:title="Cerrar propiedades"
+                        attr:aria-label=t("components.form.edit_mode.close_properties")
+                        attr:title=t("components.form.edit_mode.close_properties")
                         on:click=move |_| selected.set(None)
                     >
                         <Icon name="x" class="size-4" />
@@ -192,7 +194,7 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
                                     />
                                 }.into_any(),
                                 None => view! {
-                                    <p class="text-xs text-destructive">"Campo no encontrado."</p>
+                                    <p class="text-xs text-destructive">{i18n.t("components.form.edit_mode.field_not_found")}</p>
                                 }.into_any(),
                             }
                         }

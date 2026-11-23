@@ -3,6 +3,7 @@
 pub mod desktop;
 pub mod global_search;
 pub mod icon;
+pub mod language_picker;
 pub mod login;
 pub mod mobile_nav;
 pub mod notifications;
@@ -17,6 +18,7 @@ pub mod user_menu;
 pub use desktop::Desktop;
 pub use global_search::{GlobalSearch, SavedEntry};
 pub use icon::DeskGlyph;
+pub use language_picker::LanguagePicker;
 pub use login::{LoginPage, LoginView};
 pub use mobile_nav::MobileNav;
 pub use notifications_panel::NotificationsPanel;

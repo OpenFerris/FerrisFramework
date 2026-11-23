@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use ferris_core::{Config, DatabaseConfig, RealtimeConfig};
+use ferris_core::{Config, DatabaseConfig, I18n, RealtimeConfig};
 use ferris_db::Db;
 #[cfg(feature = "wasm")]
 use ferris_wasm::PluginStore;
@@ -70,6 +70,9 @@ pub struct ServerSettings {
     /// when the server terminates mTLS. `None` means chain validation alone
     /// decides (no revocation list configured).
     pub revocation: Option<Arc<dyn CertificateRevocation>>,
+    /// Locale policy and embedded catalogues (`GET /api/i18n`, Desk
+    /// negotiation). The CLI replaces the English-only default before boot.
+    pub i18n: I18n,
 }
 
 impl ServerSettings {
@@ -100,6 +103,7 @@ impl ServerSettings {
             dev: false,
             policy_path: None,
             revocation: None,
+            i18n: I18n::default(),
         }
     }
 

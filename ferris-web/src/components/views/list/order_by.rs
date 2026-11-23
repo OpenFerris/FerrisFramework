@@ -10,6 +10,7 @@ use crate::components::ui::dropdown_menu::{
     DropdownMenu, DropdownMenuAction, DropdownMenuAlign, DropdownMenuContent, DropdownMenuGroup,
     DropdownMenuItem, DropdownMenuTrigger,
 };
+use crate::i18n::t;
 
 use heck::ToUpperCamelCase;
 use icons::{ArrowDownWideNarrow, ArrowUpNarrowWide, Check, ChevronDown};
@@ -37,7 +38,7 @@ pub fn ListOrderByGroup(
             <Button
                 variant=ButtonVariant::Outline
                 size=ButtonSize::Sm
-                attr:aria-label="Cambiar dirección de orden"
+                attr:aria-label=t("components.list.order_by.toggle_direction")
                 on:click=move |_| {
                     let (field, desc) = sort_state.get_untracked();
                     on_set.run((field, !desc));
