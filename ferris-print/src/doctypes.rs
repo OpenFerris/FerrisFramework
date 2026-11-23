@@ -43,6 +43,7 @@ pub fn print_format_meta() -> DoctypeMeta {
         .naming_field("format_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("format_name")
                 .label("Format Name")

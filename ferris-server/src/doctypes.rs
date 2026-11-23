@@ -65,6 +65,7 @@ pub fn system_settings_meta() -> DoctypeMeta {
     DoctypeMeta::new("System Settings", MODULE)
         .single()
         .description("Install-wide system defaults.")
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(FieldMeta::link("language", "Language").label("Language"))
         .field(FieldMeta::data("time_zone").label("Time Zone"))
         .field(FieldMeta::data("date_format").label("Date Format"))
@@ -93,6 +94,7 @@ pub fn path_log_meta() -> DoctypeMeta {
         .description("A recorded request path and its outcome.")
         .sort("creation", "desc")
         .read_only()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(FieldMeta::data("method").label("Method").in_list_view())
         .field(FieldMeta::data("path").label("Path").in_list_view())
         .field(
@@ -134,15 +136,9 @@ pub fn version_meta() -> DoctypeMeta {
 pub fn scheduled_job_type_meta() -> DoctypeMeta {
     DoctypeMeta::new("Scheduled Job Type", MODULE)
         .description("The cron definition of one schedulable job.")
-        .title_field("name")
         .sort("next_execution", "asc")
         .allow_delete()
-        .field(
-            FieldMeta::data("name")
-                .label("Name")
-                .required()
-                .in_list_view(),
-        )
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("cron_format")
                 .label("Cron Format")
@@ -170,6 +166,7 @@ pub fn scheduled_job_log_meta() -> DoctypeMeta {
         .description("One execution of a scheduled job.")
         .sort("creation", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::link("job_type", "Scheduled Job Type")
                 .label("Job Type")
@@ -196,6 +193,7 @@ pub fn rq_job_meta() -> DoctypeMeta {
         .title_field("job_id")
         .sort("creation", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("job_id")
                 .label("Job ID")
@@ -248,6 +246,7 @@ pub fn error_log_meta() -> DoctypeMeta {
         .description("A captured server error.")
         .sort("creation", "desc")
         .read_only()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("error_type")
                 .label("Error Type")
@@ -267,6 +266,7 @@ pub fn api_request_log_meta() -> DoctypeMeta {
         .description("A recorded API call and its outcome.")
         .sort("creation", "desc")
         .read_only()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(FieldMeta::data("method").label("Method").in_list_view())
         .field(FieldMeta::data("url").label("URL").in_list_view())
         .field(

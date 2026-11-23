@@ -13,6 +13,7 @@ pub fn automation_flow_meta() -> DoctypeMeta {
         .title_field("flow_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("flow_name")
                 .label("Flow Name")
@@ -55,6 +56,7 @@ pub fn automation_trigger_queue_meta() -> DoctypeMeta {
         .description("A queued automation trigger and its run state.")
         .sort("creation", "asc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::link("flow", "Automation Flow")
                 .label("Flow")
@@ -87,6 +89,7 @@ pub fn assignment_rule_meta() -> DoctypeMeta {
         .title_field("rule_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("rule_name")
                 .label("Rule Name")
@@ -125,6 +128,7 @@ pub fn milestone_meta() -> DoctypeMeta {
         .title_field("milestone")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("milestone")
                 .label("Milestone")

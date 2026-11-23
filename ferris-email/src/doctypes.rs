@@ -49,6 +49,7 @@ pub fn email_account_meta() -> DoctypeMeta {
         .title_field("email")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("email")
                 .label("Email")
@@ -116,6 +117,7 @@ pub fn communication_meta() -> DoctypeMeta {
         .title_field("subject")
         .sort("creation", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(FieldMeta::data("subject").label("Subject").in_list_view())
         .field(FieldMeta::data("sender").label("Sender").in_list_view())
         .field(FieldMeta::text("recipients").label("Recipients"))
@@ -194,6 +196,7 @@ pub fn email_queue_meta() -> DoctypeMeta {
         .title_field("subject")
         .sort("creation", "asc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(FieldMeta::data("account").label("Account"))
         .field(FieldMeta::data("sender").label("Sender"))
         .field(FieldMeta::text("recipients").label("Recipients"))
@@ -225,16 +228,17 @@ pub fn email_queue_meta() -> DoctypeMeta {
 pub fn email_template_meta() -> DoctypeMeta {
     DoctypeMeta::new("Email Template", MODULE)
         .description("A reusable subject/body template.")
-        .title_field("name")
+        .title_field("template_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
-            FieldMeta::data("name")
-                .label("Name")
+            FieldMeta::data("template_name")
+                .label("Template Name")
                 .required()
                 .in_list_view(),
         )
-        .field(FieldMeta::data("subject").label("Subject"))
+        .field(FieldMeta::data("subject").label("Subject").in_list_view())
         .field(
             FieldMeta::code("html_template")
                 .label("HTML Template")
@@ -310,6 +314,7 @@ pub fn inbound_email_meta() -> DoctypeMeta {
         .title_field("subject")
         .sort("received_at", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(FieldMeta::data("subject").label("Subject").in_list_view())
         .field(FieldMeta::data("from").label("From").in_list_view())
         .field(FieldMeta::text("to").label("To"))

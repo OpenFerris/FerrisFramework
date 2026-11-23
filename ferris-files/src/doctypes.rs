@@ -27,6 +27,7 @@ pub fn file_meta() -> DoctypeMeta {
         .sort("modified", "desc")
         .allow_delete()
         .in_global_search()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("file_name")
                 .label("File Name")

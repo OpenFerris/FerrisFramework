@@ -53,6 +53,7 @@ pub fn web_page_meta() -> DoctypeMeta {
         .sort("modified", "desc")
         .allow_delete()
         .in_global_search()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("title")
                 .label("Title")
@@ -96,6 +97,7 @@ pub fn web_form_meta() -> DoctypeMeta {
         .title_field("title")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("title")
                 .label("Title")
@@ -153,6 +155,7 @@ pub fn website_settings_meta() -> DoctypeMeta {
         .description("Install-wide public-site defaults.")
         .single()
         .sort("modified", "desc")
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(FieldMeta::data("home_page").label("Home Page"))
         .field(FieldMeta::data("title_prefix").label("Title Prefix"))
         .field(FieldMeta::small_text("brand_html").label("Brand HTML"))

@@ -12,6 +12,7 @@ pub fn push_notification_meta() -> DoctypeMeta {
         .title_field("title")
         .sort("creation", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("title")
                 .label("Title")

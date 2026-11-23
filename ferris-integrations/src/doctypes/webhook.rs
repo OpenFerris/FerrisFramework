@@ -12,6 +12,7 @@ pub fn webhook_meta() -> DoctypeMeta {
         .title_field("request_url")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("webhook_doctype")
                 .label("Document Type")

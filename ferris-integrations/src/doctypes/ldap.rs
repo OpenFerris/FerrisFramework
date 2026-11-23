@@ -11,6 +11,7 @@ pub fn ldap_settings_meta() -> DoctypeMeta {
         .description("Directory binding and attribute mapping for LDAP login.")
         .single()
         .sort("modified", "desc")
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::check("enabled")
                 .label("Enabled")

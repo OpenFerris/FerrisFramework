@@ -13,6 +13,7 @@ pub fn auto_repeat_meta() -> DoctypeMeta {
         .title_field("reference_document")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("reference_doctype")
                 .label("Reference DocType")
@@ -50,6 +51,7 @@ pub fn auto_email_report_meta() -> DoctypeMeta {
         .title_field("report")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("report")
                 .label("Report")
@@ -82,6 +84,7 @@ pub fn reminder_meta() -> DoctypeMeta {
         .title_field("reminder")
         .sort("remind_at", "asc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("reminder")
                 .label("Reminder")

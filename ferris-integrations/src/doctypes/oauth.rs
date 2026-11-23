@@ -13,6 +13,7 @@ pub fn connected_app_meta() -> DoctypeMeta {
         .title_field("app_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("app_name")
                 .label("App Name")
@@ -47,6 +48,7 @@ pub fn social_login_key_meta() -> DoctypeMeta {
         .title_field("provider_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("provider_name")
                 .label("Provider Name")
@@ -81,6 +83,7 @@ pub fn oauth_client_meta() -> DoctypeMeta {
         .title_field("app_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("app_name")
                 .label("App Name")
@@ -118,6 +121,7 @@ pub fn oauth_provider_meta() -> DoctypeMeta {
         .title_field("provider_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("provider_name")
                 .label("Provider Name")

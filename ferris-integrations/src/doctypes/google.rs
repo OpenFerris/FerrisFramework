@@ -13,6 +13,7 @@ pub fn google_contacts_meta() -> DoctypeMeta {
         .title_field("contact_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("contact_name")
                 .label("Contact Name")
@@ -34,6 +35,7 @@ pub fn google_calendar_meta() -> DoctypeMeta {
         .title_field("calendar_name")
         .sort("modified", "desc")
         .allow_delete()
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::data("calendar_name")
                 .label("Calendar Name")
@@ -54,6 +56,7 @@ pub fn google_settings_meta() -> DoctypeMeta {
         .description("OAuth credentials for the Google connectors.")
         .single()
         .sort("modified", "desc")
+        .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
             FieldMeta::check("enable")
                 .label("Enable")
