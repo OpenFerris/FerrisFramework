@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-23
+
+**Minor bump** (`0.3.0 → 0.4.0`): `Cargo.toml`, `ferris-wasm/wit/ferris.wit` y la
+copia de cada app se mueven juntos, y `FerrisDocs/project.json` publica el mismo
+número. La adición al contrato (`descriptor.locales`) es compatible; en `0.x` un
+cambio de contrato es minor. La política vive en [`VERSIONING.md`](VERSIONING.md).
+
+### Añadido
+
+- **Layout `apps/` + `sites/`**: `ferris new` escribe el bench (una app bajo
+  `apps/<app>/`, un `config/ferris.toml` en la raíz, `sites/` vacío) y
+  `--standalone` conserva el layout de una sola app.
+- **App por sitio con versión fijada**: `site install-app` copia el componente en
+  vez de enlazarlo, `app_versions` registra la versión instalada y los enlaces
+  heredados se materializan al arrancar o migrar.
+- **Multi-sitio real**: `ferris serve --all-sites` publica todos los sitios en un
+  puerto y enruta por `Host`, un proceso por sitio, `421` para un host
+  desconocido y WebSocket por *splice*.
+- **Desk traducido de punta a punta** (`en`/`es`, 1.031 claves de interfaz):
+  catálogos embebidos, `DeskI18n` en `ferris-web-shared`, handles `Copy` en la
+  librería de UI y cobertura verificada por test.
+- **Selector de idioma por cuenta**: `User.language`, `PUT /api/auth/language`
+  tras el gate CSRF y precedencia «preferencia del usuario → `Accept-Language` →
+  idioma del sitio».
+- **i18n de metadatos**: DocTypes, campos, workspaces, carpetas, grupos y temas
+  se resuelven en el servidor al proyectar `/api/doctype/meta`, `/api/modules`,
+  `/api/desk-layout`, `/api/ui-extensions` y `/api/themes`, con la convención
+  `doctype.<X>.label`, `field.<X>.<campo>.label`, `workspace.<X>.label`, etc.
+  Los identificadores (nombre de DocType, `fieldname`, rutas, permisos) no se
+  traducen nunca.
+- **Catálogos de app**: una app declara `descriptor.locales` en WIT y envía
+  `locales/<tag>.toml` junto a `plugin.toml`. `ferris app install` valida tags,
+  claves, TOML y tamaño; `site install-app` los copia al sitio; el arranque los
+  fusiona sobre los catálogos embebidos y `GET /api/i18n` anuncia los idiomas.
+  `ferris doctor` informa de catálogos inválidos sin impedir el arranque.
+
+### Cambiado
+
+- La documentación de `configuracion/i18n` cubre la política, los metadatos y el
+  formato de los catálogos de app; las páginas de CLI, sitios y apps reflejan el
+  layout nuevo.
+
+
 ## [0.3.0] - 2026-11-22
 
 **Minor bump** (`0.2.0 → 0.3.0`): `Cargo.toml`, `ferris-wasm/wit/ferris.wit` and

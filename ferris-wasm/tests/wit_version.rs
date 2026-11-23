@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 /// link), so the wave is pinned here explicitly instead of being derived from
 /// the crate version: drifting WIT copies fail with the version they claim, not
 /// with a number the build happens to carry.
-const WIT_VERSION: &str = "0.3.0";
+const WIT_VERSION: &str = "0.4.0";
 
 fn repo_root() -> PathBuf {
     // `CARGO_MANIFEST_DIR` is `<repo>/ferris-wasm`.
@@ -52,7 +52,7 @@ fn wit_package_version_is_the_contract_wave() {
     assert_eq!(
         declared_package(&source),
         Some(expected.as_str()),
-        "the contract must declare the 0.3.0 wave; bump `WIT_VERSION` together \
+        "the contract must declare the 0.4.0 wave; bump `WIT_VERSION` together \
          with both WIT copies and the workspace version"
     );
 }

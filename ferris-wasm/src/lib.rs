@@ -6,7 +6,7 @@
 //! overhead flat as plugins grow, and lets the host enforce uniform safety
 //! limits (epoch interrupts, memory/stack caps, backtraces off).
 //!
-//! The app contract lives in `wit/ferris.wit` (`ferris:framework@0.3.0`): six
+//! The app contract lives in `wit/ferris.wit` (`ferris:framework@0.4.0`): six
 //! interfaces — `types`, `data`, `schema`, `io`, `platform` and `descriptor` —
 //! that apps **import**, plus the nine exports (`describe`, `handle-request`,
 //! `doctype-event`, `handle-stream`, `handle-stream-event`, `handle-datagram`,

@@ -121,6 +121,7 @@ mod tests {
     #[test]
     fn a_declared_route_is_kept_with_its_own_auth() {
         let described = crate::ferris::framework::descriptor::Descriptor {
+            locales: None,
             capabilities: vec![
                 crate::ferris::framework::types::Capability::Routes,
                 crate::ferris::framework::types::Capability::StreamsListen,

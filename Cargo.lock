@@ -2328,7 +2328,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-api"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2348,7 +2348,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-auth"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "cargo-leptos",
@@ -2412,7 +2412,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -2428,7 +2428,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-db"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ferris-core",
  "serde_json",
@@ -2439,7 +2439,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-document"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2456,7 +2456,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-email"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2482,7 +2482,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-files"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2507,7 +2507,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-integrations"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-jobs"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2548,7 +2548,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-macro"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2557,7 +2557,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-print"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2585,7 +2585,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-realtime"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-report"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -2622,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-scheduler"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -2641,7 +2641,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-schema"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ferris-core",
  "ferris-db",
@@ -2651,7 +2651,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-server"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "any_spawner",
  "anyhow",
@@ -2704,7 +2704,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-wasm"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2737,7 +2737,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-web"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2775,7 +2775,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-web-shared"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ferris-schema",
  "serde",
@@ -2785,7 +2785,7 @@ dependencies = [
 
 [[package]]
 name = "ferris-web-ui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ferris-web-shared",
  "icons",

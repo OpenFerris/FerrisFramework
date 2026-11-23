@@ -28,6 +28,7 @@ struct ProbeTrap;
 impl Guest for ProbeTrap {
     fn describe() -> Result<ferris::framework::descriptor::Descriptor, Error> {
         Ok(ferris::framework::descriptor::Descriptor {
+            locales: None,
             capabilities: vec![ferris::framework::types::Capability::Routes],
             routes: vec![ferris::framework::descriptor::Route {
                 id: "probe".to_string(),
