@@ -15,6 +15,7 @@ use leptos_router::components::A;
 use crate::components::ui::badge::{Badge, BadgeSize, BadgeVariant};
 use crate::components::ui::icon::Icon;
 use crate::ext::{AppUi, Dashboard, UiCtx};
+use crate::i18n::use_i18n;
 use crate::views::plugin_page::{dashboard_view, feed_error, placeholder};
 use crate::views::views_components::{EmptyState, PageHeader};
 
@@ -22,6 +23,7 @@ use crate::views::views_components::{EmptyState, PageHeader};
 #[component]
 pub fn HomeView() -> impl IntoView {
     let ctx = expect_context::<UiCtx>();
+    let i18n = use_i18n();
 
     view! {
         <div class="ferris-home h-full overflow-y-auto p-4">
@@ -33,11 +35,11 @@ pub fn HomeView() -> impl IntoView {
                     return ctx
                         .error
                         .get()
-                        .map_or_else(placeholder, |message| feed_error(ctx, message));
+                        .map_or_else(placeholder, |message| feed_error(ctx, message, i18n));
                 }
                 match default_dashboard(&apps) {
                     Some((owner, dashboard)) => dashboard_view(owner, dashboard),
-                    None => dashboard_index(&apps),
+                    None => dashboard_index(&apps, &i18n),
                 }
             }}
         </div>
@@ -58,7 +60,7 @@ fn default_dashboard(apps: &[AppUi]) -> Option<(&str, &Dashboard)> {
 
 /// Nothing declared `default`: every dashboard in the feed, as cards
 /// linking to their declared routes.
-fn dashboard_index(apps: &[AppUi]) -> AnyView {
+fn dashboard_index(apps: &[AppUi], i18n: &(impl crate::i18n::Translate + Sync)) -> AnyView {
     let cards: Vec<(&str, &Dashboard)> = apps
         .iter()
         .flat_map(|app| {
@@ -78,14 +80,14 @@ fn dashboard_index(apps: &[AppUi]) -> AnyView {
             <EmptyState
                 icon="LayoutDashboard"
                 title=if declared {
-                    "Ningún dashboard declara ruta"
+                    i18n.t("views.home.no_route_title")
                 } else {
-                    "Sin dashboards declarados"
+                    i18n.t("views.home.empty_title")
                 }
                 description=if declared {
-                    "Los tableros publicados no tienen una URL propia; se abren desde su documento o desde “/” si uno es el predeterminado."
+                    i18n.t("views.home.no_route_description")
                 } else {
-                    "Cualquier app puede declarar uno en describe() y aparecerá aquí; el primero con default: true pasa a “/”."
+                    i18n.t("views.home.empty_description")
                 }
             />
         }
@@ -95,8 +97,8 @@ fn dashboard_index(apps: &[AppUi]) -> AnyView {
     view! {
         <section class="mx-auto flex w-full max-w-7xl flex-col gap-4">
             <PageHeader
-                title="Dashboards"
-                description="Tableros publicados por las apps cargadas en este Desk."
+                title=i18n.t("views.home.title")
+                description=i18n.t("views.home.description")
             />
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {cards
@@ -115,7 +117,7 @@ fn dashboard_index(apps: &[AppUi]) -> AnyView {
                         let owner = owner.to_string();
                         // The registry already demotes a second `default`,
                         // so the badge only ever marks the winner.
-                        let badge = dashboard.default.then(|| "predeterminado".to_string());
+                        let badge = dashboard.default.then(|| i18n.t("views.home.default_badge"));
                         view! {
                             <A
                                 href=href

@@ -3,9 +3,17 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use ferris_core::{DocumentError, Error, Result, ValidationError};
+use ferris_core::i18n::Locale;
+use ferris_core::{DocumentError, Error, I18n, Result, ValidationError};
 
 use super::page::normalize_route;
+
+/// Translate one of the discussion's own messages.
+fn tr(key: &str) -> String {
+    I18n::default()
+        .translate(&Locale::default(), key)
+        .to_string()
+}
 
 /// A threaded comment on a website route.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -52,9 +60,9 @@ impl Discussion {
                 })
             })?;
             if parent_comment.route != route {
-                return Err(Error::Validation(ValidationError::Invalid(
-                    "Reply must target a comment on the same page".to_string(),
-                )));
+                return Err(Error::Validation(ValidationError::Invalid(tr(
+                    "components.website.discussion.reply_same_page",
+                ))));
             }
         }
 

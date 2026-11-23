@@ -3,6 +3,7 @@
 use leptos::prelude::*;
 
 use crate::ext::{UiCtx, WidgetDef};
+use crate::i18n::use_i18n;
 
 use super::code::{CodeWidget, ResolvedWidget};
 use super::native::host_widget;
@@ -64,6 +65,7 @@ pub fn WidgetHost(
     refresh: Option<Signal<u32>>,
 ) -> impl IntoView {
     let ctx = expect_context::<UiCtx>();
+    let i18n = use_i18n();
     let resolved = ctx.resolve_widget_ref(&default_owner, &reference);
 
     // Host widgets have a `title` presentation param. It is the fallback
@@ -86,11 +88,11 @@ pub fn WidgetHost(
     );
 
     let body: AnyView = match resolved {
-        None => unresolved_widget(&reference),
-        Some((owner, def)) if owner == HOST_OWNER => host_widget(&def, &params, refresh),
+        None => unresolved_widget(&reference, &i18n),
+        Some((owner, def)) if owner == HOST_OWNER => host_widget(&def, &params, refresh, &i18n),
         Some((owner, def)) => {
             if def.code_url.is_none() {
-                missing_code_widget(&reference)
+                missing_code_widget(&reference, &i18n)
             } else {
                 view! {
                     <CodeWidget

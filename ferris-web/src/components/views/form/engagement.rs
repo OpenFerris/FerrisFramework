@@ -25,21 +25,23 @@ use crate::components::ui::separator::Separator;
 use crate::components::ui::textarea::Textarea;
 use crate::components::views::time;
 use crate::components::views::user_identity::{UserAvatar, UserName};
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 
 /// Display label for an activity kind.
-fn kind_label(kind: ActivityKind) -> &'static str {
-    match kind {
-        ActivityKind::Create => "creó el documento",
-        ActivityKind::Update => "actualizó",
-        ActivityKind::Submit => "envió",
-        ActivityKind::Cancel => "canceló",
-        ActivityKind::Amend => "corrigió",
-        ActivityKind::Delete => "eliminó",
-        ActivityKind::Comment => "comentó",
-        ActivityKind::Reply => "respondió",
-        ActivityKind::Like => "marcó como favorito",
-    }
+fn kind_label(kind: ActivityKind, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
+    let key = match kind {
+        ActivityKind::Create => "components.form.activity.create",
+        ActivityKind::Update => "components.form.activity.update",
+        ActivityKind::Submit => "components.form.activity.submit",
+        ActivityKind::Cancel => "components.form.activity.cancel",
+        ActivityKind::Amend => "components.form.activity.amend",
+        ActivityKind::Delete => "components.form.activity.delete",
+        ActivityKind::Comment => "components.form.activity.comment",
+        ActivityKind::Reply => "components.form.activity.reply",
+        ActivityKind::Like => "components.form.activity.like",
+    };
+    i18n.t(key)
 }
 
 /// Icon for an activity kind.
@@ -66,6 +68,9 @@ struct DayGroup {
 
 #[component]
 pub fn FormEngagement(service: FormService) -> impl IntoView {
+    let i18n = use_i18n();
+    let history_i18n = i18n;
+    let events_i18n = i18n;
     let service = StoredValue::new(service);
     let svc = service.get_value();
     let doctype = svc.doctype;
@@ -171,7 +176,7 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
     let history = Memo::new(move |_| {
         let mut groups: Vec<DayGroup> = Vec::new();
         for entry in activity.get().into_iter().rev() {
-            let label = time::day(&entry.at);
+            let label = time::day(&entry.at, &history_i18n);
             match groups.last_mut() {
                 Some(group) if group.label == label => group.entries.push(entry),
                 _ => groups.push(DayGroup {
@@ -199,7 +204,7 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                 <div class="flex items-baseline justify-between gap-2">
                     <h3 class="flex items-center gap-2 text-sm font-semibold">
                         <Icon name="message-square" class="size-4 text-muted-foreground" />
-                        "Comentarios"
+                        {t("components.form.comments.title")}
                     </h3>
                     <Show when=move || !thread.get().0.is_empty()>
                         <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
@@ -212,7 +217,7 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                     when=move || !thread.get().0.is_empty()
                     fallback=|| view! {
                         <p class="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
-                            "Todavía no hay comentarios."
+                            {t("components.form.comments.empty")}
                         </p>
                     }
                 >
@@ -254,14 +259,14 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                                                     }
                                                 >
                                                     <Icon name="corner-down-right" class="size-3.5" />
-                                                    "Responder"
+                                                    {t("components.form.comments.reply")}
                                                 </Button>
                                             }
                                         >
                                             <div class="flex flex-col gap-2 rounded-lg border bg-card p-2">
                                                 <Textarea
                                                     bind_value=reply_draft
-                                                    placeholder="Escribe una respuesta…"
+                                                    placeholder=t("components.form.comments.reply_placeholder")
                                                     rows=2u32
                                                 />
                                                 <div class="flex justify-end gap-2">
@@ -273,14 +278,14 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                                                             reply_draft.set(String::new());
                                                         }
                                                     >
-                                                        "Cancelar"
+                                                        {t("common.cancel")}
                                                     </Button>
                                                     <Button
                                                         variant=ButtonVariant::Default
                                                         size=ButtonSize::Sm
                                                         on:click=move |_| post_reply()
                                                     >
-                                                        "Responder"
+                                                        {t("components.form.comments.reply")}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -296,12 +301,12 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                 <div class="flex flex-col gap-2 rounded-xl border bg-card p-3">
                     <Textarea
                         bind_value=draft
-                        placeholder="Escribe un comentario…"
+                        placeholder=t("components.form.comments.placeholder")
                         rows=2u32
                     />
                     <div class="flex items-center justify-between gap-2">
                         <p class="text-xs text-muted-foreground">
-                            "Se publica en el historial del documento."
+                            {t("components.form.comments.publish_hint")}
                         </p>
                         <Button
                             variant=ButtonVariant::Default
@@ -309,7 +314,7 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                             attr:disabled=move || is_new.get() || draft.get().trim().is_empty()
                             on:click=move |_| post()
                         >
-                            "Comentar"
+                            {t("components.form.comments.comment")}
                         </Button>
                     </div>
                 </div>
@@ -322,11 +327,15 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                 <div class="flex items-baseline justify-between gap-2">
                     <h3 class="flex items-center gap-2 text-sm font-semibold">
                         <Icon name="history" class="size-4 text-muted-foreground" />
-                        "Historial"
+                        {t("components.form.history.title")}
                     </h3>
                     <Show when=move || !activity.get().is_empty()>
                         <span class="text-xs text-muted-foreground">
-                            {move || format!("{} eventos", activity.get().len())}
+                            {move || {
+                                let count = activity.get().len().to_string();
+                                events_i18n
+                                    .t_with("components.form.history.events", &[("count", &count)])
+                            }}
                         </span>
                     </Show>
                 </div>
@@ -334,7 +343,7 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
                     when=move || !history.get().is_empty()
                     fallback=|| view! {
                         <p class="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
-                            "Sin actividad."
+                            {t("components.form.history.empty")}
                         </p>
                     }
                 >
@@ -376,10 +385,11 @@ pub fn FormEngagement(service: FormService) -> impl IntoView {
 /// the icon.
 #[component]
 fn ActivityRow(entry: ActivityEntry) -> impl IntoView {
+    let i18n = use_i18n();
     let actor = entry.actor.clone();
-    let relative = time::relative(&entry.at);
+    let relative = time::relative(&entry.at, &i18n);
     let exact = time::exact(&entry.at);
-    let label = kind_label(entry.kind);
+    let label = kind_label(entry.kind, &i18n);
     let icon = kind_icon(entry.kind);
     let fields = entry.fields;
     let has_fields = !fields.is_empty();
@@ -423,8 +433,9 @@ fn ActivityRow(entry: ActivityEntry) -> impl IntoView {
 /// thread rail already carries the nesting.
 #[component]
 fn CommentRow(comment: DocComment, #[prop(optional)] compact: bool) -> impl IntoView {
+    let i18n = use_i18n();
     let author = comment.commented_by.clone();
-    let relative = time::relative(&comment.created_at);
+    let relative = time::relative(&comment.created_at, &i18n);
     let exact = time::exact(&comment.created_at);
     let bubble = if compact {
         "rounded-lg border bg-card px-3 py-2"

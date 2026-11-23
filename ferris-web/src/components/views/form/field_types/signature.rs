@@ -11,6 +11,7 @@
 use leptos::prelude::*;
 
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
+use crate::i18n::t;
 
 /// The fixed backing-store size the canvas paints at (CSS scales it to the
 /// form's width; the handlers map pointer coordinates through the element's
@@ -39,7 +40,7 @@ pub fn SignatureField(id: String, value: RwSignal<String>, read_only: bool) -> i
                 height=CANVAS_HEIGHT
                 class="h-40 w-full rounded-md border bg-background touch-none"
                 role="img"
-                aria-label="Firma"
+                aria-label=t("components.form.field.signature")
                 on:pointerdown=move |ev| {
                     drawing.set(true);
                     begin_draw(&id_store.get_value(), &ev);
@@ -67,11 +68,11 @@ pub fn SignatureField(id: String, value: RwSignal<String>, read_only: bool) -> i
                             drawing.set(false);
                         }
                     >
-                        "Limpiar"
+                        {t("components.form.field.clear")}
                     </Button>
                     <Show when=move || !value.get().trim().is_empty()>
                         <span class="text-xs text-muted-foreground">
-                            "Firma guardada en el campo (se enviará al guardar)."
+                            {t("components.form.field.signature_saved")}
                         </span>
                     </Show>
                 </div>

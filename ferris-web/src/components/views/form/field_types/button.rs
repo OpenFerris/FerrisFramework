@@ -14,9 +14,13 @@ use serde_json::json;
 
 use super::doc_context::FormDocContext;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
+use crate::i18n::use_i18n;
 
 #[component]
 pub fn ButtonField(id: String, label: String, method: String) -> impl IntoView {
+    let i18n = use_i18n();
+    let title_i18n = i18n;
+    let click_i18n = i18n;
     let ctx = use_context::<FormDocContext>();
     let pending = RwSignal::new(false);
     let label_for_note = label.clone();
@@ -32,19 +36,20 @@ pub fn ButtonField(id: String, label: String, method: String) -> impl IntoView {
                 ctx.and_then(|c| {
                     c.is_new
                         .get()
-                        .then(|| "Guarda el documento antes de ejecutar esta acción.".to_string())
+                        .then(|| title_i18n.t("components.form.button.save_first"))
                 })
             }
             on:click=move |_| {
                 let Some(ctx) = ctx else { return };
                 if ctx.is_new.get() {
                     ctx.notice.set(Some(
-                        "Guarda el documento antes de ejecutar esta acción.".to_string(),
+                        click_i18n.t("components.form.button.save_first"),
                     ));
                     return;
                 }
                 let method = method.clone();
                 let label = label_for_note.clone();
+                let i18n = click_i18n;
                 let doctype = ctx.doctype.get();
                 let name = ctx.docname.get();
                 let doc = ctx.doc.get();
@@ -54,11 +59,16 @@ pub fn ButtonField(id: String, label: String, method: String) -> impl IntoView {
                     let path = format!("/api/method/{method}");
                     match crate::api::client::api_json("POST", &path, Some(&body)).await {
                         Ok(_) => {
-                            ctx.notice
-                                .set(Some(format!("Acción «{label}» ejecutada.")));
+                            ctx.notice.set(Some(i18n.t_with(
+                                "components.form.action.ran",
+                                &[("label", &label)],
+                            )));
                             ctx.reload.update(|tick| *tick += 1);
                         }
-                        Err(e) => ctx.notice.set(Some(format!("Acción «{label}»: {e}"))),
+                        Err(e) => ctx.notice.set(Some(i18n.t_with(
+                            "components.form.action.failed_detail",
+                            &[("label", &label), ("message", &e)],
+                        ))),
                     }
                     pending.set(false);
                 });

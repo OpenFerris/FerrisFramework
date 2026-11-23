@@ -60,13 +60,12 @@ pub(super) fn opens_as_dashboard(svc: &FormService) -> bool {
 /// Reaching this is only possible *after* [`super::FormView`] has looked for
 /// the feed's `form.view` element and found none: when an app declares one,
 /// that element owns the route and this view never runs.
-pub(super) fn custom_view_missing() -> impl IntoView {
+pub(super) fn custom_view_missing(i18n: &(impl crate::i18n::Translate + Sync)) -> impl IntoView {
     view! {
         <div class="rounded-xl border p-6 space-y-2" data-name="DoctypeCustomViewMissing">
-            <div class="text-sm font-medium">"Esta doctype declara una vista personalizada"</div>
+            <div class="text-sm font-medium">{i18n.t("views.form.custom_missing_title")}</div>
             <p class="text-sm text-muted-foreground">
-                "Ninguna app publica su elemento, así que no hay nada que abrir. "
-                "Instala la app que la define o cambia la declaración de la vista de la doctype."
+                {i18n.t("views.form.custom_missing_body")}
             </p>
         </div>
     }

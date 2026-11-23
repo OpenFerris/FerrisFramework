@@ -14,6 +14,7 @@ use crate::components::pickers::FilePicker;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::input::{Input, InputType};
 use crate::components::ui::textarea::Textarea;
+use crate::i18n::{t, use_i18n};
 
 /// Password (`Password`): a masked input. The engine hashes on write and masks
 /// on read, so the widget only ever handles the plaintext the user typed.
@@ -244,7 +245,7 @@ pub fn AttachField(
                         <Button
                             variant=ButtonVariant::Ghost
                             size=ButtonSize::IconXs
-                            attr:aria-label="Quitar"
+                            attr:aria-label=t("components.form.field.remove")
                             on:click=move |_| value.set(String::new())
                         >
                             <Trash2 class="size-3.5" />
@@ -266,7 +267,11 @@ pub fn AttachField(
                     } else {
                         view! { <Paperclip class="size-4" /> }.into_any()
                     }}
-                    {if image { "Elegir imagen" } else { "Elegir archivo" }}
+                    {if image {
+                        t("components.form.attach.choose_image")
+                    } else {
+                        t("components.form.attach.choose_file")
+                    }}
                 </Button>
             </Show>
             <FilePicker open=picker_open on_pick=on_pick accept=accept />
@@ -320,14 +325,18 @@ pub fn HtmlBlockField(id: String, html: String) -> impl IntoView {
 /// points at where the rows live instead of rendering nothing.
 #[component]
 pub fn TableNoticeField(#[prop(into)] label: String) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="flex items-start gap-2 rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
             <Info class="mt-0.5 size-4 shrink-0" />
             <span>
                 {if label.is_empty() {
-                    "La tabla hija se edita en la sección del formulario.".to_string()
+                    i18n.t("components.form.table_notice.generic")
                 } else {
-                    format!("«{label}» se edita en la sección del formulario.")
+                    i18n.t_with(
+                        "components.form.table_notice.named",
+                        &[("label", &label)],
+                    )
                 }}
             </span>
         </div>

@@ -32,6 +32,7 @@ use crate::components::ui::dialog::{
 use crate::components::ui::input::Input;
 use crate::components::ui::select_native::SelectNative;
 use crate::components::ui::separator::Separator;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 
 pub(crate) mod types;
@@ -42,6 +43,11 @@ pub(crate) use types::{FIELD_TYPES, hint, nonempty};
 
 #[component]
 pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView {
+    let i18n = use_i18n();
+    let export_i18n = i18n;
+    let field_i18n = i18n;
+    let property_i18n = i18n;
+    let view_i18n = i18n;
     let service = StoredValue::new(service);
     let svc = service.get_value();
     let doctype = svc.doctype;
@@ -117,13 +123,14 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
     let export_to_app = move || {
         let app = export_app.get_untracked().trim().to_string();
         if app.is_empty() {
-            error.set(Some("Escribe el nombre de la app.".to_string()));
+            error.set(Some(export_i18n.t("components.form.export.app_required")));
             return;
         }
         let dt = doctype.get_untracked();
         error.set(None);
         notice.set(None);
         exporting.set(true);
+        let i18n = export_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 exporting.set(false);
@@ -134,7 +141,9 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
             match store.export_customization(&dt, &app, None).await {
                 Ok(path) => {
                     exporting.set(false);
-                    notice.set(Some(format!("Customización exportada a {path}")));
+                    notice.set(Some(
+                        i18n.t_with("components.form.export.success", &[("path", &path)]),
+                    ));
                 }
                 Err(message) => {
                     exporting.set(false);
@@ -157,21 +166,27 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
             read_only: false,
         };
         if spec.fieldname.is_empty() {
-            error.set(Some("El nombre del campo es obligatorio".to_string()));
+            error.set(Some(
+                field_i18n.t("components.form.customize.field_name_required"),
+            ));
             return;
         }
         let dt = doctype.get();
         notice.set(None);
         error.set(None);
         let forms = (fname, flabel, foptions, fafter, freqd);
+        let i18n = field_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
-                error.set(Some("Sin runtime".to_string()));
+                error.set(Some(i18n.t("components.form.customize.no_runtime")));
                 return;
             };
             match store.put_custom_field(&dt, &spec).await {
                 Ok(saved) => {
-                    notice.set(Some(format!("Campo «{}» guardado.", saved.fieldname)));
+                    notice.set(Some(i18n.t_with(
+                        "components.form.customize.field_saved",
+                        &[("field", &saved.fieldname)],
+                    )));
                     forms.0.set(String::new());
                     forms.1.set(String::new());
                     forms.2.set(String::new());
@@ -188,7 +203,9 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
     let submit_property = move || {
         let property = pprop.get().trim().to_string();
         if property.is_empty() {
-            error.set(Some("La propiedad es obligatoria".to_string()));
+            error.set(Some(
+                property_i18n.t("components.form.customize.property_required"),
+            ));
             return;
         }
         let spec = PropertySetterSpec {
@@ -200,14 +217,18 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
         notice.set(None);
         error.set(None);
         let fields = (pfield, pprop, pvalue);
+        let i18n = property_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
-                error.set(Some("Sin runtime".to_string()));
+                error.set(Some(i18n.t("components.form.customize.no_runtime")));
                 return;
             };
             match store.put_property_setter(&dt, &spec).await {
                 Ok(saved) => {
-                    notice.set(Some(format!("Propiedad «{}» guardada.", saved.property)));
+                    notice.set(Some(i18n.t_with(
+                        "components.form.customize.property_saved",
+                        &[("property", &saved.property)],
+                    )));
                     fields.0.set(String::new());
                     fields.1.set(String::new());
                     fields.2.set(String::new());
@@ -219,13 +240,25 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
         });
     };
 
+    let option_i18n = view_i18n;
+    let current_hint_i18n = view_i18n;
+    let title_i18n = view_i18n;
+    let delete_field_i18n = view_i18n;
+    let delete_property_i18n = view_i18n;
     view! {
         <Dialog>
             <DialogContent open=open class="max-w-2xl max-h-[85dvh]">
                 <DialogHeader>
-                    <DialogTitle>"Personalizar " {move || doctype.get()}</DialogTitle>
+                    <DialogTitle>
+                        {move || {
+                            title_i18n.t_with(
+                                "components.form.customize.title",
+                                &[("doctype", &doctype.get())],
+                            )
+                        }}
+                    </DialogTitle>
                     <DialogDescription>
-                        "Los cambios se guardan en el servidor y se aplican al formulario."
+                        {t("components.form.customize.description")}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -236,13 +269,13 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                 // Export: customizations become part of the plugin, not a
                 // database-only setting, so they travel with the app.
                 <div class="flex flex-col gap-2 rounded-lg border bg-muted/40 p-3">
-                    <p class="text-sm font-medium">"Exportar a una app"</p>
+                    <p class="text-sm font-medium">{t("components.form.export.to_app")}</p>
                     <p class="text-xs text-muted-foreground">
-                        "Guarda los campos y propiedades en plugins/<app>/customizations/ para que viajen con el plugin."
+                        {t("components.form.export.plugin_hint")}
                     </p>
                     <div class="flex flex-wrap items-center gap-2">
                         <Input
-                            placeholder="mi-app"
+                            placeholder=t("components.form.export.app_placeholder")
                             bind_value=export_app
                             class="h-9 min-w-40 flex-1"
                         />
@@ -252,7 +285,13 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                             attr:disabled=move || exporting.get()
                             on:click=move |_| export_to_app()
                         >
-                            {move || if exporting.get() { "Exportando…" } else { "Exportar" }}
+                            {move || {
+                                if exporting.get() {
+                                    t("components.form.export.exporting")
+                                } else {
+                                    t("components.form.export.export")
+                                }
+                            }}
                         </Button>
                     </div>
                 </div>
@@ -271,14 +310,15 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                 <div class="flex max-h-[60dvh] flex-col gap-4 overflow-y-auto pr-1">
                     // ---- Custom fields ----
                     <section class="flex flex-col gap-2">
-                        <h3 class="text-sm font-semibold">"Campos personalizados"</h3>
+                        <h3 class="text-sm font-semibold">{t("components.form.export.custom_fields")}</h3>
                         <Show
                             when=move || !custom.get().fields.is_empty()
                             fallback=|| view! {
-                                <p class="text-sm text-muted-foreground">"Ninguno."</p>
+                                <p class="text-sm text-muted-foreground">{t("components.form.customize.none_fields")}</p>
                             }
                         >
                             {move || custom.get().fields.into_iter().map(|field| {
+                                let item_i18n = delete_field_i18n;
                                 let name = field.fieldname.clone();
                                 let name_display = name.clone();
                                 let label = field.label.clone().unwrap_or(name_display.clone());
@@ -302,11 +342,15 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                                             on:click=move |_| {
                                                 let name = name.clone();
                                                 let dt = doctype.get();
+                                                let i18n = item_i18n;
                                                 spawn_local(async move {
                                                     let Ok(store) = DocStore::runtime() else { return };
                                                     match store.delete_custom_field(&dt, &name).await {
                                                         Ok(()) => {
-                                                            notice.set(Some(format!("Campo «{name}» eliminado.")));
+                                                            notice.set(Some(i18n.t_with(
+                                                                "components.form.customize.field_deleted",
+                                                                &[("field", &name)],
+                                                            )));
                                                             reload();
                                                             service.get_value().reload();
                                                         }
@@ -315,7 +359,7 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                                                 });
                                             }
                                         >
-                                            "Eliminar"
+                                            {t("components.form.customize.delete")}
                                         </Button>
                                     </div>
                                 }
@@ -328,43 +372,48 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                                 bind_value=fname
                                 class="h-9"
                             />
-                            <Input placeholder="Etiqueta" bind_value=flabel class="h-9" />
+                            <Input placeholder=t("components.form.edit_mode.label") bind_value=flabel class="h-9" />
                             <SelectNative
                                 id="customize-fieldtype"
-                                aria_label="Tipo de campo"
+                                aria_label=t("components.form.edit_mode.field_type")
                                 value=ftype.read_only()
                                 on_change=Callback::new(move |ev: leptos::ev::Event| {
                                     ftype.set(event_target_value(&ev));
                                 })
                             >
                                 {FIELD_TYPES.iter().map(|t| view! {
-                                    <option value=*t>{format!("{t} — {}", hint(t))}</option>
+                                    <option value=*t>
+                                        {option_i18n.t_with(
+                                            "components.form.customize.type_option",
+                                            &[("fieldtype", *t), ("hint", &hint(t, &option_i18n))],
+                                        )}
+                                    </option>
                                 }).collect_view()}
                             </SelectNative>
                             <Input
-                                placeholder="Opciones (para Select/Link)"
+                                placeholder=t("components.form.edit_mode.options")
                                 bind_value=foptions
                                 class="h-9"
                             />
                             <Input
-                                placeholder="Insertar después de…"
+                                placeholder=t("components.form.edit_mode.insert_after_placeholder")
                                 bind_value=fafter
                                 class="h-9"
                             />
                             <label class="flex items-center gap-2 text-sm">
-                                <Checkbox checked=freqd aria_label="Obligatorio" />
-                                "Obligatorio"
+                                <Checkbox checked=freqd aria_label=t("components.form.edit_mode.required") />
+                                {t("components.form.edit_mode.required")}
                             </label>
                         </div>
                         <p class="text-xs text-muted-foreground">
-                            {move || hint(&ftype.get())}
+                            {move || hint(&ftype.get(), &current_hint_i18n)}
                         </p>
                         <Button
                             variant=ButtonVariant::Secondary
                             size=ButtonSize::Sm
                             on:click=move |_| submit_field()
                         >
-                            "Añadir campo"
+                            {t("components.form.customize.add_field")}
                         </Button>
                     </section>
 
@@ -372,19 +421,22 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
 
                     // ---- Property setters ----
                     <section class="flex flex-col gap-2">
-                        <h3 class="text-sm font-semibold">"Propiedades"</h3>
+                        <h3 class="text-sm font-semibold">{t("components.form.export.properties")}</h3>
                         <Show
                             when=move || !custom.get().properties.is_empty()
                             fallback=|| view! {
-                                <p class="text-sm text-muted-foreground">"Ninguna."</p>
+                                <p class="text-sm text-muted-foreground">{t("components.form.customize.none_properties")}</p>
                             }
                         >
                             {move || custom.get().properties.into_iter().map(|setter| {
+                                let item_i18n = delete_property_i18n;
                                 let field = setter.fieldname.clone();
                                 let property = setter.property.clone();
                                 let property_display = property.clone();
                                 let value = setter.value.clone();
-                                let scope = field.clone().unwrap_or_else(|| "(doctype)".to_string());
+                                let scope = field
+                                    .clone()
+                                    .unwrap_or_else(|| t("components.form.export.doctype_scope"));
                                 view! {
                                     <div class="flex min-w-0 items-center justify-between gap-2 rounded-md border px-3 py-2">
                                         <div class="min-w-0">
@@ -401,6 +453,7 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                                                 let field = field.clone();
                                                 let property = property.clone();
                                                 let dt = doctype.get();
+                                                let i18n = item_i18n;
                                                 spawn_local(async move {
                                                     let Ok(store) = DocStore::runtime() else { return };
                                                     match store
@@ -408,7 +461,10 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                                                         .await
                                                     {
                                                         Ok(()) => {
-                                                            notice.set(Some(format!("Propiedad «{property}» eliminada.")));
+                                                            notice.set(Some(i18n.t_with(
+                                                                "components.form.customize.property_deleted",
+                                                                &[("property", &property)],
+                                                            )));
                                                             reload();
                                                             service.get_value().reload();
                                                         }
@@ -417,7 +473,7 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                                                 });
                                             }
                                         >
-                                            "Eliminar"
+                                            {t("components.form.customize.delete")}
                                         </Button>
                                     </div>
                                 }
@@ -425,16 +481,16 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                         </Show>
 
                         <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                            <Input placeholder="campo (vacío = doctype)" bind_value=pfield class="h-9" />
-                            <Input placeholder="propiedad (p. ej. reqd)" bind_value=pprop class="h-9" />
-                            <Input placeholder="valor" bind_value=pvalue class="h-9" />
+                            <Input placeholder=t("components.form.customize.property_field_placeholder") bind_value=pfield class="h-9" />
+                            <Input placeholder=t("components.form.customize.property_name_placeholder") bind_value=pprop class="h-9" />
+                            <Input placeholder=t("components.form.customize.property_value_placeholder") bind_value=pvalue class="h-9" />
                         </div>
                         <Button
                             variant=ButtonVariant::Secondary
                             size=ButtonSize::Sm
                             on:click=move |_| submit_property()
                         >
-                            "Añadir propiedad"
+                            {t("components.form.customize.add_property")}
                         </Button>
                     </section>
 
@@ -443,7 +499,7 @@ pub fn CustomizeDialog(open: RwSignal<bool>, service: FormService) -> impl IntoV
                     />
 
                     <Show when=move || loading.get()>
-                        <p class="text-xs text-muted-foreground">"Cargando…"</p>
+                        <p class="text-xs text-muted-foreground">{t("common.loading")}</p>
                     </Show>
                 </div>
             </DialogContent>

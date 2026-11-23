@@ -16,11 +16,17 @@ use crate::app::LoginComplete;
 use crate::components::ui::button::{Button, ButtonVariant};
 use crate::desk::session as desk_session;
 use crate::desk::session::LoginOutcome;
+use crate::i18n::DeskI18n;
 use crate::views::views_components::{Feedback, FeedbackKind};
 use crate::web_user::WebUser;
 
 #[component]
 pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> impl IntoView {
+    // The shell provides the catalogue (SSR) or reads it from the bootstrap
+    // `<meta>` (hydration). `StoredValue` keeps the translation closure `Copy`.
+    let i18n = StoredValue::new(leptos::context::use_context::<DeskI18n>().unwrap_or_default());
+    let tr = move |key: &str| i18n.with_value(|i18n| i18n.t(key));
+
     let (email, set_email) = signal(String::new());
     let (password, set_password) = signal(String::new());
     let (error, set_error) = signal(None::<String>);
@@ -49,7 +55,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
             let username = email.get_untracked();
             let password = password.get_untracked();
             if username.trim().is_empty() || password.is_empty() {
-                set_error.set(Some("Escribe tu correo y contraseña.".to_string()));
+                set_error.set(Some(tr("login.error.empty_credentials")));
                 return;
             }
             set_error.set(None);
@@ -80,9 +86,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
             };
             let code = code.get_untracked();
             if code.trim().is_empty() {
-                set_error.set(Some(
-                    "Escribe el código de tu aplicación de autenticación.".to_string(),
-                ));
+                set_error.set(Some(tr("login.error.empty_code")));
                 return;
             }
             set_error.set(None);
@@ -113,12 +117,12 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                             <span class="font-bold text-xl">"F"</span>
                         </div>
                         <div>
-                            <h1 class="text-lg font-bold text-foreground">"Ferris Desk"</h1>
+                            <h1 class="text-lg font-bold text-foreground">{tr("login.title")}</h1>
                             <p class="text-xs text-muted-foreground">
                                 {move || if challenge.get().is_some() {
-                                    "Introduce tu código de doble factor"
+                                    tr("login.mfa_hint")
                                 } else {
-                                    "Inicia sesión para continuar"
+                                    tr("login.subtitle")
                                 }}
                             </p>
                         </div>
@@ -136,7 +140,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                                 view! {
                                     <div>
                                         <label class="block text-sm font-medium text-foreground mb-1" for="login-code">
-                                            "Código de verificación"
+                                            {tr("login.mfa_code")}
                                         </label>
                                         <input
                                             id="login-code"
@@ -155,7 +159,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                                 view! {
                                     <div>
                                         <label class="block text-sm font-medium text-foreground mb-1" for="login-email">
-                                            "Correo o usuario"
+                                            {tr("login.email")}
                                         </label>
                                         <input
                                             id="login-email"
@@ -170,7 +174,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-foreground mb-1" for="login-password">
-                                            "Contraseña"
+                                            {tr("login.password")}
                                         </label>
                                         <input
                                             id="login-password"
@@ -206,11 +210,11 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                         >
                             {move || {
                                 if busy.get() {
-                                    if challenge.get().is_some() { "Verificando…" } else { "Entrando…" }
+                                    tr("common.loading")
                                 } else if challenge.get().is_some() {
-                                    "Verificar"
+                                    tr("login.mfa_verify")
                                 } else {
-                                    "Entrar"
+                                    tr("login.submit")
                                 }
                             }}
                         </Button>
@@ -222,7 +226,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                                     <div class="mt-4 flex flex-col gap-3">
                                         <div class="flex items-center gap-2 text-xs text-muted-foreground">
                                             <span class="h-px flex-1 bg-border"></span>
-                                            "o continúa con"
+                                            {tr("login.oauth_continue")}
                                             <span class="h-px flex-1 bg-border"></span>
                                         </div>
                                         {list.into_iter().map(|provider| {
@@ -257,7 +261,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                                             set_error.set(None);
                                         }
                                     >
-                                        "Volver al inicio de sesión"
+                                        {tr("desk.login.back_to_login")}
                                     </button>
                                 }
                             })
@@ -266,7 +270,7 @@ pub fn LoginView(on_login: impl Fn(WebUser) + Clone + Send + Sync + 'static) -> 
                 </div>
                 {cfg!(debug_assertions).then(|| view! {
                     <p class="mt-4 text-center text-xs text-muted-foreground">
-                        "Cuenta de desarrollo local: admin@local / ferrisAdmin123"
+                        {tr("desk.login.dev_account")}
                     </p>
                 })}
             </div>

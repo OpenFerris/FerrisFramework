@@ -28,8 +28,9 @@ use crate::components::ui::badge::{Badge, BadgeSize, BadgeVariant};
 use crate::components::ui::card::{Card, CardContent};
 use crate::components::ui::icon::Icon;
 use crate::desk::session::path_segment;
+use crate::i18n::use_i18n;
 use crate::views::views_components::collection::{
-    stale_settings_message, unresolved_fields, use_collection_actions,
+    stale_settings_message_i18n, unresolved_fields_i18n, use_collection_actions,
 };
 use crate::views::views_components::{
     EmptyState, Feedback, FeedbackKind, LoadingLines, PageHeader,
@@ -199,6 +200,18 @@ pub fn covered_days(bar: &Bar, days: i64) -> BTreeSet<i64> {
 #[component]
 pub fn GanttView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
+    let i18n_sv = i18n;
+    let tr = move |key: &str| {
+        i18n_sv
+            .try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n_sv
+            .try_with_value(|i| i.t_with(key, args))
+            .unwrap_or_else(|| key.to_string())
+    };
     let doctype = Signal::derive(move || params.with(|p| p.get("doctype").unwrap_or_default()));
 
     let meta = RwSignal::new(None::<crate::api::DynMeta>);
@@ -260,16 +273,24 @@ pub fn GanttView() -> impl IntoView {
     let on_reload = Callback::new(move |()| reload.update(|n| *n += 1));
     use_collection_actions(meta.read_only(), "gantt", on_reload);
 
+    let i18n_stale = i18n;
     let stale_settings = Memo::new(move |_| {
         meta.get().as_ref().map_or_else(Vec::new, |meta| {
-            unresolved_fields(
+            unresolved_fields_i18n(
                 meta,
                 &[
-                    ("Inicio", meta.gantt_start_field.as_deref()),
-                    ("Fin", meta.gantt_end_field.as_deref()),
-                    ("Dependencia", meta.gantt_dependency_field.as_deref()),
-                    ("Progreso", meta.gantt_progress_field.as_deref()),
+                    ("views.gantt.start_field", meta.gantt_start_field.as_deref()),
+                    ("views.gantt.end_field", meta.gantt_end_field.as_deref()),
+                    (
+                        "views.gantt.dependency_field",
+                        meta.gantt_dependency_field.as_deref(),
+                    ),
+                    (
+                        "views.gantt.progress_field",
+                        meta.gantt_progress_field.as_deref(),
+                    ),
                 ],
+                &i18n_stale,
             )
         })
     });
@@ -334,19 +355,23 @@ pub fn GanttView() -> impl IntoView {
         )
     };
 
+    let i18n_stale_msg = i18n;
+    let i18n_view = i18n;
     view! {
         <div class="mx-auto flex h-full min-h-0 w-full min-w-0 flex-col gap-4 p-4">
             {move || view! {
                 <PageHeader
                     title=doctype.get()
-                    description="Documentos como barras entre la fecha de inicio y la de fin."
+                    description=tr("views.gantt.description")
                 />
             }}
 
             <Feedback kind=FeedbackKind::Error message=Signal::derive(move || error.get()) />
             <Feedback
                 kind=FeedbackKind::Warning
-                message=Signal::derive(move || stale_settings_message(&stale_settings.get()))
+                message=Signal::derive(move || {
+                    stale_settings_message_i18n(&stale_settings.get(), &i18n_stale_msg)
+                })
             />
 
             <Show when=move || loading.get()>
@@ -358,15 +383,15 @@ pub fn GanttView() -> impl IntoView {
             <Show when=move || !loading.get() && error.get().is_none() && !configured.get()>
                 <EmptyState
                     icon="ChartGantt"
-                    title="Faltan las fechas del Gantt"
-                    description="La vista de Gantt necesita un campo de inicio y uno de fin. Configúralos en «Ajustes del DocType» → Vista Gantt."
+                    title=tr("views.gantt.missing_dates_title")
+                    description=tr("views.gantt.missing_dates_description")
                 >
                     <A
                         href=open_settings()
                         attr:class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
                         <Icon name="Settings2" class="size-4" />
-                        "Abrir ajustes del DocType"
+                        {tr("views.common.open_doctype_settings")}
                     </A>
                 </EmptyState>
             </Show>
@@ -376,8 +401,8 @@ pub fn GanttView() -> impl IntoView {
             }>
                 <EmptyState
                     icon="ChartGantt"
-                    title="Sin fechas"
-                    description="Ningún documento tiene valores utilizables en los campos de inicio y fin."
+                    title=tr("views.gantt.no_dates_title")
+                    description=tr("views.gantt.no_dates_description")
                 />
             </Show>
 
@@ -400,17 +425,17 @@ pub fn GanttView() -> impl IntoView {
                 let cells = |count: i64| (0..count).collect::<Vec<_>>();
                 let header = view! {
                     <div class="flex items-end gap-2">
-                        <div class="w-56 min-w-56 shrink-0 text-xs font-medium text-muted-foreground">"Documento"</div>
+                        <div class="w-56 min-w-56 shrink-0 text-xs font-medium text-muted-foreground">{i18n_view.t("views.gantt.document_column")}</div>
                         <div class="flex" aria-hidden="true">
                             {cells(timeline.days).into_iter().map(|index| {
                                 let day = timeline.origin + Duration::days(index);
                                 let month_start = day.day() == 1 || index == 0;
                                 let label = if month_start {
-                                    format!("{} {}", month_name(day.month()), day.day())
+                                    format!("{} {}", month_name(day.month(), &i18n_view), day.day())
                                 } else {
                                     day.day().to_string()
                                 };
-                                let weekday = weekday_name(day);
+                                let weekday = weekday_name(day, &i18n_view);
                                 view! {
                                     <div class=format!("{day_width} flex flex-col items-center border-s border-border/60 px-0.5 text-[10px] text-muted-foreground")>
                                         <span class="truncate">{weekday}</span>
@@ -482,7 +507,7 @@ pub fn GanttView() -> impl IntoView {
                                     })}
                                     {bar.after.map(|target| view! {
                                         <span class="min-w-0 truncate text-[11px] text-muted-foreground">
-                                            {format!("después de {target}")}
+                                            {i18n_view.t_with("views.gantt.after", &[("target", &target)])}
                                         </span>
                                     })}
                                 </div>
@@ -494,15 +519,24 @@ pub fn GanttView() -> impl IntoView {
                 view! {
                     <div class="flex flex-col gap-2">
                         <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span>{format!("{bar_count} de {page_total} barras")}</span>
+                            <span>{i18n_view.t_with(
+                                "views.gantt.bars",
+                                &[("shown", &bar_count.to_string()), ("total", &page_total.to_string())],
+                            )}</span>
                             {page_truncated.then(|| view! {
                                 <Badge variant=BadgeVariant::Warning size=BadgeSize::Sm>
-                                    {format!("Mostrando los primeros {PAGE}")}
+                                    {i18n_view.t_with(
+                                        "views.common.showing_first",
+                                        &[("count", &PAGE.to_string())],
+                                    )}
                                 </Badge>
                             })}
                             <Show when=move || timeline.truncated>
                                 <Badge variant=BadgeVariant::Warning size=BadgeSize::Sm>
-                                    {format!("Ventana de {MAX_DAYS} días: las barras se recortan")}
+                                    {tr_with(
+                                        "views.gantt.window_truncated",
+                                        &[("days", &MAX_DAYS.to_string())],
+                                    )}
                                 </Badge>
                             </Show>
                         </div>
@@ -522,34 +556,39 @@ pub fn GanttView() -> impl IntoView {
     }
 }
 
-const fn month_name(month: u32) -> &'static str {
+const fn month_key(month: u32) -> &'static str {
     match month {
-        1 => "ene",
-        2 => "feb",
-        3 => "mar",
-        4 => "abr",
-        5 => "may",
-        6 => "jun",
-        7 => "jul",
-        8 => "ago",
-        9 => "sep",
-        10 => "oct",
-        11 => "nov",
-        12 => "dic",
+        1 => "views.common.month_short.1",
+        2 => "views.common.month_short.2",
+        3 => "views.common.month_short.3",
+        4 => "views.common.month_short.4",
+        5 => "views.common.month_short.5",
+        6 => "views.common.month_short.6",
+        7 => "views.common.month_short.7",
+        8 => "views.common.month_short.8",
+        9 => "views.common.month_short.9",
+        10 => "views.common.month_short.10",
+        11 => "views.common.month_short.11",
+        12 => "views.common.month_short.12",
         _ => "",
     }
 }
 
-fn weekday_name(day: NaiveDate) -> &'static str {
-    match day.weekday() {
-        chrono::Weekday::Mon => "L",
-        chrono::Weekday::Tue => "M",
-        chrono::Weekday::Wed => "X",
-        chrono::Weekday::Thu => "J",
-        chrono::Weekday::Fri => "V",
-        chrono::Weekday::Sat => "S",
-        chrono::Weekday::Sun => "D",
-    }
+fn month_name(month: u32, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
+    i18n.t(month_key(month))
+}
+
+fn weekday_name(day: NaiveDate, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
+    let key = match day.weekday() {
+        chrono::Weekday::Mon => "views.common.weekday.1",
+        chrono::Weekday::Tue => "views.common.weekday.2",
+        chrono::Weekday::Wed => "views.common.weekday.3",
+        chrono::Weekday::Thu => "views.common.weekday.4",
+        chrono::Weekday::Fri => "views.common.weekday.5",
+        chrono::Weekday::Sat => "views.common.weekday.6",
+        chrono::Weekday::Sun => "views.common.weekday.7",
+    };
+    i18n.t(key)
 }
 
 #[cfg(test)]

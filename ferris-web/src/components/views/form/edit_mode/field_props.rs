@@ -9,6 +9,7 @@ use leptos::prelude::*;
 
 use crate::api::types::Customization;
 use crate::components::ui::select_native::SelectNative;
+use crate::i18n::t;
 
 use super::super::customize::FIELD_TYPES;
 use super::props::{PropCheck, PropText};
@@ -85,25 +86,25 @@ pub(super) fn FieldPropertyInputs(
     });
 
     view! {
-        <section class="flex flex-col gap-2" aria-label="Contenido">
+        <section class="flex flex-col gap-2" aria-label=t("components.form.edit_mode.section_content")>
             <h4 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                "Contenido"
+                {t("components.form.edit_mode.section_content")}
             </h4>
             <div class="flex flex-col gap-1">
                 <div class="flex items-center justify-between gap-2">
                     <label class="text-xs font-medium text-muted-foreground" for="prop-tipo">
-                        "Tipo"
+                        {t("components.form.edit_mode.type")}
                     </label>
                     <Show when=move || overrides.has("fieldtype")>
                         <span class="rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
-                            "editado"
+                            {t("components.form.edit_mode.edited")}
                         </span>
                     </Show>
                 </div>
                 <SelectNative
                     id="prop-tipo"
                     value=fieldtype.read_only()
-                    aria_label="Tipo de campo"
+                    aria_label=t("components.form.edit_mode.field_type")
                     on_change=Callback::new(move |event: leptos::ev::Event| {
                         fieldtype.set(event_target_value(&event));
                     })
@@ -121,91 +122,91 @@ pub(super) fn FieldPropertyInputs(
                 </SelectNative>
             </div>
             <PropText
-                title="Etiqueta"
+                title=t("components.form.edit_mode.label")
                 overridden=overrides.has("label")
                 value=label
                 hint=if is_break {
-                    "En una pestaña es el nombre que se ve; en una sección, el encabezado."
+                    t("components.form.edit_mode.break_label_hint")
                 } else {
-                    ""
+                    String::new()
                 }
             />
             <PropText
-                title="Descripción"
+                title=t("components.form.edit_mode.description")
                 overridden=overrides.has("description")
                 value=description
                 multiline=true
             />
             <Show when=move || !is_break>
                 <PropText
-                    title="Opciones"
+                    title=t("components.form.edit_mode.options")
                     overridden=overrides.has("options")
                     value=options
                     multiline=true
-                    hint="Una por línea en los campos Select; el DocType destino en un Link."
+                    hint=t("components.form.edit_mode.options_hint")
                 />
                 <PropText
-                    title="Valor por defecto"
+                    title=t("components.form.edit_mode.default_value")
                     overridden=overrides.has("default")
                     value=default_value
                 />
                 <PropText
-                    title="Marcador de posición"
+                    title=t("components.form.edit_mode.placeholder_field")
                     overridden=overrides.has("placeholder")
                     value=placeholder
                 />
             </Show>
         </section>
 
-        <section class="flex flex-col gap-2 border-t pt-3" aria-label="Comportamiento">
+        <section class="flex flex-col gap-2 border-t pt-3" aria-label=t("components.form.edit_mode.section_behavior")>
             <h4 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                "Comportamiento"
+                {t("components.form.edit_mode.section_behavior")}
             </h4>
             <Show when=move || !is_break>
                 <PropText
-                    title="Condición de visibilidad"
+                    title=t("components.form.edit_mode.visibility_condition")
                     overridden=overrides.has("depends_on")
                     value=depends_on
-                    hint="Se evalúa mientras se rellena el formulario."
-                    example="eval:doc.estado == \"Abierto\""
+                    hint=t("components.form.edit_mode.visibility_hint")
+                    example=t("components.form.edit_mode.depends_example")
                 />
             </Show>
-            <PropCheck title="Obligatorio" overridden=overrides.has("reqd") value=reqd />
+            <PropCheck title=t("components.form.edit_mode.required") overridden=overrides.has("reqd") value=reqd />
             <PropCheck
-                title="Solo lectura"
+                title=t("components.form.edit_mode.read_only")
                 overridden=overrides.has("read_only")
                 value=read_only
             />
-            <PropCheck title="Oculto" overridden=overrides.has("hidden") value=hidden />
-            <PropCheck title="Único" overridden=overrides.has("unique") value=unique />
+            <PropCheck title=t("components.form.edit_mode.hidden") overridden=overrides.has("hidden") value=hidden />
+            <PropCheck title=t("components.form.edit_mode.unique") overridden=overrides.has("unique") value=unique />
         </section>
 
-        <section class="flex flex-col gap-2 border-t pt-3" aria-label="Listado">
+        <section class="flex flex-col gap-2 border-t pt-3" aria-label=t("components.form.edit_mode.section_listing")>
             <h4 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                "Listado"
+                {t("components.form.edit_mode.section_listing")}
             </h4>
             <PropCheck
-                title="En la lista"
+                title=t("components.form.edit_mode.in_list_view")
                 overridden=overrides.has("in_list_view")
                 value=in_list_view
             />
             <PropCheck
-                title="En los filtros"
+                title=t("components.form.edit_mode.in_filters")
                 overridden=overrides.has("in_standard_filter")
                 value=in_standard_filter
             />
         </section>
 
-        <section class="flex flex-col gap-2 border-t pt-3" aria-label="Orden">
+        <section class="flex flex-col gap-2 border-t pt-3" aria-label=t("components.form.edit_mode.section_order")>
             <h4 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                "Orden"
+                {t("components.form.edit_mode.section_order")}
             </h4>
             <PropText
-                title="Insertar después de"
+                title=t("components.form.edit_mode.insert_after")
                 overridden=overrides.has("insert_after")
                 value=insert_after
-                hint="Vacío = posición declarada. __first__ = al principio."
-                example="__first__ o el nombre de otro campo"
+                hint=t("components.form.edit_mode.insert_after_hint")
+                example=t("components.form.edit_mode.insert_after_example")
             />
         </section>
     }

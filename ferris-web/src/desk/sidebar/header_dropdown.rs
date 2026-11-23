@@ -9,6 +9,7 @@ use crate::components::ui::icon::Icon;
 use crate::desk::session::DeskIcon;
 use crate::desk::theme_dialog::ThemeDialog;
 use crate::ext::{SLOT_SHELL_HEADER, UiCtx, UiHeaderSlot};
+use crate::i18n::{DeskI18n, use_i18n};
 use icons::ChevronDown;
 use leptos::prelude::*;
 use leptos_router::components::A;
@@ -44,6 +45,10 @@ pub(super) fn HeaderDropdown(
     // `Navbar Settings.help_link` say, and are omitted when unset. Hardcoded `#`
     // rows used to sit here and went nowhere.
     let site = use_site_state();
+    // `StoredValue` keeps the translator `Copy`, so the render effect that
+    // builds the menu can capture it.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
 
     // The workspace the header currently names, resolved once so the trigger,
     // the slot props and the workspace rows all read the same value. Falls back
@@ -94,30 +99,33 @@ pub(super) fn HeaderDropdown(
         let help_link = site.with(|s| s.help_link.trim().to_string());
 
         let mut items = vec![
-            DropdownItem::link("Escritorio", "/desk").with_icon("house"),
-            DropdownItem::submenu("Espacios de trabajo", items_workspaces).with_icon("layers"),
+            DropdownItem::link(tr("nav.desk"), "/desk").with_icon("house"),
+            DropdownItem::submenu(tr("nav.workspaces"), items_workspaces).with_icon("layers"),
         ];
         if let Some(home_page) = safe_href(&home_page) {
             // An in-app route (`/status`, `/planta`): no external-link glyph.
-            items.push(DropdownItem::link("Sitio web", home_page));
+            items.push(DropdownItem::link(tr("desk.header.website"), home_page));
         }
         items.push(DropdownItem::separator());
         items.push(
             DropdownItem::submenu(
-                "Apariencia",
+                tr("desk.header.appearance"),
                 vec![
-                    DropdownItem::action("Cambiar tema", on_themes).with_icon("palette"),
-                    DropdownItem::action("Pantalla completa", on_fullscreen).with_icon("maximize"),
-                    DropdownItem::action("Alternar barra lateral", on_sidebar)
+                    DropdownItem::action(tr("desk.theme.change"), on_themes).with_icon("palette"),
+                    DropdownItem::action(tr("desk.header.fullscreen"), on_fullscreen)
+                        .with_icon("maximize"),
+                    DropdownItem::action(tr("desk.sidebar.toggle"), on_sidebar)
                         .with_icon("panel-left"),
                 ],
             )
             .with_icon("layout-grid"),
         );
-        items.push(DropdownItem::action("Recargar", on_reload).with_icon("refresh-cw"));
+        items.push(
+            DropdownItem::action(tr("desk.header.reload"), on_reload).with_icon("refresh-cw"),
+        );
         if let Some(help_link) = safe_href(&help_link) {
             items.push(
-                DropdownItem::link("Ayuda", help_link)
+                DropdownItem::link(tr("desk.header.help"), help_link)
                     .with_icon("circle")
                     .muted(),
             );
@@ -127,7 +135,7 @@ pub(super) fn HeaderDropdown(
             align: DropdownMenuAlign::Center,
             trigger: DropdownTriggerSpec::Custom {
                 view: view! {
-                    {move || header_trigger(has_app_header.get(), active_workspace_signal, open.into())}
+                    {move || header_trigger(has_app_header.get(), active_workspace_signal, open.into(), &tr("desk.header.workspace_fallback"))}
                 }.into_any()
             },
             items,
@@ -358,6 +366,7 @@ fn header_trigger(
     app_visual: bool,
     workspace: Signal<Option<Workspace>>,
     open: Signal<bool>,
+    workspace_fallback: &str,
 ) -> AnyView {
     if app_visual {
         return view! {
@@ -372,7 +381,7 @@ fn header_trigger(
     let label = ws
         .as_ref()
         .map(|w| w.label.clone())
-        .unwrap_or_else(|| "Espacio de trabajo".to_string());
+        .unwrap_or_else(|| workspace_fallback.to_string());
     let module = ws.as_ref().map(|w| w.module.clone()).unwrap_or_default();
 
     // The exact structure of the footer's `UserMenu` button: a rounded hover

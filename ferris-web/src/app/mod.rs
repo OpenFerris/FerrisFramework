@@ -60,7 +60,6 @@ pub const LOGIN_PATH: &str = "/login";
 ///
 /// Provided as context because the `/login` route is instantiated by `<Routes>`
 /// with no props, so [`LoginPage`] cannot be handed the desk's own signals.
-/// provided, so [`LoginPage`] cannot be handed the desk's own signals.
 #[derive(Clone, Copy)]
 pub struct LoginComplete(pub Callback<WebUser>);
 
@@ -123,6 +122,7 @@ pub fn DeskApp() -> impl IntoView {
 
     let user = expect_context::<RwSignal<WebUser>>();
     let location = use_location();
+    let breadcrumb_i18n = StoredValue::new(crate::i18n::use_i18n());
 
     let (sidebar_open, set_sidebar_open) = signal(true);
     // The mobile drawer's own visibility. Kept apart from `sidebar_open` so
@@ -463,10 +463,10 @@ pub fn DeskApp() -> impl IntoView {
     let top_bar = move || {
         view! {
             <TopBar
-                // The app builds the trail (it owns the route table); a signal
-                // keeps it following navigation even though the bar itself is
-                // only rebuilt when the chrome changes.
-                breadcrumbs=Signal::derive(move || breadcrumbs::trail(&location.pathname.get()))
+                // The app builds the trail; the signal keeps it following navigation.
+                breadcrumbs=Signal::derive(move || {
+                    breadcrumb_i18n.with_value(|i| breadcrumbs::trail(&location.pathname.get(), i))
+                })
                 leading=view! {
                     <Show when=move || form_chrome.get()>
                         <UiSlot slot_name=SLOT_FORM_TOOLBAR_LEFT doctype=slot_doctype />

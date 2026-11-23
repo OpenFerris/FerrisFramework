@@ -21,10 +21,16 @@ use crate::components::ui::card::{Card, CardContent, CardDescription, CardHeader
 use crate::components::ui::checkbox::Checkbox;
 use crate::components::ui::select_native::SelectNative;
 use crate::components::ui::table as t;
+use crate::i18n::use_i18n;
 use crate::views::views_components::{Feedback, FeedbackKind};
 
 #[component]
 pub fn CustomPermissionManager() -> impl IntoView {
+    let i18n = use_i18n();
+    let tr = move |key: &str| {
+        i18n.try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     let doctype = RwSignal::new(String::new());
     let matrix = RwSignal::new(None::<PermissionMatrix>);
     let loading = RwSignal::new(false);
@@ -38,7 +44,7 @@ pub fn CustomPermissionManager() -> impl IntoView {
     let load = move || {
         let requested = doctype.get().trim().to_string();
         if requested.is_empty() {
-            error.set(Some("Elige un DocType de la lista.".to_string()));
+            error.set(Some(tr("views.permissions.choose_doctype")));
             return;
         }
         loading.set(true);
@@ -95,9 +101,9 @@ pub fn CustomPermissionManager() -> impl IntoView {
     view! {
         <Card>
             <CardHeader>
-                <CardTitle>"Permisos personalizados"</CardTitle>
+                <CardTitle>{tr("views.permissions.title")}</CardTitle>
                 <CardDescription>
-                    "Concede permisos como «approve» o «download» a cada rol, por DocType."
+                    {tr("views.permissions.description")}
                 </CardDescription>
             </CardHeader>
             <CardContent class="flex flex-col gap-3">
@@ -119,7 +125,7 @@ pub fn CustomPermissionManager() -> impl IntoView {
                                 error.set(None);
                             })
                         >
-                            <option value="">"Elige un DocType…"</option>
+                            <option value="">{tr("views.common.choose_doctype")}</option>
                             {move || {
                                 doctypes
                                     .get()
@@ -139,12 +145,12 @@ pub fn CustomPermissionManager() -> impl IntoView {
                         attr:disabled=loading
                         on:click=move |_| load()
                     >
-                        "Cargar"
+                        {tr("views.permissions.load")}
                     </Button>
                 </div>
 
                 <Show when=move || loading.get()>
-                    <p class="text-sm text-muted-foreground">"Cargando permisos…"</p>
+                    <p class="text-sm text-muted-foreground">{tr("views.permissions.loading")}</p>
                 </Show>
                 <Feedback
                     kind=FeedbackKind::Error
@@ -157,7 +163,9 @@ pub fn CustomPermissionManager() -> impl IntoView {
                             .get()
                             .map_or_else(
                                 || AnyView::from(Fragment::new(Vec::new())),
-                                |current| matrix_view(current, matrix, busy, toggle),
+                                |current| {
+                                    matrix_view(current, matrix, busy, toggle, i18n)
+                                },
                             )
                     }}
                 </Show>
@@ -176,11 +184,12 @@ fn matrix_view(
     matrix: RwSignal<Option<PermissionMatrix>>,
     busy: RwSignal<Option<(String, String)>>,
     toggle: Callback<(String, String, bool)>,
+    i18n: crate::i18n::I18n,
 ) -> AnyView {
     if current.perm_types.is_empty() {
         return view! {
             <p class="text-sm text-muted-foreground">
-                "Este DocType no declara tipos de permiso."
+                {i18n.t("views.permissions.no_types")}
             </p>
         }
         .into_any();
@@ -200,7 +209,10 @@ fn matrix_view(
                 .clone()
                 .into_iter()
                 .map(|role| {
-                    let aria = format!("{perm_type} para {role}");
+                    let aria = i18n.t_with(
+                        "views.permissions.grant_aria",
+                        &[("permission", &perm_type), ("role", &role)],
+                    );
                     let checked_role = role.clone();
                     let checked_type = perm_type.clone();
                     let change_role = role;
@@ -258,7 +270,7 @@ fn matrix_view(
             <t::Table class="min-w-[480px] [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
                 <t::TableHeader class="bg-muted/40">
                     <t::TableRow>
-                        <t::TableHead>"Permiso"</t::TableHead>
+                        <t::TableHead>{i18n.t("views.permissions.column")}</t::TableHead>
                         {headers}
                     </t::TableRow>
                 </t::TableHeader>

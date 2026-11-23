@@ -11,6 +11,7 @@ use leptos::prelude::*;
 
 use crate::components::ui::icon::Icon;
 use crate::components::views::form::FieldEditCtx;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::{FormField, FormSection, FormSectionItem};
 
 /// Whether the field at `field` is visible, kept reactive to the sibling
@@ -111,6 +112,7 @@ fn InsertFieldRule(#[prop(into)] anchor: String, #[prop(into)] label: String) ->
 /// change.
 #[component]
 fn FieldTarget(name: String, label: String) -> impl IntoView {
+    let i18n = use_i18n();
     let Some(ctx) = use_context::<FieldEditCtx>() else {
         return view! { <span></span> }.into_any();
     };
@@ -145,7 +147,10 @@ fn FieldTarget(name: String, label: String) -> impl IntoView {
             data-fieldname=drag_name.get_value()
             draggable="true"
             class=class
-            aria-label=format!("Editar propiedades de {label}. Arrastra para mover el campo.")
+            aria-label=i18n.t_with(
+                "components.form.layout.edit_field",
+                &[("label", &label)],
+            )
             on:click=move |_| {
                 // Selecting a field takes the column; there is no list to drop.
                 selected.set(Some(click_name.get_value()));
@@ -205,6 +210,7 @@ pub fn FormSectionView(
     fields: RwSignal<Vec<FormField>>,
     render_field: impl Fn(&FormField) -> AnyView + 'static + Copy + Send + Sync,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let cols = section.cols.max(1) as usize;
     // Edit mode: every field gets a transparent target that selects it for the
     // inspector. Forms that do not provide the context (the dashboard's
@@ -273,7 +279,10 @@ pub fn FormSectionView(
                     let name = field.fieldname;
                     let field_label = field.label;
                     let anchor = anchor_before(fields, i);
-                    let insert_label = format!("Insertar campo antes de {field_label}");
+                    let insert_label = i18n.t_with(
+                        "components.form.layout.insert_before",
+                        &[("field", &field_label)],
+                    );
                     let target = edit.map(move |_| {
                         view! { <FieldTarget name=name label=field_label /> }
                     });
@@ -309,7 +318,10 @@ pub fn FormSectionView(
                 let read_only = field.read_only;
                 let field_label = field.label.clone();
                 let anchor = anchor_before(fields, i);
-                let insert_label = format!("Insertar campo antes de {field_label}");
+                let insert_label = i18n.t_with(
+                    "components.form.layout.insert_before",
+                    &[("field", &field_label)],
+                );
                 let name = field.fieldname.clone();
                 let tour_name = name.clone();
                 let target = edit.map(|_| {
@@ -332,7 +344,7 @@ pub fn FormSectionView(
             // leave a gap.
             {end_anchor.map(|anchor| view! {
                 <div class="relative h-0">
-                    <InsertFieldRule anchor=anchor label="Insertar campo al final de la sección" />
+                    <InsertFieldRule anchor=anchor label=t("components.form.layout.insert_at_end") />
                 </div>
             })}
         </section>

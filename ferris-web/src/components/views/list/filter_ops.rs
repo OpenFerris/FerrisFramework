@@ -17,6 +17,7 @@ use crate::components::ui::dropdown_menu::{
 };
 use crate::components::ui::input::{Input, InputType};
 use crate::components::ui::select_native::SelectNative;
+use crate::i18n::{t, use_i18n};
 
 use icons::{
     CaseSensitive, Check, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Equal, List as ListIcon,
@@ -44,16 +45,17 @@ pub(super) fn operators_for(fieldtype: &str) -> Vec<FilterOp> {
 
 /// The human label for an operator, shown in the menu next to its icon. The
 /// trigger uses the shorter [`operator_token`] instead.
-fn operator_label(op: FilterOp) -> &'static str {
-    match op {
-        FilterOp::Like => "Contiene",
-        FilterOp::Equals => "Es igual a",
-        FilterOp::In => "Está en",
-        FilterOp::Gt => "Mayor que",
-        FilterOp::Gte => "Mayor o igual",
-        FilterOp::Lt => "Menor que",
-        FilterOp::Lte => "Menor o igual",
-    }
+fn operator_label(op: FilterOp, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
+    let key = match op {
+        FilterOp::Like => "components.list.filter.operator.contains",
+        FilterOp::Equals => "components.list.filter.operator.equals",
+        FilterOp::In => "components.list.filter.operator.in",
+        FilterOp::Gt => "components.list.filter.operator.gt",
+        FilterOp::Gte => "components.list.filter.operator.gte",
+        FilterOp::Lt => "components.list.filter.operator.lt",
+        FilterOp::Lte => "components.list.filter.operator.lte",
+    };
+    i18n.t(key)
 }
 
 /// The short token shown on the trigger, so the type is readable without
@@ -93,6 +95,8 @@ pub(super) fn OperatorPicker(
     #[prop(into, optional)] trigger_class: String,
     on_pick: Callback<FilterOp>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let menu_i18n = i18n;
     let operators = operators_for(&fieldtype);
 
     view! {
@@ -107,11 +111,11 @@ pub(super) fn OperatorPicker(
                     // caller only adjusts the corners so the control fits the
                     // group it lives in.
                     class=tw_merge!("w-24 justify-between", trigger_class)
-                    attr:aria-label=format!(
-                        "Tipo de filtro: {}",
-                        operator_label(operator)
+                    attr:aria-label=i18n.t_with(
+                        "components.list.filter.operator_aria",
+                        &[("operator", &operator_label(operator, &i18n))],
                     )
-                    attr:title=operator_label(operator)
+                    attr:title=operator_label(operator, &i18n)
                 >
                     <OperatorIcon op=operator />
                     <span class="text-xs font-medium text-muted-foreground">
@@ -136,7 +140,7 @@ pub(super) fn OperatorPicker(
                                         <span class="inline-flex min-w-0 items-center gap-2">
                                             <OperatorIcon op=op />
                                             <span class="truncate">
-                                                {operator_label(op)}
+                                                {operator_label(op, &menu_i18n)}
                                             </span>
                                         </span>
                                         {if selected {
@@ -204,7 +208,7 @@ pub(super) fn FilterValueEditor(
                 on_change=on_change
                 class=class
             >
-                <option value="">"Seleccionar..."</option>
+                <option value="">{t("components.list.filter.select")}</option>
                 {opts
                     .into_iter()
                     .map(|option| {
@@ -230,9 +234,9 @@ pub(super) fn FilterValueEditor(
                 on_change=on_change
                 class=class
             >
-                <option value="">"Seleccionar..."</option>
-                <option value="true">"Sí"</option>
-                <option value="false">"No"</option>
+                <option value="">{t("components.list.filter.select")}</option>
+                <option value="true">{t("components.list.filter.yes")}</option>
+                <option value="false">{t("components.list.filter.no")}</option>
             </SelectNative>
         }
         .into_any()

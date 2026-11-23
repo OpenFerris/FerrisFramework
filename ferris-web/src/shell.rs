@@ -62,6 +62,16 @@ pub fn DeskShell() -> impl IntoView {
     // outside the CSP `script-src` gate and out of `hydrate_body`'s way.
     let bootstrap = serde_json::to_string(&web_user).unwrap_or_else(|_| "null".to_string());
 
+    // SSR gets the negotiated catalogue from `provide_desk_context`; hydration
+    // reads the identical value back from the `<meta>` below.
+    let i18n = leptos::context::use_context::<crate::i18n::DeskI18n>()
+        .or_else(crate::i18n::from_meta)
+        .unwrap_or_default();
+    provide_context(i18n.clone());
+    let lang = i18n.locale.clone();
+    let i18n_bootstrap = serde_json::to_string(&i18n)
+        .unwrap_or_else(|_| "{\"locale\":\"en\",\"messages\":{}}".to_string());
+
     // Injected by `leptos_axum` while SSR-rendering a request. Leaked during
     // the startup `generate_route_list` render call, where we fall back to the
     // same values the server config uses.
@@ -70,10 +80,11 @@ pub fn DeskShell() -> impl IntoView {
 
     view! {
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang=lang>
             <head>
                 <MetaTags />
                 <meta name=BOOTSTRAP_USER_META content=bootstrap />
+                <meta name=crate::i18n::I18N_META content=i18n_bootstrap />
                 <link rel="stylesheet" href="/static/desk.css" />
                 <HydrationScripts options=options.clone() />
                 <AutoReload options=options />

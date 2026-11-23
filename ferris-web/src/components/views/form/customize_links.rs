@@ -18,10 +18,15 @@ use crate::components::ui::icon::Icon;
 use crate::components::ui::input::Input;
 use crate::components::ui::select_native::SelectNative;
 use crate::components::ui::separator::Separator;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 
 #[component]
 pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
+    let i18n = use_i18n();
+    let action_i18n = i18n;
+    let link_i18n = i18n;
+    let remove_i18n = i18n;
     let doctype = service.doctype;
     let meta = service.meta;
     let error = RwSignal::new(None::<String>);
@@ -50,7 +55,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
         let action = action_value.get().trim().to_string();
         if label.is_empty() || action.is_empty() {
             error.set(Some(
-                "La acción necesita una etiqueta y un método/ruta.".to_string(),
+                action_i18n.t("components.form.customize.action_required"),
             ));
             return;
         }
@@ -60,6 +65,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
         busy.set(true);
         error.set(None);
         notice.set(None);
+        let i18n = action_i18n;
         spawn_local(async move {
             let result = match DocStore::runtime() {
                 Ok(store) => {
@@ -83,7 +89,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
             busy.set(false);
             match result {
                 Ok(_) => {
-                    notice.set(Some("Acción añadida.".to_string()));
+                    notice.set(Some(i18n.t("components.form.customize.action_added")));
                     action_label.set(String::new());
                     action_value.set(String::new());
                     action_group.set(String::new());
@@ -98,9 +104,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
         let target = link_doctype.get().trim().to_string();
         let field = link_field.get().trim().to_string();
         if target.is_empty() || field.is_empty() {
-            error.set(Some(
-                "El enlace necesita el DocType destino y el campo que apunta a él.".to_string(),
-            ));
+            error.set(Some(link_i18n.t("components.form.customize.link_required")));
             return;
         }
         let dt = doctype.get_untracked();
@@ -109,6 +113,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
         busy.set(true);
         error.set(None);
         notice.set(None);
+        let i18n = link_i18n;
         spawn_local(async move {
             let result = match DocStore::runtime() {
                 Ok(store) => {
@@ -132,7 +137,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
             busy.set(false);
             match result {
                 Ok(_) => {
-                    notice.set(Some("Enlace añadido.".to_string()));
+                    notice.set(Some(i18n.t("components.form.customize.link_added")));
                     link_doctype.set(String::new());
                     link_field.set(String::new());
                     link_table.set(String::new());
@@ -148,6 +153,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
         busy.set(true);
         error.set(None);
         notice.set(None);
+        let i18n = remove_i18n;
         spawn_local(async move {
             let result = match DocStore::runtime() {
                 Ok(store) => store.delete(&kind, &name).await,
@@ -156,7 +162,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
             busy.set(false);
             match result {
                 Ok(()) => {
-                    notice.set(Some("Eliminado.".to_string()));
+                    notice.set(Some(i18n.t("components.form.customize.removed")));
                     refresh.run(());
                 }
                 Err(message) => error.set(Some(message)),
@@ -167,7 +173,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
     view! {
         <Separator />
         <section class="flex flex-col gap-3">
-            <h3 class="text-sm font-semibold">"Acciones y enlaces"</h3>
+            <h3 class="text-sm font-semibold">{t("components.form.customize.title")}</h3>
             <Show when=move || error.get().is_some()>
                 <div class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                     {move || error.get().unwrap_or_default()}
@@ -181,11 +187,11 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
 
             // ---- Actions ----
             <div class="flex flex-col gap-2">
-                <h4 class="text-xs font-semibold uppercase text-muted-foreground">"Acciones"</h4>
+                <h4 class="text-xs font-semibold uppercase text-muted-foreground">{t("components.form.sidebar.actions")}</h4>
                 <Show
                     when=move || meta.get().is_some_and(|meta| !meta.actions.is_empty())
                     fallback=|| view! {
-                        <p class="text-sm text-muted-foreground">"Ninguna."</p>
+                        <p class="text-sm text-muted-foreground">{t("components.form.customize.none_actions")}</p>
                     }
                 >
                     {move || {
@@ -212,7 +218,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
                                             variant=ButtonVariant::Ghost
                                             size=ButtonSize::IconSm
                                             class="shrink-0"
-                                            attr:aria-label="Eliminar acción"
+                                            attr:aria-label=t("components.form.customize.remove_action")
                                             on:click=move |_| {
                                                 remove.run((
                                                     "DocType Action".to_string(),
@@ -229,10 +235,10 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
                     }}
                 </Show>
                 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <Input placeholder="Etiqueta" bind_value=action_label />
+                    <Input placeholder=t("components.form.customize.label_placeholder") bind_value=action_label />
                     <SelectNative
                         id="customize-action-type"
-                        aria_label="Tipo de acción"
+                        aria_label=t("components.form.customize.action_type")
                         value=action_type.read_only()
                         on_change=Callback::new(move |ev: leptos::ev::Event| {
                             action_type.set(event_target_value(&ev));
@@ -241,8 +247,8 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
                         <option value="Server Action">"Server Action"</option>
                         <option value="Route">"Route"</option>
                     </SelectNative>
-                    <Input placeholder="Método o ruta" bind_value=action_value />
-                    <Input placeholder="Grupo (opcional)" bind_value=action_group />
+                    <Input placeholder=t("components.form.customize.method_placeholder") bind_value=action_value />
+                    <Input placeholder=t("components.form.customize.group_placeholder") bind_value=action_group />
                 </div>
                 <Button
                     variant=ButtonVariant::Secondary
@@ -250,17 +256,17 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
                     attr:disabled=busy
                     on:click=move |_| add_action()
                 >
-                    "Añadir acción"
+                    {t("components.form.customize.add_action")}
                 </Button>
             </div>
 
             // ---- Links ----
             <div class="flex flex-col gap-2">
-                <h4 class="text-xs font-semibold uppercase text-muted-foreground">"Enlaces"</h4>
+                <h4 class="text-xs font-semibold uppercase text-muted-foreground">{t("components.form.customize.links")}</h4>
                 <Show
                     when=move || meta.get().is_some_and(|meta| !meta.links.is_empty())
                     fallback=|| view! {
-                        <p class="text-sm text-muted-foreground">"Ninguno."</p>
+                        <p class="text-sm text-muted-foreground">{t("components.form.customize.none_links")}</p>
                     }
                 >
                     {move || {
@@ -282,7 +288,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
                                             variant=ButtonVariant::Ghost
                                             size=ButtonSize::IconSm
                                             class="shrink-0"
-                                            attr:aria-label="Eliminar enlace"
+                                            attr:aria-label=t("components.form.customize.remove_link")
                                             on:click=move |_| {
                                                 remove.run((
                                                     "DocType Link".to_string(),
@@ -299,10 +305,10 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
                     }}
                 </Show>
                 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <Input placeholder="DocType destino" bind_value=link_doctype />
-                    <Input placeholder="Campo que apunta aquí" bind_value=link_field />
-                    <Input placeholder="Tabla hija (opcional)" bind_value=link_table />
-                    <Input placeholder="Grupo (opcional)" bind_value=link_group />
+                    <Input placeholder=t("components.form.customize.target_doctype") bind_value=link_doctype />
+                    <Input placeholder=t("components.form.customize.link_field") bind_value=link_field />
+                    <Input placeholder=t("components.form.customize.child_table") bind_value=link_table />
+                    <Input placeholder=t("components.form.customize.group_placeholder") bind_value=link_group />
                 </div>
                 <Button
                     variant=ButtonVariant::Secondary
@@ -310,7 +316,7 @@ pub fn CustomizeActionsLinks(service: FormService) -> impl IntoView {
                     attr:disabled=busy
                     on:click=move |_| add_link()
                 >
-                    "Añadir enlace"
+                    {t("components.form.customize.add_link")}
                 </Button>
             </div>
         </section>

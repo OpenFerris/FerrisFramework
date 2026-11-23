@@ -27,6 +27,7 @@ use ferris_schema::contract::{AppUi, GridSize, WidgetInstance};
 
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::ext::UiCtx;
+use crate::i18n::use_i18n;
 use crate::views::widget_host::WidgetHost;
 
 use super::{model, style};
@@ -94,6 +95,7 @@ pub(super) fn DashboardTile(
 ) -> impl IntoView {
     let ctx = expect_context::<UiCtx>();
     let apps = ctx.apps;
+    let i18n = use_i18n();
     let tile_ref = NodeRef::<html::Div>::new();
 
     // The tile's own appearance: its instance's style over its definition's,
@@ -330,6 +332,8 @@ pub(super) fn DashboardTile(
 
     let body_owner = owner.clone();
     let body_id = id.clone();
+    let i18n_chrome = i18n;
+    let i18n_resize = i18n;
 
     view! {
         <div
@@ -369,6 +373,7 @@ pub(super) fn DashboardTile(
                 let on_move_down = on_move_down.clone();
                 let open_props = open_props.clone();
                 let remove = remove.clone();
+                let i18n_chrome = i18n_chrome;
                 editing.get().then(move || {
                     view! {
                         // `ferris-dashboard-tile__chrome` owns the strip's
@@ -389,8 +394,8 @@ pub(super) fn DashboardTile(
                                 size=ButtonSize::IconXs
                                 variant=ButtonVariant::Ghost
                                 on:click=open_props
-                                attr:aria-label="Ajustes del widget"
-                                attr:title="Ajustes"
+                                attr:aria-label=i18n_chrome.t("views.dashboard.widget_settings")
+                                attr:title=i18n_chrome.t("views.dashboard.settings")
                             >
                                 <icons::Settings class="size-3.5" />
                             </Button>
@@ -398,8 +403,8 @@ pub(super) fn DashboardTile(
                                 size=ButtonSize::IconXs
                                 variant=ButtonVariant::Ghost
                                 on:click=remove
-                                attr:aria-label="Quitar widget"
-                                attr:title="Quitar"
+                                attr:aria-label=i18n_chrome.t("views.dashboard.remove_widget")
+                                attr:title=i18n_chrome.t("views.dashboard.remove")
                             >
                                 <icons::Trash2 class="size-3.5" />
                             </Button>
@@ -435,6 +440,7 @@ pub(super) fn DashboardTile(
             </div>
             {move || {
                 let on_resize_down = on_resize_down.clone();
+                let i18n_resize = i18n_resize;
                 editing.get().then(move || {
                     view! {
                         // `ferris-dashboard-tile__resize` owns the handle's
@@ -443,7 +449,7 @@ pub(super) fn DashboardTile(
                             type="button"
                             class="ferris-dashboard-tile__resize absolute right-0 bottom-0 size-4 cursor-nwse-resize touch-none rounded-tl-sm text-muted-foreground opacity-0 transition-opacity group-hover/tile:opacity-100 focus-visible:opacity-100"
                             on:pointerdown=on_resize_down
-                            aria-label="Redimensionar widget"
+                            aria-label=i18n_resize.t("views.dashboard.resize_widget")
                         >
                             <icons::Maximize2 class="size-3" />
                         </button>

@@ -24,8 +24,8 @@ mod layout_ops_tests;
 mod tests;
 
 pub use layout::{
-    FormField, FormSection, FormSectionItem, build_form_fields, build_form_layout, form_layout,
-    validate_form,
+    FormField, FormSection, FormSectionItem, build_form_fields, build_form_fields_with,
+    build_form_layout, form_layout, validate_form, validate_form_with,
 };
 pub use layout_ops::{LayoutOp, OpWrite};
 use methods::install_fetch_from;
@@ -112,6 +112,9 @@ pub struct FormService {
     pub saving: RwSignal<bool>,
     pub error: RwSignal<Option<String>>,
     pub notice: RwSignal<Option<String>>,
+    /// The form's catalogue handle. Services run from effects and handlers, so
+    /// they carry the `Copy` handle instead of calling `use_context` there.
+    pub i18n: crate::i18n::I18n,
 
     /// The previous/next docname in list order, for the header's navigation.
     pub neighbors: RwSignal<Neighbors>,
@@ -195,6 +198,7 @@ impl FormService {
         // is what keeps the document affordances (navigation, share, tags, the
         // action-bearing fieldtypes) off a form that edits metadata.
         let is_new = Memo::new(move |_| docname.get() == "new" || layout_mode.get());
+        let i18n = crate::i18n::use_i18n();
 
         let meta = RwSignal::new(None::<DynMeta>);
         let fields = RwSignal::new(Vec::<FormField>::new());
@@ -296,7 +300,10 @@ impl FormService {
                     Ok(Some(m)) => m,
                     Ok(None) => {
                         if guard.is_current(mine) {
-                            error.set(Some(format!("Doctype {} no registrado", dt)));
+                            error.set(Some(i18n.t_with(
+                                "components.form.doctype_unregistered",
+                                &[("doctype", &dt)],
+                            )));
                             loading.set(false);
                         }
                         return;
@@ -352,7 +359,7 @@ impl FormService {
                     return;
                 }
 
-                let fields_out = build_form_fields(&m, &doc_value, mode_new);
+                let fields_out = build_form_fields_with(&m, &doc_value, mode_new, &i18n);
                 title.set(
                     doc_value
                         .get("name")
@@ -461,6 +468,7 @@ impl FormService {
             saving,
             error,
             notice,
+            i18n,
             neighbors,
             sidebar_visible,
             editing,

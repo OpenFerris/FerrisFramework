@@ -19,6 +19,7 @@ use crate::components::ui::dialog::{
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 };
 use crate::components::ui::input::{Input, InputType};
+use crate::i18n::{t, use_i18n};
 
 /// The export dialog for a single field. `doctype` is read when the export
 /// runs, not when the dialog is built, because the same route serves every
@@ -29,17 +30,21 @@ pub(super) fn ExportDialog(
     doctype: Signal<String>,
     fieldname: String,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let description_i18n = i18n;
+    let export_i18n = i18n;
+    let exported_i18n = i18n;
     let app = RwSignal::new(String::new());
     let exporting = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let exported = RwSignal::new(None::<String>);
     let field = StoredValue::new(fieldname);
 
-    let title = "Exportar este campo";
+    let title = t("components.form.export_field.title");
     let description = move || {
-        format!(
-            "Guarda solo «{}» en plugins/<app>/customizations/ para que viaje con el plugin.",
-            field.get_value()
+        description_i18n.t_with(
+            "components.form.export_field.description",
+            &[("field", &field.get_value())],
         )
     };
 
@@ -56,7 +61,7 @@ pub(super) fn ExportDialog(
     let export = Callback::new(move |()| {
         let app_name = app.get_untracked().trim().to_string();
         if app_name.is_empty() {
-            error.set(Some("Escribe el nombre de la app.".to_string()));
+            error.set(Some(export_i18n.t("components.form.export.app_required")));
             return;
         }
         let dt = doctype.get_untracked();
@@ -64,12 +69,11 @@ pub(super) fn ExportDialog(
         error.set(None);
         exported.set(None);
         exporting.set(true);
+        let i18n = export_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 exporting.set(false);
-                error.set(Some(
-                    "La exportación no está disponible en este contexto.".to_string(),
-                ));
+                error.set(Some(i18n.t("components.form.export.unavailable")));
                 return;
             };
             // `Some(Fields(..))` narrows the file to this field; `None` (the
@@ -95,10 +99,10 @@ pub(super) fn ExportDialog(
 
                 <div class="mt-4 flex flex-col gap-3">
                     <div class="flex flex-col gap-1">
-                        <span class="text-xs font-medium text-muted-foreground">"App"</span>
+                        <span class="text-xs font-medium text-muted-foreground">{t("components.form.export.app")}</span>
                         <Input
                             r#type=InputType::Text
-                            aria_label="Nombre de la app"
+                            aria_label=t("components.form.export.app_placeholder")
                             placeholder="mi-app"
                             bind_value=app
                         />
@@ -120,7 +124,12 @@ pub(super) fn ExportDialog(
                             {move || {
                                 exported
                                     .get()
-                                    .map(|path| format!("Exportado a {path}"))
+                                    .map(|path| {
+                                        exported_i18n.t_with(
+                                            "components.form.export_field.exported_to",
+                                            &[("path", &path)],
+                                        )
+                                    })
                                     .unwrap_or_default()
                             }}
                         </div>
@@ -132,7 +141,7 @@ pub(super) fn ExportDialog(
                             size=ButtonSize::Sm
                             on:click=move |_| open.set(false)
                         >
-                            "Cerrar"
+                            {t("common.close")}
                         </Button>
                         <Button
                             variant=ButtonVariant::Default
@@ -140,7 +149,13 @@ pub(super) fn ExportDialog(
                             attr:disabled=move || exporting.get()
                             on:click=move |_| export.run(())
                         >
-                            {move || if exporting.get() { "Exportando…" } else { "Exportar" }}
+                            {move || {
+                                if exporting.get() {
+                                    t("components.form.export.exporting")
+                                } else {
+                                    t("components.form.export.export")
+                                }
+                            }}
                         </Button>
                     </div>
                 </div>

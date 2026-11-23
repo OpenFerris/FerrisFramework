@@ -78,28 +78,27 @@ pub fn WidgetField(
     #[prop(into, optional)]
     label: String,
 ) -> impl IntoView {
+    let i18n = crate::i18n::use_i18n();
     let reference = parse_widget_ref(&options);
     if reference == WidgetRef::Empty {
-        return placeholder(
-            "Este campo Widget no indica qué widget mostrar. Escribe `<app>/<widget>` en sus opciones.",
-        )
-        .into_any();
+        return placeholder(i18n.t("components.form.widget.missing_reference")).into_any();
     }
     // `use_context`, not `expect_context`: the field is also rendered by the
     // dashboard parameter panel and in standalone tests, where the OpenUI feed
     // is not provided. A missing host is a notice, never a panic.
     let Some(ctx) = use_context::<UiCtx>() else {
-        return placeholder("El catálogo de widgets no está disponible en esta vista.").into_any();
+        return placeholder(i18n.t("components.form.widget.no_catalog")).into_any();
     };
     // Resolved once; the render closure below re-resolves when the feed lands.
     let reference = StoredValue::new(reference);
     // `options` is read by the notice closure and by the `data-widget` hook; the
     // label is owned by this view (`StoredValue`), not borrowed from the caller.
     let declared = options.clone();
+    let missing_i18n = i18n;
     let missing = move || {
-        format!(
-            "El widget «{}» no está en el catálogo de las apps.",
-            declared.trim()
+        missing_i18n.t_with(
+            "components.form.widget.not_in_catalog",
+            &[("widget", declared.trim())],
         )
     };
     let label = StoredValue::new(label);
@@ -144,7 +143,8 @@ pub fn WidgetField(
 }
 
 /// The dashed notice a `Widget` field renders when it cannot host anything.
-fn placeholder(message: &'static str) -> AnyView {
+fn placeholder(message: impl Into<String>) -> AnyView {
+    let message = message.into();
     view! {
         <div
             class="flex min-h-24 flex-col items-center justify-center gap-1 rounded-xl border border-dashed bg-muted/30 p-3 text-center"

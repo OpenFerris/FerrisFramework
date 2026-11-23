@@ -17,6 +17,7 @@ use leptos::prelude::*;
 
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::input::{Input, InputType};
+use crate::i18n::t;
 
 /// What a `Geolocation` value can say. Only the wasm side plots it and the
 /// tests exercise it, so it does not exist in a native build at all.
@@ -90,7 +91,7 @@ pub fn GeolocationField(
                 id=map_id
                 class="h-64 w-full overflow-hidden rounded-md border bg-card"
                 role="region"
-                aria-label="Mapa"
+                aria-label=t("components.form.field.map")
             ></div>
             <div class="flex items-center gap-2">
                 <Input
@@ -99,7 +100,7 @@ pub fn GeolocationField(
                     bind_value=value
                     readonly=read_only
                     placeholder=if placeholder.is_empty() {
-                        "latitud, longitud o GeoJSON".to_string()
+                        t("components.form.field.geo_placeholder")
                     } else {
                         placeholder
                     }
@@ -110,7 +111,7 @@ pub fn GeolocationField(
                         size=ButtonSize::Sm
                         on:click=move |_| value.set(String::new())
                     >
-                        "Limpiar"
+                        {t("components.form.field.clear")}
                     </Button>
                 </Show>
             </div>

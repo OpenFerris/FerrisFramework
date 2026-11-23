@@ -22,10 +22,11 @@ use crate::components::ui::tabs::{Tabs, TabsContent, TabsList, TabsTrigger};
 use crate::desk::session::{
     self as desk_session, DeskEvent, NotificationFeed, NotificationSettings,
 };
+use crate::i18n::{DeskI18n, use_i18n};
 use crate::views::views_components::{Feedback, FeedbackKind};
 
 /// Compact age for the feed rows: `"ahora"`, `"12m"`, `"3h"`, `"4d"`.
-fn format_age(rfc3339: &str) -> String {
+fn format_age(rfc3339: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
     const MINUTE: i64 = 60;
     const HOUR: i64 = 60 * MINUTE;
     const DAY: i64 = 24 * HOUR;
@@ -37,7 +38,7 @@ fn format_age(rfc3339: &str) -> String {
         .num_seconds()
         .max(0);
     let (step, unit) = match elapsed {
-        s if s < MINUTE => return "ahora".into(),
+        s if s < MINUTE => return i18n.t("desk.notifications.now"),
         s if s < HOUR => (MINUTE, "m"),
         s if s < DAY => (HOUR, "h"),
         _ => (DAY, "d"),
@@ -68,6 +69,11 @@ pub fn NotificationsPanel(
     feed: RwSignal<NotificationFeed>,
     settings: RwSignal<NotificationSettings>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n.with_value(|i18n: &DeskI18n| i18n.t_with(key, args))
+    };
     let events = RwSignal::new(Vec::<DeskEvent>::new());
     let settings_open = RwSignal::new(false);
     let loading = RwSignal::new(false);
@@ -135,8 +141,9 @@ pub fn NotificationsPanel(
                 Err(message) => {
                     // The write did not land: keep the dialog open with the
                     // user's toggles so they can retry, and say why.
-                    save_error.set(Some(format!(
-                        "No se pudieron guardar los ajustes: {message}"
+                    save_error.set(Some(tr_with(
+                        "desk.notifications.save_error",
+                        &[("message", &message)],
                     )));
                     saving.set(false);
                 }
@@ -177,13 +184,13 @@ pub fn NotificationsPanel(
                         <div class="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
                             <TabsList class="h-7">
                                 <TabsTrigger value="notifications" class="h-6 text-xs">
-                                    "Avisos"
+                                    {tr("desk.notifications.title")}
                                 </TabsTrigger>
                                 <TabsTrigger value="events" class="h-6 text-xs">
-                                    "Eventos"
+                                    {tr("desk.notifications.tab.events")}
                                 </TabsTrigger>
                                 <TabsTrigger value="whats-new" class="h-6 text-xs">
-                                    "Novedades"
+                                    {tr("desk.notifications.tab.whats_new")}
                                 </TabsTrigger>
                             </TabsList>
 
@@ -192,8 +199,8 @@ pub fn NotificationsPanel(
                                     variant=ButtonVariant::Ghost
                                     size=ButtonSize::IconSm
                                     class="size-7"
-                                    attr:title="Ajustes de avisos"
-                                    attr:aria-label="Ajustes de avisos"
+                                    attr:title=tr("desk.notifications.settings")
+                                    attr:aria-label=tr("desk.notifications.settings")
                                     on:click=move |_| {
                                         save_error.set(None);
                                         settings_open.set(true);
@@ -205,8 +212,8 @@ pub fn NotificationsPanel(
                                     variant=ButtonVariant::Ghost
                                     size=ButtonSize::IconSm
                                     class="size-7"
-                                    attr:title="Marcar todo como leído"
-                                    attr:aria-label="Marcar todo como leído"
+                                    attr:title=tr("desk.notifications.mark_all_read")
+                                    attr:aria-label=tr("desk.notifications.mark_all_read")
                                     on:click=move |_| crate::desk::notifications::mark_all_read(feed)
                                 >
                                     <CheckCheck class="size-4" />
@@ -215,8 +222,8 @@ pub fn NotificationsPanel(
                                     variant=ButtonVariant::Ghost
                                     size=ButtonSize::IconSm
                                     class="size-7"
-                                    attr:title="Cerrar"
-                                    attr:aria-label="Cerrar"
+                                    attr:title=tr("common.close")
+                                    attr:aria-label=tr("common.close")
                                     on:click=move |_| close()
                                 >
                                     <X class="size-4" />
@@ -243,22 +250,22 @@ pub fn NotificationsPanel(
         <Dialog>
             <DialogContent open=settings_open show_close_button=true class="max-w-sm">
                 <DialogHeader>
-                    <DialogTitle>{ "Ajustes de avisos" }</DialogTitle>
+                    <DialogTitle>{tr("desk.notifications.settings")}</DialogTitle>
                     <DialogDescription>
-                        { "Elige cómo el escritorio te mantiene al día." }
+                        {tr("desk.notifications.settings_description")}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div class="flex flex-col gap-1">
                     <SettingsToggle
-                        label="Mostrar el distintivo de no leídos"
-                        help="Marca la campana con cuántos avisos no has leído todavía."
+                        label="desk.notifications.setting.badge_label"
+                        help="desk.notifications.setting.badge_help"
                         settings=settings
                         key="desktop"
                     />
                     <SettingsToggle
-                        label="Darme la bienvenida al iniciar sesión"
-                        help="Añade un aviso confirmando que has iniciado sesión en el escritorio."
+                        label="desk.notifications.setting.welcome_label"
+                        help="desk.notifications.setting.welcome_help"
                         settings=settings
                         key="notify_on_login"
                     />
@@ -274,10 +281,10 @@ pub fn NotificationsPanel(
                         variant=ButtonVariant::Ghost
                         on:click=move |_| settings_open.set(false)
                     >
-                        "Cancelar"
+                        {tr("common.cancel")}
                     </Button>
                     <Button attr:disabled=move || saving.get() on:click=move |_| save_settings()>
-                        "Guardar"
+                        {tr("common.save")}
                     </Button>
                 </div>
             </DialogContent>
@@ -299,6 +306,7 @@ pub(crate) fn NotificationFeedList(
     // Taken once: `use_navigate` reads router context, so calling it per click
     // inside a `view!` closure is both wasteful and context-sensitive.
     let navigate = leptos_router::hooks::use_navigate();
+    let i18n = use_i18n();
 
     view! {
         {move || {
@@ -307,9 +315,9 @@ pub(crate) fn NotificationFeedList(
                 return view! {
                     <div class="flex flex-col items-center gap-2 px-4 py-12 text-center">
                         <Inbox class="size-8 text-muted-foreground/60" />
-                        <p class="text-sm font-medium">"Estás al día"</p>
+                        <p class="text-sm font-medium">{i18n.t("desk.notifications.empty_title")}</p>
                         <p class="text-xs text-muted-foreground">
-                            "Los avisos nuevos aparecerán aquí."
+                            {i18n.t("desk.notifications.empty_body")}
                         </p>
                     </div>
                 }.into_any();
@@ -325,7 +333,7 @@ pub(crate) fn NotificationFeedList(
                         let dismiss_id = item.id.clone();
                         let nav_route = item.route.clone();
                         let nav = navigate.clone();
-                        let age = format_age(&item.created_at);
+                        let age = format_age(&item.created_at, &i18n);
                         let unread = !item.is_read;
 
                         view! {
@@ -358,8 +366,8 @@ pub(crate) fn NotificationFeedList(
                                 <button
                                     type="button"
                                     class="mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:size-10"
-                                    title="Descartar"
-                                    aria-label="Descartar aviso"
+                                    title=i18n.t("desk.notifications.dismiss")
+                                    aria-label=i18n.t("desk.notifications.dismiss_label")
                                     data-dropdown-close="true"
                                     on:click=move |_| crate::desk::notifications::dismiss(&dismiss_id, feed)
                                 >
@@ -377,6 +385,7 @@ pub(crate) fn NotificationFeedList(
 /// The events tab.
 #[component]
 fn Events(events: ReadSignal<Vec<DeskEvent>>) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         {move || {
             let list = events.get();
@@ -384,9 +393,9 @@ fn Events(events: ReadSignal<Vec<DeskEvent>>) -> impl IntoView {
                 return view! {
                     <div class="flex flex-col items-center gap-2 px-4 py-12 text-center">
                         <Calendar class="size-8 text-muted-foreground/60" />
-                        <p class="text-sm font-medium">"Nada programado"</p>
+                        <p class="text-sm font-medium">{i18n.t("desk.notifications.events_empty_title")}</p>
                         <p class="text-xs text-muted-foreground">
-                            "Los próximos eventos aparecerán aquí."
+                            {i18n.t("desk.notifications.events_empty_body")}
                         </p>
                     </div>
                 }.into_any();
@@ -425,26 +434,28 @@ fn Events(events: ReadSignal<Vec<DeskEvent>>) -> impl IntoView {
 /// The what's-new tab: what changed in this build, no backend needed.
 #[component]
 fn WhatsNew() -> impl IntoView {
+    // Catalogue keys, not text: the same list renders in the negotiated locale.
     const NOTES: &[(&str, &str)] = &[
         (
-            "Panel de avisos",
-            "Una campana en la barra lateral abre tus avisos, los próximos eventos y las novedades, sin salir de la página.",
+            "desk.notifications.whats_new.panel_title",
+            "desk.notifications.whats_new.panel_body",
         ),
         (
-            "DocTypes de verdad",
-            "Los avisos, los eventos y sus ajustes se guardan como documentos, así que se validan y versionan como todo lo demás.",
+            "desk.notifications.whats_new.doctypes_title",
+            "desk.notifications.whats_new.doctypes_body",
         ),
         (
-            "Ajustes por usuario",
-            "Activa o desactiva el distintivo de no leídos o el aviso de inicio de sesión; la elección te sigue en todos tus dispositivos.",
+            "desk.notifications.whats_new.settings_title",
+            "desk.notifications.whats_new.settings_body",
         ),
     ];
 
+    let i18n = use_i18n();
     view! {
         <ul class="flex flex-col gap-3">
             {NOTES.iter().map(|(title, body)| {
-                let title = title.to_string();
-                let body = body.to_string();
+                let title = i18n.t(title);
+                let body = i18n.t(body);
                 view! {
                     <li class="flex items-start gap-3 rounded-lg border border-border/60 p-3">
                         <Sparkles class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -453,7 +464,7 @@ fn WhatsNew() -> impl IntoView {
                             <span class="text-xs text-muted-foreground">{body}</span>
                         </div>
                         <Badge variant=BadgeVariant::Secondary size=BadgeSize::Sm>
-                            "Nuevo"
+                            {i18n.t("desk.notifications.whats_new.badge")}
                         </Badge>
                     </li>
                 }
@@ -470,6 +481,10 @@ fn SettingsToggle(
     settings: RwSignal<NotificationSettings>,
     key: &'static str,
 ) -> impl IntoView {
+    let i18n = use_i18n();
+    let label = i18n.t(label);
+    let aria_label = label.clone();
+    let help = i18n.t(help);
     view! {
         <div class="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
             <div class="flex min-w-0 flex-col gap-0.5">
@@ -479,7 +494,7 @@ fn SettingsToggle(
             <button
                 type="button"
                 role="switch"
-                aria-label=label
+                aria-label=aria_label
                 class=move || {
                     let on = match key {
                         "desktop" => settings.get().desktop,

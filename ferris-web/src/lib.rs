@@ -17,6 +17,7 @@ pub mod doctypes;
 pub mod ext;
 #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
 pub mod hydrate;
+pub mod i18n;
 pub mod markdown;
 pub mod shell;
 pub mod svg;

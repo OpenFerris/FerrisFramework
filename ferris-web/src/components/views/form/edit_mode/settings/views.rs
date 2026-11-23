@@ -29,6 +29,7 @@ use leptos::prelude::*;
 
 use crate::api::DynMeta;
 use crate::components::ui::icon::Icon;
+use crate::i18n::{t, use_i18n};
 
 use super::super::props::PropText;
 use super::SettingsDraft;
@@ -58,16 +59,17 @@ impl ViewKind {
         }
     }
 
-    /// The Spanish tab label.
-    pub(super) const fn label(self) -> &'static str {
-        match self {
-            Self::List => "Lista",
-            Self::Kanban => "Kanban",
-            Self::Calendar => "Calendario",
-            Self::Tree => "Árbol",
-            Self::Gantt => "Gantt",
-            Self::Report => "Informe",
-        }
+    /// The tab label, translated for the current catalogue.
+    pub(super) fn label(self, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
+        let key = match self {
+            Self::List => "components.form.view.list",
+            Self::Kanban => "components.form.view.kanban",
+            Self::Calendar => "components.form.view.calendar",
+            Self::Tree => "components.form.view.tree",
+            Self::Gantt => "components.form.view.gantt",
+            Self::Report => "components.form.view.report",
+        };
+        i18n.t(key)
     }
 
     pub(super) const fn icon(self) -> &'static str {
@@ -203,64 +205,65 @@ pub(super) fn ViewSettings(
     meta: Signal<Option<DynMeta>>,
     draft: SettingsDraft,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let options = move |pick: fn(&DynMeta) -> Vec<FieldOption>| -> Signal<Vec<FieldOption>> {
         Signal::derive(move || meta.get().map(|meta| pick(&meta)).unwrap_or_default())
     };
     let detail = match kind {
         ViewKind::List => view! {
             <PropText
-                title="Campo de orden"
+                title=t("components.form.view.sort_field")
                 overridden=false
                 value=draft.sort_field
-                hint="La columna por la que se ordena la lista."
+                hint=t("components.form.view.sort_field_hint")
             />
             <PropText
-                title="Sentido del orden"
+                title=t("components.form.view.sort_order")
                 overridden=false
                 value=draft.sort_order
-                hint="asc o desc."
+                hint=t("components.form.view.sort_order_hint")
             />
             <PropText
-                title="Campos de búsqueda"
+                title=t("components.form.view.search_fields")
                 overridden=false
                 value=draft.search_fields
-                hint="Nombres separados por comas."
+                hint=t("components.form.view.search_fields_hint")
             />
         }
         .into_any(),
         ViewKind::Kanban => view! {
             <FieldPicker
-                title="Campo de agrupación"
-                hint="Las columnas del tablero son los valores de este campo. Debe ser un Select con varias opciones o un Link."
+                title=t("components.form.view.group_field")
+                hint=t("components.form.view.group_field_hint")
                 value=draft.kanban_group_field
                 options=options(grouping_fields)
             />
             <PropTextSetting
-                title="Campos de la tarjeta"
-                hint="Nombres separados por comas; se muestran bajo el título. Vacío deja título y fecha."
+                title=t("components.form.view.card_fields")
+                hint=t("components.form.view.card_fields_hint")
                 value=draft.kanban_card_fields
             />
             <p class="text-xs text-muted-foreground">
-                "En el tablero, arrastra una tarjeta a otra columna (o usa sus flechas) para cambiar el valor; el cambio se guarda al soltarla y se revierte si el servidor lo rechaza."
+                {t("components.form.view.kanban_drag_hint")}
             </p>
         }
         .into_any(),
         ViewKind::Calendar => view! {
             <FieldPicker
-                title="Campo de fecha"
-                hint="El día en que el documento aparece. Vacío usa la fecha de creación."
+                title=t("components.form.view.date_field")
+                hint=t("components.form.view.date_field_hint")
                 value=draft.date_field
                 options=options(date_fields)
             />
             <FieldPicker
-                title="Campo de fin"
-                hint="Opcional. Un documento con inicio y fin ocupa todos los días intermedios."
+                title=t("components.form.view.end_field")
+                hint=t("components.form.view.calendar_end_hint")
                 value=draft.calendar_end_field
                 options=options(date_fields)
             />
             <FieldPicker
-                title="Campo de título"
-                hint="El texto de la tarjeta en cada día. Vacío usa el campo de título del DocType."
+                title=t("components.form.view.title_field")
+                hint=t("components.form.view.calendar_title_hint")
                 value=draft.calendar_title_field
                 options=options(label_fields)
             />
@@ -268,46 +271,46 @@ pub(super) fn ViewSettings(
         .into_any(),
         ViewKind::Tree => view! {
             <FieldPicker
-                title="Campo padre"
-                hint="Un Link a este mismo DocType. Sin él, la vista de árbol no puede anidar los documentos."
+                title=t("components.form.view.parent_field")
+                hint=t("components.form.view.parent_field_hint")
                 value=draft.tree_parent_field
                 options=options(self_link_fields)
             />
             <FieldPicker
-                title="Campo de etiqueta"
-                hint="El texto de cada fila. Vacío usa el campo de título del DocType."
+                title=t("components.form.view.label_field")
+                hint=t("components.form.view.label_field_hint")
                 value=draft.tree_label_field
                 options=options(label_fields)
             />
             <PropTextSetting
-                title="Niveles abiertos"
-                hint="Cuántos niveles se expanden la primera vez (0–10)."
+                title=t("components.form.view.expanded_levels")
+                hint=t("components.form.view.expanded_levels_hint")
                 value=draft.tree_expanded_levels
             />
         }
         .into_any(),
         ViewKind::Gantt => view! {
             <FieldPicker
-                title="Campo de inicio"
-                hint="El comienzo de la barra. Obligatorio para dibujar el Gantt."
+                title=t("components.form.view.start_field")
+                hint=t("components.form.view.start_field_hint")
                 value=draft.gantt_start_field
                 options=options(date_fields)
             />
             <FieldPicker
-                title="Campo de fin"
-                hint="El final de la barra. Obligatorio para dibujar el Gantt."
+                title=t("components.form.view.end_field")
+                hint=t("components.form.view.gantt_end_hint")
                 value=draft.gantt_end_field
                 options=options(date_fields)
             />
             <FieldPicker
-                title="Campo de dependencia"
-                hint="Opcional. Un Link a este mismo DocType; la barra muestra de qué documento depende."
+                title=t("components.form.view.dependency_field")
+                hint=t("components.form.view.dependency_field_hint")
                 value=draft.gantt_dependency_field
                 options=options(self_link_fields)
             />
             <FieldPicker
-                title="Campo de progreso"
-                hint="Opcional. Percent, Int o Float entre 0 y 100; rellena la barra."
+                title=t("components.form.view.progress_field")
+                hint=t("components.form.view.progress_field_hint")
                 value=draft.gantt_progress_field
                 options=options(progress_fields)
             />
@@ -315,18 +318,23 @@ pub(super) fn ViewSettings(
         .into_any(),
         ViewKind::Report => view! {
             <Unsupported
-                title="El informe se genera sobre este DocType."
-                detail="La vista Informe agrupa y resume los documentos del propio DocType (filtros, totales y exportación); no abre un informe guardado, así que no hay un nombre que configurar aquí."
+                title=t("components.form.view.report_title")
+                detail=t("components.form.view.report_detail")
             />
         }
         .into_any(),
     };
 
     view! {
-        <section class="flex flex-col gap-3" aria-label="Ajustes de la vista">
+        <section class="flex flex-col gap-3" aria-label=t("components.form.view.settings_aria")>
             <div class="flex items-center gap-2">
                 <Icon name=kind.icon() class="size-4 text-muted-foreground" />
-                <h4 class="text-sm font-semibold">{format!("Vista {}", kind.label())}</h4>
+                <h4 class="text-sm font-semibold">
+                    {i18n.t_with(
+                        "components.form.view.heading",
+                        &[("view", &kind.label(&i18n))],
+                    )}
+                </h4>
             </div>
             {detail}
         </section>
@@ -341,20 +349,21 @@ pub(super) fn DefaultViewPicker(
     draft: SettingsDraft,
     meta: Signal<Option<DynMeta>>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let options = Signal::derive(move || {
         meta.get()
             .map(|meta| {
                 available_views(&meta)
                     .into_iter()
-                    .map(|view| FieldOption::new(view.value(), view.label()))
+                    .map(|view| FieldOption::new(view.value(), view.label(&i18n)))
                     .collect()
             })
             .unwrap_or_default()
     });
     view! {
         <FieldPicker
-            title="Vista por defecto"
-            hint="La vista que se abre al entrar al DocType. Lista es el índice; las demás se abren una vez por sesión."
+            title=t("components.form.view.default_view")
+            hint=t("components.form.view.default_view_hint")
             value=draft.default_view
             options=options
         />
@@ -363,7 +372,7 @@ pub(super) fn DefaultViewPicker(
 
 /// A view that is declared but has no engine-backed setting yet.
 #[component]
-fn Unsupported(title: &'static str, detail: &'static str) -> impl IntoView {
+fn Unsupported(title: String, detail: String) -> impl IntoView {
     view! {
         <div class="flex items-start gap-2 rounded-lg border border-dashed bg-muted/40 p-3">
             <Icon name="info" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />

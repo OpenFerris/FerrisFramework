@@ -17,7 +17,11 @@
 /// A permission error (the caller may not print this document), a print-engine
 /// failure (the format failed to render) or a browser/transport error.
 #[cfg(target_arch = "wasm32")]
-pub async fn open(doctype: &str, name: &str) -> Result<(), String> {
+pub async fn open(
+    doctype: &str,
+    name: &str,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Result<(), String> {
     use wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen_futures::JsFuture;
 
@@ -26,8 +30,8 @@ pub async fn open(doctype: &str, name: &str) -> Result<(), String> {
         crate::desk::session::path_segment(doctype),
         crate::desk::session::path_segment(name)
     );
-    let window = web_sys::window().ok_or_else(|| "sin ventana".to_string())?;
-    let headers = web_sys::Headers::new().map_err(|_| "cabeceras".to_string())?;
+    let window = web_sys::window().ok_or_else(|| i18n.t("components.print.no_window"))?;
+    let headers = web_sys::Headers::new().map_err(|_| i18n.t("components.print.request_failed"))?;
     let _ = headers.set("content-type", "application/json");
     let _ = headers.set("accept", "application/pdf");
     if let Some(token) = super::client::csrf_token() {
@@ -41,29 +45,37 @@ pub async fn open(doctype: &str, name: &str) -> Result<(), String> {
         &format!("{}{}", super::client::get_base_url(), path),
         &init,
     )
-    .map_err(|_| "solicitud".to_string())?;
+    .map_err(|_| i18n.t("components.print.request_failed"))?;
     let response = JsFuture::from(window.fetch_with_request(&request))
         .await
-        .map_err(|_| "sin conexión".to_string())?
+        .map_err(|_| i18n.t("components.print.connection_failed"))?
         .dyn_into::<web_sys::Response>()
-        .map_err(|_| "respuesta".to_string())?;
+        .map_err(|_| i18n.t("components.print.request_failed"))?;
     let status = response.status();
     if !(200..300).contains(&status) {
-        let text = JsFuture::from(response.text().map_err(|_| "cuerpo".to_string())?)
-            .await
-            .map_err(|_| "cuerpo".to_string())?
-            .as_string()
-            .unwrap_or_default();
+        let text = JsFuture::from(
+            response
+                .text()
+                .map_err(|_| i18n.t("components.print.body_failed"))?,
+        )
+        .await
+        .map_err(|_| i18n.t("components.print.body_failed"))?
+        .as_string()
+        .unwrap_or_default();
         return Err(super::client::error_message(status, &text));
     }
-    let blob = JsFuture::from(response.blob().map_err(|_| "documento".to_string())?)
-        .await
-        .map_err(|_| "documento".to_string())?;
+    let blob = JsFuture::from(
+        response
+            .blob()
+            .map_err(|_| i18n.t("components.print.document_unavailable"))?,
+    )
+    .await
+    .map_err(|_| i18n.t("components.print.document_unavailable"))?;
     let blob = blob
         .dyn_into::<web_sys::Blob>()
-        .map_err(|_| "documento".to_string())?;
-    let url =
-        web_sys::Url::create_object_url_with_blob(&blob).map_err(|_| "documento".to_string())?;
+        .map_err(|_| i18n.t("components.print.document_unavailable"))?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob)
+        .map_err(|_| i18n.t("components.print.document_unavailable"))?;
     let _ = window.open_with_url_and_target(&url, "_blank");
     Ok(())
 }
@@ -72,6 +84,10 @@ pub async fn open(doctype: &str, name: &str) -> Result<(), String> {
 ///
 /// Always: the native build has no `Blob`/`fetch` to show a PDF with.
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn open(_doctype: &str, _name: &str) -> Result<(), String> {
-    Err("La impresión solo está disponible en el navegador.".to_string())
+pub async fn open(
+    _doctype: &str,
+    _name: &str,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Result<(), String> {
+    Err(i18n.t("components.print.browser_only"))
 }

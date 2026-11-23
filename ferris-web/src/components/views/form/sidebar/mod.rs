@@ -37,6 +37,7 @@ mod helpers;
 mod items;
 mod row;
 
+use crate::i18n::{t, use_i18n};
 use header::{SidebarHeader, SidebarProvenance};
 use helpers::{
     document_image, document_subtitle, document_title, edited_by, owner_of, parse_tags, stamp_of,
@@ -46,6 +47,8 @@ use row::SidebarRow;
 
 #[component]
 pub fn FormSidebar(service: FormService) -> impl IntoView {
+    let attachment_i18n = use_i18n();
+    let print_i18n = use_i18n();
     let service = StoredValue::new(service);
     let svc = service.get_value();
     let doctype = svc.doctype;
@@ -210,7 +213,7 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
     let add_attachment = move |item: FileItem| {
         let (dt, name) = (doctype.get(), docname.get());
         let file_name = if item.name.is_empty() {
-            "archivo".to_string()
+            attachment_i18n.t("components.file_picker.unnamed")
         } else {
             item.name.clone()
         };
@@ -380,10 +383,11 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
     let print_document = Callback::new(move |()| {
         let (dt, name) = (doctype.get_untracked(), docname.get_untracked());
         error.set(None);
+        let i18n = print_i18n;
         spawn_local(async move {
             // The server's print engine renders the document's print format and
             // checks `Permission::Print`; the browser only shows the PDF.
-            if let Err(message) = crate::api::print::open(&dt, &name).await {
+            if let Err(message) = crate::api::print::open(&dt, &name, &i18n).await {
                 error.set(Some(message));
             }
         });
@@ -431,8 +435,8 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
             <section class="flex flex-col gap-2">
                 <SidebarRow
                     icon="user-plus"
-                    label="Asignar"
-                    aria_label="Asignar usuario"
+                    label=t("components.form.sidebar.assign")
+                    aria_label=t("components.form.sidebar.assign_user")
                     on_add=toggle_assign
                 />
                 <AssignmentsList assignments=assignments on_remove=remove_assignment />
@@ -443,7 +447,7 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
                         values=assign_pick
                         mode=PickerMode::Single
                         display_field="full_name"
-                        placeholder="Buscar usuario…"
+                        placeholder=t("components.form.sidebar.search_user")
                         autofocus=true
                         on_select=Callback::new(move |next: Vec<String>| {
                             if let Some(user) = next.first().cloned() {
@@ -460,8 +464,8 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
             <section class="flex flex-col gap-2">
                 <SidebarRow
                     icon="paperclip"
-                    label="Adjuntos"
-                    aria_label="Adjuntar archivo"
+                    label=t("components.form.sidebar.attachments")
+                    aria_label=t("components.form.sidebar.attach_file")
                     on_add=Callback::new(move |()| attach_picker.set(true))
                 />
                 <AttachmentsList attachments=attachments on_remove=remove_attachment />
@@ -475,8 +479,8 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
             <section class="flex flex-col gap-2">
                 <SidebarRow
                     icon="tag"
-                    label="Etiquetas"
-                    aria_label="Añadir etiqueta"
+                    label=t("components.form.sidebar.tags")
+                    aria_label=t("components.form.sidebar.add_tag")
                     on_add=toggle_tags
                 />
                 <TagChips tags=tags on_remove=remove_tag />
@@ -486,7 +490,7 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
                         target="Tag".to_string()
                         values=tag_pick
                         mode=PickerMode::Multiple
-                        placeholder="Buscar o escribir una etiqueta…"
+                        placeholder=t("components.form.field.tags_placeholder")
                         allow_free_text=true
                         show_chips=false
                         autofocus=true
@@ -499,8 +503,8 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
             <section class="flex flex-col gap-2">
                 <SidebarRow
                     icon="share-2"
-                    label="Compartir"
-                    aria_label="Compartir con un usuario"
+                    label=t("components.form.sidebar.share")
+                    aria_label=t("components.form.sidebar.share_with_user")
                     on_add=toggle_share
                 />
                 <SharesList shares=shares on_remove=remove_share />
@@ -508,13 +512,13 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
                     <SelectNative
                         id="sidebar-share-level".to_string()
                         value=share_level.read_only()
-                        aria_label="Permiso al compartir"
+                        aria_label=t("components.form.sidebar.share_permission")
                         on_change=Callback::new(move |ev: leptos::ev::Event| {
                             share_level.set(event_target_value(&ev));
                         })
                     >
-                        <option value="read">"Puede ver"</option>
-                        <option value="write">"Puede editar"</option>
+                        <option value="read">{t("components.form.sidebar.can_view")}</option>
+                        <option value="write">{t("components.form.sidebar.can_edit")}</option>
                     </SelectNative>
                     <DocPicker
                         id="sidebar-share".to_string()
@@ -522,7 +526,7 @@ pub fn FormSidebar(service: FormService) -> impl IntoView {
                         values=share_pick
                         mode=PickerMode::Single
                         display_field="full_name"
-                        placeholder="Buscar usuario…"
+                        placeholder=t("components.form.sidebar.search_user")
                         autofocus=true
                         on_select=Callback::new(move |next: Vec<String>| {
                             if let Some(user) = next.first().cloned() {

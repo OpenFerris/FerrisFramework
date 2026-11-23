@@ -11,6 +11,7 @@ use crate::components::ui::badge::{Badge, BadgeSize, BadgeVariant};
 use crate::components::ui::charts::{AreaChart, ChartCurve};
 use crate::components::ui::table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow};
 use crate::ext::WidgetDef;
+use crate::i18n::use_i18n;
 use crate::views::views_components::{Feedback, FeedbackKind, LoadingLines};
 
 use super::params::{number_param, param_or};
@@ -52,11 +53,12 @@ pub(super) fn host_widget(
     def: &WidgetDef,
     params: &[(String, String)],
     refresh: Option<Signal<u32>>,
+    i18n: &(impl crate::i18n::Translate + Sync),
 ) -> AnyView {
     // `doctype` is `required` in the host catalog; without it the list call
     // can only fail, so say what is missing instead.
     let Some(doctype) = param_or(def, params, "doctype").filter(|value| !value.is_empty()) else {
-        return missing_param(def, "doctype").into_any();
+        return missing_param(def, "doctype", i18n).into_any();
     };
     let doctype = doctype.to_string();
 
@@ -88,7 +90,7 @@ pub(super) fn host_widget(
         // The host catalog grew a name these renderers predate: a framed
         // body that says so, the same degradation a plugin's unknown kind
         // gets on the other side of the fence.
-        None => unknown_host_widget(def).into_any(),
+        None => unknown_host_widget(def, i18n).into_any(),
     }
 }
 
@@ -171,6 +173,7 @@ fn HostTrend(
     days: u64,
     #[prop(optional_no_strip)] refresh: Option<Signal<u32>>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let trend = RwSignal::new(Vec::<(String, u64)>::new());
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
@@ -252,7 +255,7 @@ fn HostTrend(
                         json_labels=labels
                         curve=ChartCurve::Smooth
                         class=Signal::derive(|| "h-full".to_string())
-                        series_names="Documentos"
+                        series_names=i18n.t("views.widget.documents")
                         gradient=true
                         show_grid=true
                         show_yaxis=true
@@ -271,6 +274,7 @@ fn HostTable(
     order: String,
     #[prop(optional_no_strip)] refresh: Option<Signal<u32>>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let rows = RwSignal::new(Vec::<Value>::new());
     let loading = RwSignal::new(true);
     let link_doctype = doctype.clone();
@@ -304,16 +308,22 @@ fn HostTable(
             <Table class="min-w-[280px]">
                     <TableHeader class="bg-muted/40">
                         <TableRow>
-                            <TableHead>"Nombre"</TableHead>
-                            <TableHead>"Creado"</TableHead>
-                            <TableHead>"Estado"</TableHead>
+                            <TableHead>{i18n.t("views.widget.name")}</TableHead>
+                            <TableHead>{i18n.t("views.widget.created")}</TableHead>
+                            <TableHead>{i18n.t("views.widget.status")}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {move || {
+                        {{
+                            let i18n = i18n;
+                            move || {
                             let current = rows.get();
                             if current.is_empty() {
-                                let message = if loading.get() { "Cargando…" } else { "Sin documentos." };
+                                let message = if loading.get() {
+                                    i18n.t("common.loading")
+                                } else {
+                                    i18n.t("views.widget.no_documents")
+                                };
                                 return view! {
                                     <TableRow>
                                         <TableCell
@@ -342,9 +352,9 @@ fn HostTable(
                                         .collect();
                                     let ds = row.get("docstatus").map(api::docstatus_rank).unwrap_or(0);
                                     let (status, status_variant) = match ds {
-                                        1 => ("Enviado", BadgeVariant::Success),
-                                        2 => ("Cancelado", BadgeVariant::Destructive),
-                                        _ => ("Borrador", BadgeVariant::Secondary),
+                                        1 => (i18n.t("views.widget.status_submitted"), BadgeVariant::Success),
+                                        2 => (i18n.t("views.widget.status_cancelled"), BadgeVariant::Destructive),
+                                        _ => (i18n.t("views.widget.status_draft"), BadgeVariant::Secondary),
                                     };
                                     let href = format!(
                                         "/desk/{}/{}/{}",
@@ -369,6 +379,7 @@ fn HostTable(
                                 })
                                 .collect_view()
                                 .into_any()
+                            }
                         }}
                     </TableBody>
                 </Table>

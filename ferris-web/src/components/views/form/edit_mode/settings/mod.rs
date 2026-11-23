@@ -35,6 +35,7 @@ use crate::components::ui::dialog::{
 use crate::components::ui::icon::Icon;
 use crate::components::ui::skeleton::Skeleton;
 use crate::components::ui::tabs::{Tabs, TabsContent, TabsList, TabsTrigger, TabsVariant};
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 use crate::views::services::form_service::{LayoutOp, WriteOutcome, WriteVerb};
 
@@ -47,12 +48,14 @@ use views::{DefaultViewPicker, ViewKind, ViewSettings, available_views};
 /// editor is showing; a closed dialog costs nothing.
 #[component]
 pub(crate) fn DocSettingsDialog(service: FormService, open: RwSignal<bool>) -> impl IntoView {
+    let i18n = use_i18n();
+    let dialog_i18n = i18n;
     // `StoredValue` is `Copy`: the loader and the panel are built at different
     // times but address the same service.
     let service = StoredValue::new(service);
     let setters = RwSignal::new(None::<Vec<PropertySetterSpec>>);
     let load_error = RwSignal::new(None::<String>);
-    let reload = Callback::new(move |()| load_setters(service, setters, load_error));
+    let reload = Callback::new(move |()| load_setters(service, setters, load_error, i18n));
 
     // Opening is the moment the contents have to be true, and the moment the
     // previous values (for undo) have to be read.
@@ -71,12 +74,14 @@ pub(crate) fn DocSettingsDialog(service: FormService, open: RwSignal<bool>) -> i
         <Dialog>
             <DialogContent open=open class="max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>"Ajustes del DocType"</DialogTitle>
+                    <DialogTitle>{t("components.form.menu.doctype_settings")}</DialogTitle>
                     <DialogDescription>
-                        {move || format!(
-                            "Formulario y vistas de «{}». Solo se ofrecen los ajustes que el motor aplica.",
-                            doctype.get(),
-                        )}
+                        {move || {
+                            dialog_i18n.t_with(
+                                "components.form.settings.description",
+                                &[("doctype", &doctype.get())],
+                            )
+                        }}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -96,7 +101,7 @@ pub(crate) fn DocSettingsDialog(service: FormService, open: RwSignal<bool>) -> i
                                         size=ButtonSize::Sm
                                         on:click=move |_| reload.run(())
                                     >
-                                        "Reintentar"
+                                        {t("components.form.gallery.retry")}
                                     </Button>
                                 </div>
                             </div>
@@ -130,6 +135,7 @@ fn load_setters(
     service: StoredValue<FormService>,
     setters: RwSignal<Option<Vec<PropertySetterSpec>>>,
     error: RwSignal<Option<String>>,
+    i18n: crate::i18n::I18n,
 ) {
     let doctype = service
         .try_with_value(|svc| svc.doctype.get_untracked())
@@ -142,9 +148,7 @@ fn load_setters(
     error.set(None);
     spawn_local(async move {
         let Ok(store) = DocStore::runtime() else {
-            error.set(Some(
-                "Los ajustes del DocType no están disponibles en este contexto.".to_string(),
-            ));
+            error.set(Some(i18n.t("components.form.settings.unavailable")));
             return;
         };
         match store.get_customization(&doctype).await {
@@ -170,6 +174,8 @@ fn DocSettingsPanel(
     setters: Vec<PropertySetterSpec>,
     on_close: Callback<()>,
 ) -> impl IntoView {
+    let panel_i18n = use_i18n();
+    let view_labels_i18n = panel_i18n;
     let doctype = service.doctype;
     let meta = service.meta;
     // The metadata the panel is seeded from: one snapshot, so a reload that
@@ -218,12 +224,11 @@ fn DocSettingsPanel(
         let service = service_store.get_value();
         error.set(None);
         saving.set(true);
+        let i18n = panel_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 saving.set(false);
-                error.set(Some(
-                    "Los ajustes del DocType no están disponibles en este contexto.".to_string(),
-                ));
+                error.set(Some(i18n.t("components.form.settings.unavailable")));
                 return;
             };
             let mut failure = None;
@@ -285,7 +290,7 @@ fn DocSettingsPanel(
                             .map(|view| view! {
                                 <TabsTrigger value=view.value().to_string()>
                                     <Icon name=view.icon() class="size-4" />
-                                    {view.label()}
+                                    {view.label(&view_labels_i18n)}
                                 </TabsTrigger>
                             })
                             .collect_view()
@@ -314,29 +319,29 @@ fn DocSettingsPanel(
             // it stays visible whichever tab is selected.
             <section
                 class="flex flex-col gap-3 border-t pt-4"
-                aria-label="Ajustes generales del DocType"
+                aria-label=t("components.form.settings.general_aria")
             >
                 <h4 class="flex items-center gap-2 text-sm font-semibold">
                     <Icon name="settings-2" class="size-4 text-muted-foreground" />
-                    "General"
+                    {t("components.form.settings.general")}
                 </h4>
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <PropText
-                        title="Campo de título"
+                        title=t("components.form.settings.title_field")
                         overridden=false
                         value=draft.title_field
-                        hint="El campo que se usa como título del documento."
+                        hint=t("components.form.settings.title_field_hint")
                     />
                     <PropText
-                        title="Serie de nombres"
+                        title=t("components.form.settings.naming_series")
                         overridden=false
                         value=draft.naming_series
-                        hint="Plantilla, por ejemplo TASK-.#####"
+                        hint=t("components.form.settings.naming_series_hint")
                     />
                     <DefaultViewPicker draft=draft meta=Signal::derive(move || meta.get()) />
                 </div>
                 <PropText
-                    title="Descripción del DocType"
+                    title=t("components.form.settings.doctype_description")
                     overridden=false
                     value=draft.description
                     multiline=true
@@ -358,7 +363,7 @@ fn DocSettingsPanel(
                     size=ButtonSize::Sm
                     on:click=move |_| on_close.run(())
                 >
-                    "Cancelar"
+                    {t("common.cancel")}
                 </Button>
                 <Button
                     variant=ButtonVariant::Default
@@ -366,7 +371,13 @@ fn DocSettingsPanel(
                     attr:disabled=move || saving.get()
                     on:click=move |_| save.run(())
                 >
-                    {move || if saving.get() { "Guardando…" } else { "Guardar ajustes" }}
+                    {move || {
+                        if saving.get() {
+                            t("components.form.settings.saving")
+                        } else {
+                            t("components.form.settings.save")
+                        }
+                    }}
                 </Button>
             </div>
         </div>

@@ -13,6 +13,7 @@ use crate::components::ui::dropdown_menu::{
 };
 use crate::components::ui::select_native::SelectNative;
 use crate::components::ui::separator::Separator;
+use crate::i18n::{t, use_i18n};
 
 use icons::{Filter as FilterIcon, Plus, X};
 
@@ -106,6 +107,7 @@ pub fn ListFilterGroup(
     /// ask the list service to clear them.
     on_clear: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let rows = RwSignal::new(Vec::<FilterRow>::new());
     let next_id = RwSignal::new(1u64);
     let alloc_id = move || {
@@ -209,7 +211,7 @@ pub fn ListFilterGroup(
                 <DropdownMenuTrigger as_child=true>
                     <Button variant=ButtonVariant::Outline size=ButtonSize::Sm>
                         <FilterIcon class="size-4" />
-                        "Filtros"
+                        {t("components.list.filter.title")}
                     </Button>
                 </DropdownMenuTrigger>
 
@@ -226,6 +228,7 @@ pub fn ListFilterGroup(
                             key=|r| r.id
                             children=move |row: FilterRow| {
                                 let row_id = row.id;
+                                let row_i18n = i18n;
                                 view! {
                                     {move || {
                                         let staged = rows.get();
@@ -253,8 +256,14 @@ pub fn ListFilterGroup(
                                                 options=options.unwrap_or_default()
                                                 value=value
                                                 class="h-8 w-full"
-                                                placeholder=format!("Valor de {}", label)
-                                                aria_label=format!("Valor de {}", label)
+                                                placeholder=row_i18n.t_with(
+                                                    "components.list.filter.value_of",
+                                                    &[("field", &label)],
+                                                )
+                                                aria_label=row_i18n.t_with(
+                                                    "components.list.filter.value_of",
+                                                    &[("field", &label)],
+                                                )
                                             />
                                         }
                                             .into_any();
@@ -265,7 +274,7 @@ pub fn ListFilterGroup(
                                                     class="sr-only"
                                                     for=format!("filter-field-{}", current_id)
                                                 >
-                                                    "Campo"
+                                                    {t("components.list.filter.field")}
                                                 </label>
                                                 <ButtonGroup class="inline-flex min-w-0 max-w-full items-stretch">
                                                     <SelectNative
@@ -364,7 +373,7 @@ pub fn ListFilterGroup(
                                                             variant=ButtonVariant::Ghost
                                                             size=ButtonSize::Sm
                                                             class="shrink-0 px-1.5"
-                                                            attr:aria-label="Quitar filtro"
+                                                            attr:aria-label=t("components.list.filter.remove")
                                                             on:click=move |_| {
                                                                 on_remove.run(current_id);
                                                             }
@@ -395,7 +404,7 @@ pub fn ListFilterGroup(
                             on:click=move |_| on_add.run(())
                         >
                             <Plus class="size-4" />
-                            "Añadir filtro"
+                            {t("components.list.filter.add")}
                         </Button>
                         <div class="flex items-center gap-2">
                             <Button
@@ -403,7 +412,7 @@ pub fn ListFilterGroup(
                                 size=ButtonSize::Sm
                                 on:click=move |_| clear_all.run(())
                             >
-                                "Limpiar"
+                                {t("components.list.filter.clear")}
                             </Button>
                             <Button
                                 variant=ButtonVariant::Accent
@@ -411,7 +420,7 @@ pub fn ListFilterGroup(
                                 attr:data-dropdown-close="true"
                                 on:click=move |_| on_apply_click.run(())
                             >
-                                "Aplicar filtros"
+                                {t("components.list.filter.apply")}
                             </Button>
                         </div>
                     </div>
@@ -421,7 +430,7 @@ pub fn ListFilterGroup(
             <Button
                 variant=ButtonVariant::Outline
                 size=ButtonSize::IconSm
-                attr:aria-label="Quitar filtros"
+                attr:aria-label=t("components.list.filter.clear_all")
                 on:click=move |_| clear_all.run(())
             >
                 <X class="size-4" />

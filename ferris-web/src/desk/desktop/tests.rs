@@ -467,8 +467,8 @@ fn a_workspace_parked_out_of_a_folder_can_come_back() {
 /// an id — it would overwrite the first, and both would answer to one icon.
 #[test]
 fn folders_can_be_made_one_after_another() {
-    let (first, first_id) = add_folder(&seed());
-    let (second, second_id) = add_folder(&first);
+    let (first, first_id) = add_folder(&seed(), "Nueva carpeta");
+    let (second, second_id) = add_folder(&first, "Nueva carpeta");
     assert_eq!(first.len(), 4);
     assert_eq!(second.len(), 5);
     assert_ne!(first_id, second_id);

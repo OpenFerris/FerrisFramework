@@ -10,6 +10,7 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 use ferris_api::{ApiState, OAuthState, SessionHandlers};
 use ferris_auth::AuthState;
+use ferris_core::I18n;
 #[cfg(feature = "web")]
 use leptos_config::{Env, LeptosOptions};
 
@@ -93,6 +94,8 @@ pub struct AppState {
     /// its app without a second router-wide state type. Absent without `wasm`.
     #[cfg(feature = "wasm")]
     pub plugins: Option<Arc<ferris_wasm::PluginStore>>,
+    /// Locale policy and embedded catalogues.
+    pub i18n: I18n,
 }
 
 #[cfg(feature = "web")]
@@ -132,6 +135,12 @@ impl FromRef<AppState> for OAuthState {
 impl FromRef<AppState> for PubsubBus {
     fn from_ref(state: &AppState) -> PubsubBus {
         state.pubsub.clone()
+    }
+}
+
+impl FromRef<AppState> for I18n {
+    fn from_ref(state: &AppState) -> I18n {
+        state.i18n.clone()
     }
 }
 

@@ -31,8 +31,9 @@ use crate::components::ui::badge::{Badge, BadgeSize, BadgeVariant};
 use crate::components::ui::card::{Card, CardContent};
 use crate::components::ui::icon::Icon;
 use crate::desk::session::path_segment;
+use crate::i18n::use_i18n;
 use crate::views::views_components::collection::{
-    stale_settings_message, unresolved_fields, use_collection_actions,
+    stale_settings_message_i18n, unresolved_fields_i18n, use_collection_actions,
 };
 use crate::views::views_components::{
     EmptyState, Feedback, FeedbackKind, LoadingLines, PageHeader,
@@ -50,6 +51,13 @@ const MAX_PAGES: u64 = 5;
 #[component]
 pub fn TreeView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
+    let i18n_sv = i18n;
+    let tr = move |key: &str| {
+        i18n_sv
+            .try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     let doctype = Signal::derive(move || params.with(|p| p.get("doctype").unwrap_or_default()));
 
     let meta = RwSignal::new(None::<crate::api::DynMeta>);
@@ -136,14 +144,16 @@ pub fn TreeView() -> impl IntoView {
     let on_reload = Callback::new(move |()| reload.update(|n| *n += 1));
     use_collection_actions(meta_sig, "tree", on_reload);
 
+    let i18n_stale = i18n;
     let stale_settings = Memo::new(move |_| {
         meta.get().as_ref().map_or_else(Vec::new, |meta| {
-            unresolved_fields(
+            unresolved_fields_i18n(
                 meta,
                 &[
-                    ("Campo padre", meta.tree_parent_field.as_deref()),
-                    ("Etiqueta", meta.tree_label_field.as_deref()),
+                    ("views.tree.parent_field", meta.tree_parent_field.as_deref()),
+                    ("views.tree.label_field", meta.tree_label_field.as_deref()),
                 ],
+                &i18n_stale,
             )
         })
     });
@@ -235,20 +245,25 @@ pub fn TreeView() -> impl IntoView {
     let error_state = error;
     let total_state = total;
     let rows_state = rows;
+    let i18n_stale_msg = i18n;
+    let i18n_settings = i18n;
+    let i18n_docs = i18n;
+    let i18n_matches = i18n;
+    let i18n_render = i18n;
 
     view! {
         <div class="mx-auto flex h-full min-h-0 w-full min-w-0 flex-col gap-4 p-4">
             {move || view! {
                 <PageHeader
                     title=doctype_value()
-                    description="Documentos anidados por el campo padre que declara el DocType."
+                    description=tr("views.tree.description")
                 >
                     <div class="flex w-full min-w-0 items-center gap-2 sm:w-auto">
-                        <label class="sr-only" for="tree-search">"Buscar en el árbol"</label>
+                        <label class="sr-only" for="tree-search">{tr("views.tree.search_label")}</label>
                         <input
                             id="tree-search"
                             type="search"
-                            placeholder="Buscar…"
+                            placeholder=tr("views.common.search_placeholder")
                             class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:w-56"
                             prop:value=move || search.get()
                             on:input=move |ev| search.set(event_target_value(&ev))
@@ -260,7 +275,9 @@ pub fn TreeView() -> impl IntoView {
             <Feedback kind=FeedbackKind::Error message=Signal::derive(move || error_state.get()) />
             <Feedback
                 kind=FeedbackKind::Warning
-                message=Signal::derive(move || stale_settings_message(&stale_settings.get()))
+                message=Signal::derive(move || {
+                    stale_settings_message_i18n(&stale_settings.get(), &i18n_stale_msg)
+                })
             />
 
             <Show when=move || loading_state.get()>
@@ -272,23 +289,26 @@ pub fn TreeView() -> impl IntoView {
             <Show when=move || !loading_state.get() && error_state.get().is_none() && parent().is_none()>
                 <EmptyState
                     icon="FolderTree"
-                    title="Falta el campo padre"
-                    description="La vista de árbol necesita un campo Link a este mismo DocType. Configúralo en «Ajustes del DocType» → Vista Árbol."
+                    title=tr("views.tree.missing_parent_title")
+                    description=tr("views.tree.missing_parent_description")
                 >
-                    {move || {
-                        let href = format!(
-                            "/desk/{}/{}/layout",
-                            path_segment(&module_value()),
-                            path_segment(&doctype_value())
-                        );
-                        view! {
-                            <A
-                                href=href
-                                attr:class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                            >
-                                <Icon name="Settings2" class="size-4" />
-                                "Abrir ajustes del DocType"
-                            </A>
+                    {{
+                        let i18n_settings = i18n_settings;
+                        move || {
+                            let href = format!(
+                                "/desk/{}/{}/layout",
+                                path_segment(&module_value()),
+                                path_segment(&doctype_value())
+                            );
+                            view! {
+                                <A
+                                    href=href
+                                    attr:class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                >
+                                    <Icon name="Settings2" class="size-4" />
+                                    {i18n_settings.t("views.common.open_doctype_settings")}
+                                </A>
+                            }
                         }
                     }}
                 </EmptyState>
@@ -302,8 +322,8 @@ pub fn TreeView() -> impl IntoView {
             }>
                 <EmptyState
                     icon="FolderTree"
-                    title="Sin documentos"
-                    description="Este DocType todavía no tiene documentos que anidar."
+                    title=tr("views.common.no_documents")
+                    description=tr("views.tree.empty_description")
                 />
             </Show>
 
@@ -314,15 +334,15 @@ pub fn TreeView() -> impl IntoView {
                     && !rows_state.with(Vec::is_empty)
             }>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>{move || format!("{} documentos", total_state.get())}</span>
+                    <span>{{ let i18n_docs = i18n_docs; move || i18n_docs.t_with("views.common.documents", &[("count", &total_state.get().to_string())]) }}</span>
                     <Show when=move || searching.get()>
                         <Badge variant=BadgeVariant::Secondary size=BadgeSize::Sm>
-                            {move || format!("{} coincidencias", shown.get())}
+                            {{ let i18n_matches = i18n_matches; move || i18n_matches.t_with("views.tree.matches", &[("count", &shown.get().to_string())]) }}
                         </Badge>
                     </Show>
                     <Show when=move || { total_state.get() > PAGE * MAX_PAGES }>
                         <Badge variant=BadgeVariant::Warning size=BadgeSize::Sm>
-                            "Árbol truncado: usa los filtros del DocType para acotarlo"
+                            {tr("views.tree.truncated")}
                         </Badge>
                     </Show>
                 </div>
@@ -331,35 +351,43 @@ pub fn TreeView() -> impl IntoView {
                     <CardContent class="flex flex-col gap-1 p-2 sm:p-3">
                         <Show
                             when=move || !visible.get().is_empty()
-                            fallback=move || view! {
-                                <EmptyState
-                                    icon="Search"
-                                    title="Sin coincidencias"
-                                    description="Ningún documento del árbol coincide con la búsqueda."
-                                />
-                            }
+                            fallback={{
+                                let i18n = i18n;
+                                move || view! {
+                                    <EmptyState
+                                        icon="Search"
+                                        title=i18n.t("views.tree.no_matches_title")
+                                        description=i18n.t("views.tree.no_matches_description")
+                                    />
+                                }
+                            }}
                         >
-                            {move || {
-                                let roots = visible.get();
-                                let expanded = expanded.get();
-                                let module = module_value();
-                                let doctype = doctype_value();
-                                let label = label();
-                                let children = roots
-                                    .into_iter()
-                                    .map(|node| {
-                                        render_node(
-                                            node,
-                                            1,
-                                            &expanded,
-                                            &module,
-                                            &doctype,
-                                            &label,
-                                            toggle,
-                                        )
-                                    })
-                                    .collect_view();
-                                view! { <div role="tree" aria-label="Árbol de documentos" class="flex flex-col gap-1">{children}</div> }
+                            {{
+                                let i18n_render = i18n_render;
+                                move || {
+                                    let roots = visible.get();
+                                    let expanded = expanded.get();
+                                    let module = module_value();
+                                    let doctype = doctype_value();
+                                    let label = label();
+                                    let i18n_node = i18n_render;
+                                    let children = roots
+                                        .into_iter()
+                                        .map(|node| {
+                                            render_node(
+                                                node,
+                                                1,
+                                                &expanded,
+                                                &module,
+                                                &doctype,
+                                                &label,
+                                                toggle,
+                                                &i18n_node,
+                                            )
+                                        })
+                                        .collect_view();
+                                    view! { <div role="tree" aria-label=i18n_render.t("views.tree.aria") class="flex flex-col gap-1">{children}</div> }
+                                }
                             }}
                         </Show>
                     </CardContent>

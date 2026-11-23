@@ -18,9 +18,14 @@ use crate::api::types::Attachment;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::input::Input;
 use crate::components::ui::skeleton::Skeleton;
+use crate::i18n::{t, use_i18n};
 
 #[component]
 pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
+    let i18n = use_i18n();
+    let reload_i18n = i18n;
+    let add_i18n = i18n;
+    let body_i18n = i18n;
     let ctx = use_context::<FormDocContext>();
     let items = RwSignal::new(Vec::<Attachment>::new());
     let loading = RwSignal::new(true);
@@ -39,10 +44,11 @@ pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
         let name = ctx.docname.get();
         loading.set(true);
         error.set(None);
+        let i18n = reload_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 loading.set(false);
-                error.set(Some("Servidor no disponible.".to_string()));
+                error.set(Some(i18n.t("components.form.field.server_unavailable")));
                 return;
             };
             match store.list_attachments(&doctype, &name).await {
@@ -67,12 +73,18 @@ pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
         if url.is_empty() || ctx.is_new.get() {
             return;
         }
-        let file_name = url.rsplit('/').next().unwrap_or("archivo").to_string();
+        let file_name = url.rsplit('/').next().unwrap_or_else(|| "").to_string();
+        let file_name = if file_name.is_empty() {
+            add_i18n.t("components.file_picker.unnamed")
+        } else {
+            file_name
+        };
         let doctype = ctx.doctype.get();
         let name = ctx.docname.get();
+        let i18n = add_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
-                error.set(Some("Servidor no disponible.".to_string()));
+                error.set(Some(i18n.t("components.form.field.server_unavailable")));
                 return;
             };
             match store
@@ -93,12 +105,16 @@ pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
     // forever after the fetch lands.
     let body = move || {
         let Some(ctx) = ctx else {
-            return view! { <GalleryNote text="Contexto de documento no disponible." /> }
-                .into_any();
+            return view! {
+                <GalleryNote text=body_i18n.t("components.form.gallery.no_context") />
+            }
+            .into_any();
         };
         if ctx.is_new.get() {
-            return view! { <GalleryNote text="Guarda el documento para adjuntar archivos." /> }
-                .into_any();
+            return view! {
+                <GalleryNote text=body_i18n.t("components.form.gallery.save_first") />
+            }
+            .into_any();
         }
         if loading.get() {
             return view! {
@@ -119,14 +135,17 @@ pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
                         size=ButtonSize::Sm
                         on:click=move |_| reload()
                     >
-                        "Reintentar"
+                        {t("components.form.gallery.retry")}
                     </Button>
                 </div>
             }
             .into_any();
         }
         if items.get().is_empty() {
-            return view! { <GalleryNote text="Sin adjuntos." /> }.into_any();
+            return view! {
+                <GalleryNote text=body_i18n.t("components.form.gallery.empty") />
+            }
+            .into_any();
         }
         let doctype = ctx.doctype;
         let docname = ctx.docname;
@@ -173,16 +192,15 @@ pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
                                         <Button
                                             variant=ButtonVariant::Ghost
                                             size=ButtonSize::IconXs
-                                            attr:aria-label="Quitar adjunto"
+                                            attr:aria-label=t("components.form.gallery.remove")
                                             on:click=move |_| {
                                                 let id = attachment_id.get_value();
                                                 let (doctype, docname) = (doctype, docname);
                                                 spawn_local(async move {
                                                     let Ok(store) = DocStore::runtime() else {
-                                                        error
-                                                            .set(Some(
-                                                                "Servidor no disponible.".to_string(),
-                                                            ));
+                                                        error.set(Some(t(
+                                                            "components.form.field.server_unavailable",
+                                                        )));
                                                         return;
                                                     };
                                                     match store
@@ -227,14 +245,14 @@ pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
                 // accepts.
                 <div class="flex items-center gap-2">
                     <Input
-                        placeholder="/files/ruta-del-archivo"
+                        placeholder=t("components.form.gallery.url_placeholder")
                         bind_value=add_url
-                        attr:aria-label="URL del archivo a adjuntar"
+                        attr:aria-label=t("components.form.gallery.url_aria")
                     />
                     <Button
                         variant=ButtonVariant::Secondary
                         size=ButtonSize::IconSm
-                        attr:aria-label="Adjuntar"
+                        attr:aria-label=t("components.form.gallery.attach")
                         on:click=move |_| add()
                     >
                         <Plus class="size-4" />

@@ -27,6 +27,8 @@
 //! first pass, so both render the built-in form and only swap once the feed
 //! lands. This component is therefore only ever mounted client-side.
 
+#[cfg(target_arch = "wasm32")]
+use crate::i18n::t;
 use leptos::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
@@ -167,8 +169,10 @@ fn mount_doctype_view(anchor: Option<web_sys::HtmlDivElement>, mount: DocViewMou
     let tag = crate::ext::component_tag(&mount.view.component);
     let registry = window.custom_elements();
     if registry.get(&tag).is_undefined() {
-        container
-            .set_inner_html(r#"<div class="p-6 text-sm text-muted-foreground">Cargando…</div>"#);
+        container.set_inner_html(&format!(
+            r#"<div class="p-6 text-sm text-muted-foreground">{}</div>"#,
+            ferris_web_shared::html::escape_html(&t("common.loading")),
+        ));
     }
 
     // Owned for the future, which outlives the borrowed mount input.
@@ -274,10 +278,12 @@ async fn load_document(doctype: &str, name: &str) -> Result<serde_json::Value, S
     if name.is_empty() || name == "new" {
         return Ok(serde_json::Value::Null);
     }
-    let meta = store
-        .meta(doctype)
-        .await?
-        .ok_or_else(|| format!("Doctype {doctype} no registrado"))?;
+    let meta = store.meta(doctype).await?.ok_or_else(|| {
+        crate::i18n::use_i18n().t_with(
+            "components.ext.doctype_unregistered",
+            &[("doctype", doctype)],
+        )
+    })?;
     if meta.is_single {
         store.get_single(doctype).await
     } else {

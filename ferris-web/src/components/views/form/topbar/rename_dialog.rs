@@ -20,12 +20,14 @@ use crate::components::ui::dialog::{
     Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 };
 use crate::components::ui::input::{Input, InputType};
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 
 use super::toast::Toasts;
 
 #[component]
 pub fn RenameDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView {
+    let i18n = use_i18n();
     let toasts = Toasts::from_context();
     let doctype = service.doctype;
     let docname = service.docname;
@@ -64,6 +66,7 @@ pub fn RenameDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView
         saving.set(true);
         let navigate = navigate.clone();
         let toasts = toasts.clone();
+        let i18n = i18n;
         spawn_local(async move {
             let result = match DocStore::runtime() {
                 Ok(store) => store.rename(&dt, &old, &next).await.map(|_| ()),
@@ -72,12 +75,15 @@ pub fn RenameDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView
             saving.set(false);
             match result {
                 Ok(()) => {
-                    toasts.success(format!("Documento renombrado a {next}."));
+                    toasts
+                        .success(i18n.t_with("components.form.rename.success", &[("name", &next)]));
                     open.set(false);
                     navigate(&url, NavigateOptions::default());
                 }
                 Err(message) => {
-                    toasts.error(format!("No se pudo renombrar: {message}"));
+                    toasts.error(
+                        i18n.t_with("components.form.rename.failed", &[("message", &message)]),
+                    );
                     error.set(Some(message));
                 }
             }
@@ -88,9 +94,9 @@ pub fn RenameDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView
         <Dialog>
             <DialogContent open=open class="max-w-md">
                 <DialogHeader>
-                    <DialogTitle>"Renombrar documento"</DialogTitle>
+                    <DialogTitle>{t("components.form.rename.title")}</DialogTitle>
                     <DialogDescription>
-                        "Cambia el nombre del documento. Las referencias y el historial se mueven con él."
+                        {t("components.form.rename.description")}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -106,7 +112,7 @@ pub fn RenameDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView
                 <Input
                     id="rename-doc-name"
                     r#type=InputType::Text
-                    placeholder="Nuevo nombre"
+                    placeholder=t("components.form.rename.placeholder")
                     prop:value=move || new_name.get()
                     on_input=Callback::new(move |text: String| new_name.set(text))
                 />
@@ -117,7 +123,7 @@ pub fn RenameDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView
                         size=ButtonSize::Sm
                         on:click=move |_| open.set(false)
                     >
-                        "Cancelar"
+                        {t("common.cancel")}
                     </Button>
                     <Button
                         variant=ButtonVariant::Default
@@ -125,7 +131,13 @@ pub fn RenameDialog(open: RwSignal<bool>, service: FormService) -> impl IntoView
                         attr:disabled=move || saving.get()
                         on:click=move |_| submit()
                     >
-                        {move || if saving.get() { "Renombrando…" } else { "Renombrar" }}
+                        {move || {
+                            if saving.get() {
+                                t("components.form.rename.saving")
+                            } else {
+                                t("components.form.rename.submit")
+                            }
+                        }}
                     </Button>
                 </DialogFooter>
             </DialogContent>

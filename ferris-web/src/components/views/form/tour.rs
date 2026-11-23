@@ -13,6 +13,7 @@ use crate::api::DocStore;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
 use crate::components::ui::tour::{Tour, TourStep};
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 
 /// The "Tour" button and its overlay for one doctype.
@@ -21,6 +22,7 @@ pub fn FormTourLauncher(
     #[prop(into)] doctype: Signal<String>,
     service: FormService,
 ) -> impl IntoView {
+    let tour_i18n = use_i18n();
     let steps = RwSignal::new(Vec::<TourStep>::new());
     let open = RwSignal::new(false);
     let save_on_completion = RwSignal::new(false);
@@ -34,6 +36,7 @@ pub fn FormTourLauncher(
         }
         loaded_for.set_value(dt.clone());
         steps.set(Vec::new());
+        let i18n = tour_i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 return;
@@ -44,7 +47,7 @@ pub fn FormTourLauncher(
             let Some(first) = tours.first() else {
                 return;
             };
-            let parsed = tour_steps(first);
+            let parsed = tour_steps(first, &i18n);
             if !parsed.is_empty() {
                 save_on_completion.set(toggle(first, "save_on_completion"));
                 steps.set(parsed);
@@ -61,7 +64,7 @@ pub fn FormTourLauncher(
                 on:click=move |_| open.set(true)
             >
                 <Icon name="map" class="size-4" />
-                "Tour"
+                {t("components.form.tour.start")}
             </Button>
             <Tour
                 steps=steps.into()
@@ -83,7 +86,7 @@ pub fn FormTourLauncher(
 /// skipped: there is nothing to highlight and a tour that points at the whole
 /// page is noise.
 #[must_use]
-pub fn tour_steps(tour: &Value) -> Vec<TourStep> {
+pub fn tour_steps(tour: &Value, i18n: &(impl crate::i18n::Translate + Sync)) -> Vec<TourStep> {
     let raw = tour.get("steps").cloned().unwrap_or(Value::Null);
     let rows = match raw {
         Value::Array(rows) => rows,
@@ -122,8 +125,11 @@ pub fn tour_steps(tour: &Value) -> Vec<TourStep> {
     if toggle(tour, "include_name_field") {
         steps.insert(
             0,
-            TourStep::new("[data-fieldname=\"name\"]", "Nombre")
-                .description("El identificador del documento."),
+            TourStep::new(
+                "[data-fieldname=\"name\"]",
+                i18n.t("components.form.tour.name_title"),
+            )
+            .description(i18n.t("components.form.tour.name_description")),
         );
     }
     steps
@@ -153,7 +159,7 @@ mod tests {
                 "position": "top"
             }]
         });
-        let steps = tour_steps(&tour);
+        let steps = tour_steps(&tour, &crate::i18n::DeskI18n::default());
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].selector, "[data-fieldname=\"status\"]");
         assert_eq!(steps[0].position, "top");
@@ -165,7 +171,7 @@ mod tests {
             "include_name_field": 1,
             "steps": [{"fieldname": "status", "title": "Estado"}]
         });
-        let steps = tour_steps(&tour);
+        let steps = tour_steps(&tour, &crate::i18n::DeskI18n::default());
         assert_eq!(steps.len(), 2);
         assert_eq!(steps[0].selector, "[data-fieldname=\"name\"]");
         assert_eq!(steps[1].selector, "[data-fieldname=\"status\"]");
@@ -176,7 +182,10 @@ mod tests {
         let encoded = serde_json::json!({
             "steps": "[{\"fieldname\":\"title\"},{\"title\":\"sin campo\"}]"
         });
-        assert_eq!(tour_steps(&encoded).len(), 1);
-        assert!(tour_steps(&serde_json::json!({})).is_empty());
+        assert_eq!(
+            tour_steps(&encoded, &crate::i18n::DeskI18n::default()).len(),
+            1
+        );
+        assert!(tour_steps(&serde_json::json!({}), &crate::i18n::DeskI18n::default()).is_empty());
     }
 }

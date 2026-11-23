@@ -40,6 +40,7 @@ use crate::components::ui::icon::Icon;
 use crate::components::ui::input::Input;
 use crate::components::ui::label::Label;
 use crate::desk::session::{self as desk_session, DeskIcon};
+use crate::i18n::{DeskI18n, use_i18n};
 
 use arrange::{
     add_folder, delete_folder, edit_folder, folder_of, hide_icon, move_icon, placements_of,
@@ -55,6 +56,10 @@ use tiles::{
 #[component]
 pub fn Desktop() -> impl IntoView {
     let nav = expect_context::<DeskNav>();
+    // `StoredValue` keeps the translator `Copy`, so the delegated `edit`
+    // callback and the dialogs can share it.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
 
     // Editing is off by default: a click on an icon navigates, and only in edit
     // mode does an icon mean "pick this up".
@@ -119,10 +124,11 @@ pub fn Desktop() -> impl IntoView {
         let current = || nav.icons.get_untracked();
         match action.as_str() {
             "new-folder" => {
-                let (next, id) = add_folder(&current());
+                let label = tr("desk.desktop.new_folder");
+                let (next, id) = add_folder(&current(), &label);
                 save.run(next);
                 form_id.set(Some(id));
-                form_label.set("Nueva carpeta".to_string());
+                form_label.set(label);
                 form_icon.set(DEFAULT_FOLDER_ICON.to_string());
                 form_color.set(String::new());
                 form_open.set(true);
@@ -266,7 +272,7 @@ pub fn Desktop() -> impl IntoView {
             // edge to edge under the top bar.
             <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-4">
             <div class="flex items-center justify-between gap-2">
-                <h1 class="text-2xl font-semibold tracking-tight text-foreground">{"Escritorio"}</h1>
+                <h1 class="text-2xl font-semibold tracking-tight text-foreground">{tr("nav.desk")}</h1>
                 <button
                     type="button"
                     data-name="DesktopEditToggle"
@@ -292,7 +298,7 @@ pub fn Desktop() -> impl IntoView {
                             view! { <Icon name="pencil" class="size-4" /> }.into_any()
                         }
                     }}
-                    {move || if editing.get() { "Listo" } else { "Editar" }}
+                    {move || if editing.get() { tr("desk.desktop.done") } else { tr("desk.desktop.edit") }}
                 </button>
             </div>
 
@@ -305,7 +311,7 @@ pub fn Desktop() -> impl IntoView {
                 if shown.is_empty() && hidden.is_empty() {
                     return view! {
                         <p class="py-16 text-center text-sm text-muted-foreground">
-                            {"Todavía no hay espacios de trabajo."}
+                            {tr("desk.desktop.empty")}
                         </p>
                     }
                     .into_any();
@@ -329,7 +335,7 @@ pub fn Desktop() -> impl IntoView {
                             view! {
                                 <div class="flex flex-col gap-3">
                                     <p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                        {"Ocultos"}
+                                        {tr("desk.desktop.hidden")}
                                     </p>
                                     <IconGrid
                                         icons=hidden
@@ -359,7 +365,7 @@ pub fn Desktop() -> impl IntoView {
                         class="inline-flex h-9 max-md:h-10 w-fit items-center gap-2 rounded-md border border-dashed px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
                         <Icon name="plus" class="size-4" />
-                        {"Nueva carpeta"}
+                        {tr("desk.desktop.new_folder")}
                     </button>
                 }
                 .into_any()
@@ -423,9 +429,9 @@ pub fn Desktop() -> impl IntoView {
                     data_name_prefix="AlertDialog"
                 >
                     <DialogHeader>
-                        <DialogTitle>"Eliminar carpeta"</DialogTitle>
+                        <DialogTitle>{tr("desk.folder.delete_title")}</DialogTitle>
                         <DialogDescription>
-                            "Los espacios de trabajo que contiene volverán al escritorio. Esta acción no se puede deshacer."
+                            {tr("desk.folder.delete_body")}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -434,7 +440,7 @@ pub fn Desktop() -> impl IntoView {
                             size=ButtonSize::Default
                             on:click=move |_| delete_open.set(false)
                         >
-                            "Cancelar"
+                            {tr("common.cancel")}
                         </Button>
                         <Button
                             variant=ButtonVariant::Destructive
@@ -446,7 +452,7 @@ pub fn Desktop() -> impl IntoView {
                                 delete_open.set(false);
                             }
                         >
-                            "Eliminar"
+                            {tr("desk.folder.delete")}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -477,6 +483,14 @@ fn FolderForm(
     icon: RwSignal<String>,
     color: RwSignal<String>,
 ) -> impl IntoView {
+    // `StoredValue` keeps the translator `Copy`, so the swatch labels (built in
+    // a per-icon closure) and the static fields can share it.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
+    let icon_label =
+        move |value: &str| i18n.with_value(|i18n: &DeskI18n| folder_icon_label(i18n, value));
+    let color_label =
+        move |value: &str| i18n.with_value(|i18n: &DeskI18n| folder_color_label(i18n, value));
     view! {
         <Dialog>
             // A fixed width, like the folder dialog: the form is the same three
@@ -485,15 +499,15 @@ fn FolderForm(
             <DialogContent open=open show_close_button=false class="w-[26rem] max-w-[calc(100vw-2rem)]">
                 <div data-folder-form data-icon=move || id.get().unwrap_or_default()>
                     <DialogHeader>
-                        <DialogTitle>{"Carpeta"}</DialogTitle>
+                        <DialogTitle>{tr("desk.folder.title")}</DialogTitle>
                     </DialogHeader>
                     <div class="flex flex-col gap-4">
                         <div class="flex flex-col gap-1.5">
-                            <Label html_for="desk-folder-label">{"Nombre"}</Label>
-                            <Input id="desk-folder-label" bind_value=label placeholder="Nombre de la carpeta" />
+                            <Label html_for="desk-folder-label">{tr("desk.folder.name")}</Label>
+                            <Input id="desk-folder-label" bind_value=label placeholder=tr("desk.folder.name_placeholder") />
                         </div>
                         <div class="flex flex-col gap-1.5">
-                            <Label>{"Icono"}</Label>
+                            <Label>{tr("desk.folder.icon")}</Label>
                             <div class="flex flex-wrap gap-1">
                                 {FOLDER_ICONS
                                     .into_iter()
@@ -502,7 +516,7 @@ fn FolderForm(
                                             type="button"
                                             data-action="set-icon"
                                             data-value=key
-                                            aria-label=folder_icon_label(key)
+                                            aria-label=icon_label(key)
                                             class="flex size-9 items-center justify-center rounded-md border transition-colors hover:bg-accent max-md:size-10"
                                             class:border-primary=move || icon.get() == key
                                         >
@@ -513,7 +527,7 @@ fn FolderForm(
                             </div>
                         </div>
                         <div class="flex flex-col gap-1.5">
-                            <Label>{"Color"}</Label>
+                            <Label>{tr("desk.folder.color")}</Label>
                             <div class="flex flex-wrap gap-1">
                                 {FOLDER_COLORS
                                     .into_iter()
@@ -522,7 +536,7 @@ fn FolderForm(
                                             type="button"
                                             data-action="set-color"
                                             data-value=key
-                                            aria-label=folder_color_label(key)
+                                            aria-label=color_label(key)
                                             class=format!("size-9 rounded-md border-2 max-md:size-10 {classes}")
                                             class:border-ring=move || color.get() == key
                                         />
@@ -536,7 +550,7 @@ fn FolderForm(
                                 size=ButtonSize::Default
                                 attr:data-action="cancel-folder"
                             >
-                                "Cancelar"
+                                {tr("common.cancel")}
                             </Button>
                             <Button
                                 variant=ButtonVariant::Default
@@ -544,7 +558,7 @@ fn FolderForm(
                                 attr:data-action="save-folder"
                                 attr:disabled=move || label.get().trim().is_empty()
                             >
-                                "Guardar"
+                                {tr("common.save")}
                             </Button>
                         </div>
                     </div>

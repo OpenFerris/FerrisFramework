@@ -8,6 +8,7 @@ use crate::WebUser;
 use crate::app::{Workspace, WorkspaceItem, WorkspaceItemKind};
 use crate::desk::UserMenu;
 use crate::ext::{SLOT_SHELL_SIDEBAR_BOTTOM, UiSlot};
+use crate::i18n::{DeskI18n, use_i18n};
 use icons::{Bell, BookOpen, PanelLeftClose, PanelLeftOpen, Search};
 use leptos::prelude::*;
 use leptos_router::components::A;
@@ -66,6 +67,14 @@ pub fn Sidebar(
             .unwrap_or(0)
     });
 
+    // `StoredValue` keeps the translator `Copy`, so the static labels and the
+    // reactive unread tooltip can share it.
+    let i18n = use_i18n();
+    let tr = move |key: &str| i18n.with_value(|i18n: &DeskI18n| i18n.t(key));
+    let tr_with = move |key: &str, args: &[(&str, &str)]| {
+        i18n.with_value(|i18n: &DeskI18n| i18n.t_with(key, args))
+    };
+
     let (expanded, set_expanded) = signal(std::collections::HashSet::<String>::new());
 
     let on_reload = Callback::new(move |()| {
@@ -105,11 +114,11 @@ pub fn Sidebar(
                             "w-9 h-9 mx-auto flex items-center justify-center ferris-desk-sidebar__item rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                         }
                         on:click=move |_| on_search()
-                        title="Buscar (Ctrl+K)"
+                        title=tr("desk.sidebar.search_title")
                     >
                         <Search class="size-4 shrink-0" />
                         {move || open.get().then(|| view! {
-                            <span>"Buscar"</span>
+                            <span>{tr("desk.nav.search")}</span>
                         })}
                     </button>
 
@@ -120,7 +129,7 @@ pub fn Sidebar(
                             "relative w-9 h-9 mx-auto flex items-center justify-center ferris-desk-sidebar__item rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                         }
                         on:click=move |_| on_notifications()
-                        title="Avisos"
+                        title=tr("desk.notifications.title")
                     >
                         <Bell class="size-4 shrink-0" />
                         {move || {
@@ -128,12 +137,12 @@ pub fn Sidebar(
                             (count > 0).then(|| view! {
                                 <span
                                     class="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-primary"
-                                    title=move || format!("{count} sin leer")
+                                    title=move || tr_with("desk.notifications.unread_count", &[("count", &count.to_string())])
                                 ></span>
                             })
                         }}
                         {move || open.get().then(|| view! {
-                            <span>"Avisos"</span>
+                            <span>{tr("desk.notifications.title")}</span>
                         })}
                     </button>
                 </div>
@@ -206,7 +215,7 @@ pub fn Sidebar(
                                     attr:class="ferris-desk-sidebar__item flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors max-md:py-3 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                                 >
                                     <BookOpen class="size-4 shrink-0" />
-                                    <span>"Primeros pasos"</span>
+                                    <span>{tr("desk.sidebar.getting_started")}</span>
                                 </A>
                                 <div class="pt-1">
                                     <UserMenu user={expect_context::<RwSignal<WebUser>>()} expanded=open />
@@ -231,8 +240,8 @@ pub fn Sidebar(
                 type="button"
                 class="group/edge absolute inset-y-0 right-0 z-20 flex w-1 cursor-pointer items-center justify-center hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 on:click=move |_| on_toggle.update(|s| *s = !*s)
-                title=move || if open.get() { "Contraer barra lateral" } else { "Expandir barra lateral" }
-                aria-label="Alternar barra lateral"
+                title=move || if open.get() { tr("desk.sidebar.collapse") } else { tr("desk.sidebar.expand") }
+                aria-label=tr("desk.sidebar.toggle")
             >
                 <span class="pointer-events-none absolute top-1/2 left-1/2 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity duration-200 group-hover/edge:opacity-100">
                     {move || if open.get() {

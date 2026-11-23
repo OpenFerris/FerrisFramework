@@ -33,8 +33,9 @@ use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::card::Card;
 use crate::components::ui::icon::Icon;
 use crate::desk::session::path_segment;
+use crate::i18n::use_i18n;
 use crate::views::views_components::collection::{
-    stale_settings_message, unresolved_fields, use_collection_actions,
+    stale_settings_message_i18n, unresolved_fields_i18n, use_collection_actions,
 };
 use crate::views::views_components::{
     EmptyState, Feedback, FeedbackKind, LoadingLines, PageHeader,
@@ -51,6 +52,13 @@ pub const PAGE: u64 = 1000;
 #[component]
 pub fn KanbanView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
+    let i18n_sv = i18n;
+    let tr = move |key: &str| {
+        i18n_sv
+            .try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     let doctype = Signal::derive(move || params.with(|p| p.get("doctype").unwrap_or_default()));
 
     let meta = RwSignal::new(None::<crate::api::DynMeta>);
@@ -120,9 +128,17 @@ pub fn KanbanView() -> impl IntoView {
     });
     use_collection_actions(meta.read_only(), "kanban", on_reload);
 
+    let i18n_stale = i18n;
     let stale_settings = Memo::new(move |_| {
         meta.get().as_ref().map_or_else(Vec::new, |meta| {
-            unresolved_fields(meta, &[("Agrupación", meta.kanban_group_field.as_deref())])
+            unresolved_fields_i18n(
+                meta,
+                &[(
+                    "views.kanban.group_field",
+                    meta.kanban_group_field.as_deref(),
+                )],
+                &i18n_stale,
+            )
         })
     });
 
@@ -163,6 +179,7 @@ pub fn KanbanView() -> impl IntoView {
             .unwrap_or_else(|| params.with(|p| p.get("module").unwrap_or_default()))
     });
 
+    let i18n_move = i18n;
     let move_card = {
         Callback::new(move |(name, target): (String, String)| {
             if moving.get_untracked().is_some() {
@@ -178,6 +195,7 @@ pub fn KanbanView() -> impl IntoView {
             optimistic.update(|moved| {
                 moved.insert(name.clone(), target.clone());
             });
+            let i18n_write = i18n_move;
             spawn_local(async move {
                 let write = write_group(&dt, &spec.field, &name, &target).await;
                 match write {
@@ -194,8 +212,9 @@ pub fn KanbanView() -> impl IntoView {
                         optimistic.update(|moved| {
                             moved.remove(&name);
                         });
-                        error.set(Some(format!(
-                            "No se pudo mover «{name}» a «{target}»: {message}"
+                        error.set(Some(i18n_write.t_with(
+                            "views.kanban.move_failed",
+                            &[("name", &name), ("target", &target), ("message", &message)],
                         )));
                     }
                 }
@@ -204,19 +223,24 @@ pub fn KanbanView() -> impl IntoView {
         })
     };
 
+    let i18n_showing = i18n;
+    let i18n_stale_msg = i18n;
+    let i18n_view = i18n;
     view! {
         <div class="mx-auto flex h-full min-h-0 w-full min-w-0 flex-col gap-4 p-4">
             {move || view! {
                 <PageHeader
                     title=doctype.get()
-                    description="Tablero del tipo de documento: cada columna es un valor del campo de agrupación."
+                    description=tr("views.kanban.description")
                 />
             }}
 
             <Feedback kind=FeedbackKind::Error message=Signal::derive(move || error.get()) />
             <Feedback
                 kind=FeedbackKind::Warning
-                message=Signal::derive(move || stale_settings_message(&stale_settings.get()))
+                message=Signal::derive(move || {
+                    stale_settings_message_i18n(&stale_settings.get(), &i18n_stale_msg)
+                })
             />
 
             <Show when=move || loading.get()>
@@ -229,7 +253,10 @@ pub fn KanbanView() -> impl IntoView {
 
             <Show when=move || { total.get() > PAGE && !loading.get() }>
                 <p class="text-xs text-muted-foreground">
-                    {move || format!("Mostrando los primeros {PAGE} de {} documentos.", total.get())}
+                    {move || i18n_showing.t_with(
+                        "views.kanban.showing",
+                        &[("page", &PAGE.to_string()), ("total", &total.get().to_string())],
+                    )}
                 </p>
             </Show>
 
@@ -241,8 +268,8 @@ pub fn KanbanView() -> impl IntoView {
                     return view! {
                         <EmptyState
                             icon="SquareKanban"
-                            title="Sin documentos"
-                            description="Este DocType todavía no tiene documentos que mostrar en el tablero."
+                            title=i18n_view.t("views.common.no_documents")
+                            description=i18n_view.t("views.kanban.empty_description")
                         />
                     }
                     .into_any();
@@ -340,10 +367,14 @@ pub fn KanbanView() -> impl IntoView {
                                 let has_prev = prev.is_some();
                                 let has_next = next.is_some();
                                 let prev_aria = StoredValue::new(
-                                    prev.as_ref().map(|target| format!("Mover a {target}")),
+                                    prev.as_ref().map(|target| {
+                                        i18n_view.t_with("views.kanban.move_to", &[("target", target)])
+                                    }),
                                 );
                                 let next_aria = StoredValue::new(
-                                    next.as_ref().map(|target| format!("Mover a {target}")),
+                                    next.as_ref().map(|target| {
+                                        i18n_view.t_with("views.kanban.move_to", &[("target", target)])
+                                    }),
                                 );
                                 let drag_name = StoredValue::new(cname.clone());
                                 view! {
@@ -364,7 +395,7 @@ pub fn KanbanView() -> impl IntoView {
                                             </A>
                                             <Show when=move || is_moving()>
                                                 <span class="shrink-0 text-[11px] text-muted-foreground" role="status">
-                                                    "Moviendo…"
+                                                    {tr("views.kanban.moving")}
                                                 </span>
                                             </Show>
                                         </div>
@@ -462,7 +493,7 @@ pub fn KanbanView() -> impl IntoView {
                                         {cards.into_iter().collect_view()}
                                         {(card_count == 0).then(|| view! {
                                             <p class="rounded-md border border-dashed border-border px-2 py-3 text-center text-xs text-muted-foreground">
-                                                "Sin documentos"
+                                                {i18n_view.t("views.common.no_documents")}
                                             </p>
                                         })}
                                     </div>

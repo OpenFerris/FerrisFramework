@@ -104,6 +104,9 @@ pub struct ViewCore {
     pub doctype: Signal<String>,
     pub module: Signal<String>,
     pub view_id: &'static str,
+    /// The catalogue handle for messages built inside the service (bulk
+    /// deletion reports), where no component owner exists.
+    pub i18n: crate::i18n::I18n,
 
     // Metadata
     pub meta: RwSignal<Option<crate::api::DynMeta>>,
@@ -199,6 +202,7 @@ impl ViewCore {
         infinite: bool,
     ) -> Self {
         // ── Señales base ────────────────────────────────────────────────
+        let i18n = crate::i18n::use_i18n();
         let meta = RwSignal::new(None::<crate::api::DynMeta>);
         let selected = RwSignal::new(HashSet::<String>::new());
         let reload_trigger = RwSignal::new(0u64);
@@ -481,7 +485,7 @@ impl ViewCore {
             })
         };
 
-        let bulk_failure = { Memo::new(move |_| bulk_progress.get().failure_report()) };
+        let bulk_failure = { Memo::new(move |_| bulk_progress.get().failure_report(&i18n)) };
 
         let bulk_export = {
             Callback::new(move |cols: Vec<Column>| {
@@ -506,6 +510,7 @@ impl ViewCore {
             doctype,
             module,
             view_id,
+            i18n,
             meta,
             query,
             rows,

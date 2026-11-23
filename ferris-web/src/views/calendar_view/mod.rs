@@ -33,8 +33,9 @@ use crate::components::ui::card::{Card, CardContent};
 use crate::components::ui::icon::Icon;
 use crate::components::ui::select_native::SelectNative;
 use crate::desk::session::path_segment;
+use crate::i18n::use_i18n;
 use crate::views::views_components::collection::{
-    stale_settings_message, unresolved_fields, use_collection_actions,
+    stale_settings_message_i18n, unresolved_fields_i18n, use_collection_actions,
 };
 use crate::views::views_components::{
     EmptyState, Feedback, FeedbackKind, LoadingLines, PageHeader,
@@ -100,6 +101,13 @@ pub fn range_filters(start_field: &str, end_field: Option<&str>, from: &str, to:
 #[component]
 pub fn CalendarView() -> impl IntoView {
     let params = use_params_map();
+    let i18n = use_i18n();
+    let i18n_sv = i18n;
+    let tr = move |key: &str| {
+        i18n_sv
+            .try_with_value(|i| i.t(key))
+            .unwrap_or_else(|| key.to_string())
+    };
     let navigate = use_navigate();
     let go: Callback<String> = {
         let navigate = navigate.clone();
@@ -231,15 +239,23 @@ pub fn CalendarView() -> impl IntoView {
     let on_reload = Callback::new(move |()| reload.update(|count| *count += 1));
     use_collection_actions(meta.read_only(), "calendar", on_reload);
 
+    let i18n_stale = i18n;
     let stale_settings = Memo::new(move |_| {
         meta.get().as_ref().map_or_else(Vec::new, |meta| {
-            unresolved_fields(
+            unresolved_fields_i18n(
                 meta,
                 &[
-                    ("Fecha", meta.date_field.as_deref()),
-                    ("Fecha de fin", meta.calendar_end_field.as_deref()),
-                    ("Título", meta.calendar_title_field.as_deref()),
+                    ("views.calendar.date_field", meta.date_field.as_deref()),
+                    (
+                        "views.calendar.end_field",
+                        meta.calendar_end_field.as_deref(),
+                    ),
+                    (
+                        "views.calendar.title_field",
+                        meta.calendar_title_field.as_deref(),
+                    ),
                 ],
+                &i18n_stale,
             )
         })
     });
@@ -282,16 +298,21 @@ pub fn CalendarView() -> impl IntoView {
             .unwrap_or_else(|| selected.get())
     });
 
+    let i18n_heading = i18n;
     let heading = Memo::new(move |_| {
         let Some(anchor) = anchor.get() else {
             return String::new();
         };
         match scale.get() {
-            Scale::Month => month_label(anchor),
+            Scale::Month => month_label(anchor, &i18n_heading),
             Scale::Week => {
                 let start = week_start(anchor);
                 let end = start + Duration::days(6);
-                format!("{} – {}", short_day(start), short_day(end))
+                format!(
+                    "{} – {}",
+                    short_day(start, &i18n_heading),
+                    short_day(end, &i18n_heading)
+                )
             }
         }
     });
@@ -355,14 +376,16 @@ pub fn CalendarView() -> impl IntoView {
         go.run(url);
     });
 
+    let i18n_stale_msg = i18n;
+    let i18n_view = i18n;
     view! {
         <div class="mx-auto flex h-full min-h-0 w-full min-w-0 flex-col gap-4 p-4">
             {move || view! {
                 <PageHeader
-                    title="Calendario"
+                    title=tr("views.calendar.title")
                     description=match scale.get() {
-                        Scale::Month => "Documentos por día en una cuadrícula mensual.",
-                        Scale::Week => "Documentos por día en una semana.",
+                        Scale::Month => tr("views.calendar.description_month"),
+                        Scale::Week => tr("views.calendar.description_week"),
                     }
                 >
                     <Show when=move || needs_picker.get()>
@@ -370,13 +393,13 @@ pub fn CalendarView() -> impl IntoView {
                             <SelectNative
                                 id="calendar-doctype"
                                 class="w-full sm:w-56"
-                                aria_label="DocType del calendario"
+                                aria_label=tr("views.calendar.doctype_aria")
                                 value=selected.read_only()
                                 on_change=Callback::new(move |ev: leptos::ev::Event| {
                                     pick.run(event_target_value(&ev));
                                 })
                             >
-                                <option value="">"Elige un DocType…"</option>
+                                <option value="">{tr("views.common.choose_doctype")}</option>
                                 {move || {
                                     let current = selected.get();
                                     let list = doctypes.get();
@@ -398,7 +421,7 @@ pub fn CalendarView() -> impl IntoView {
                         <Button
                             variant=ButtonVariant::Outline
                             size=ButtonSize::Icon
-                            attr:aria-label="Periodo anterior"
+                            attr:aria-label=tr("views.calendar.prev_period")
                             on:click=move |_| step.run(false)
                         >
                             <Icon name="ChevronLeft" class="size-4" />
@@ -408,24 +431,24 @@ pub fn CalendarView() -> impl IntoView {
                             size=ButtonSize::Sm
                             on:click=move |_| anchor.set(today.get_untracked())
                         >
-                            "Hoy"
+                            {tr("views.calendar.today")}
                         </Button>
                         <Button
                             variant=ButtonVariant::Outline
                             size=ButtonSize::Icon
-                            attr:aria-label="Periodo siguiente"
+                            attr:aria-label=tr("views.calendar.next_period")
                             on:click=move |_| step.run(true)
                         >
                             <Icon name="ChevronRight" class="size-4" />
                         </Button>
-                        <div class="ms-1 flex items-center rounded-md border border-border p-0.5" role="group" aria-label="Escala del calendario">
+                        <div class="ms-1 flex items-center rounded-md border border-border p-0.5" role="group" aria-label=tr("views.calendar.scale_aria")>
                             <Button
                                 variant=if scale.get() == Scale::Month { ButtonVariant::Secondary } else { ButtonVariant::Ghost }
                                 size=ButtonSize::Sm
                                 attr:aria-pressed=move || (scale.get() == Scale::Month).to_string()
                                 on:click=move |_| scale.set(Scale::Month)
                             >
-                                "Mes"
+                                {tr("views.calendar.month")}
                             </Button>
                             <Button
                                 variant=if scale.get() == Scale::Week { ButtonVariant::Secondary } else { ButtonVariant::Ghost }
@@ -433,7 +456,7 @@ pub fn CalendarView() -> impl IntoView {
                                 attr:aria-pressed=move || (scale.get() == Scale::Week).to_string()
                                 on:click=move |_| scale.set(Scale::Week)
                             >
-                                "Semana"
+                                {tr("views.calendar.week")}
                             </Button>
                         </div>
                     </div>
@@ -443,7 +466,9 @@ pub fn CalendarView() -> impl IntoView {
             <Feedback kind=FeedbackKind::Error message=Signal::derive(move || error.get()) />
             <Feedback
                 kind=FeedbackKind::Warning
-                message=Signal::derive(move || stale_settings_message(&stale_settings.get()))
+                message=Signal::derive(move || {
+                    stale_settings_message_i18n(&stale_settings.get(), &i18n_stale_msg)
+                })
             />
 
             <Show when=move || loading.get()>
@@ -453,8 +478,8 @@ pub fn CalendarView() -> impl IntoView {
             <Show when=move || !loading.get() && error.get().is_none() && selected.get().is_empty()>
                 <EmptyState
                     icon="Calendar"
-                    title="Elige un DocType"
-                    description="El calendario muestra los documentos de un DocType con campo de fecha."
+                    title=tr("views.calendar.choose_title")
+                    description=tr("views.calendar.choose_description")
                 />
             </Show>
 
@@ -506,8 +531,8 @@ pub fn CalendarView() -> impl IntoView {
                     return view! {
                         <EmptyState
                             icon="Calendar"
-                            title="Sin documentos"
-                            description="Este DocType todavía no tiene documentos."
+                            title=i18n_view.t("views.common.no_documents")
+                            description=i18n_view.t("views.calendar.empty_description")
                         />
                     }.into_any();
                 }
@@ -527,19 +552,28 @@ pub fn CalendarView() -> impl IntoView {
                     <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span class="text-sm font-medium text-foreground">{move || heading.get()}</span>
                         <Badge variant=BadgeVariant::Secondary size=BadgeSize::Sm>
-                            {format!("{total_shown} de {period_total} documentos")}
+                            {i18n_view.t_with(
+                                "views.calendar.showing",
+                                &[
+                                    ("shown", &total_shown.to_string()),
+                                    ("total", &period_total.to_string()),
+                                ],
+                            )}
                         </Badge>
                         {fallback_date.get().then(|| view! {
-                            <span>"El DocType no declara campo de fecha: se usa «creation»."</span>
+                            <span>{i18n_view.t("views.calendar.fallback_date")}</span>
                         })}
                         {truncated.then(|| view! {
                             <Badge variant=BadgeVariant::Warning size=BadgeSize::Sm>
-                                {format!("Mostrando los primeros {PAGE}")}
+                                {i18n_view.t_with(
+                                    "views.common.showing_first",
+                                    &[("count", &PAGE.to_string())],
+                                )}
                             </Badge>
                         })}
                         {(total_shown == 0).then(|| view! {
                             <span>
-                                "Ningún documento cae en el periodo mostrado: cambia de mes o revisa el campo de fecha."
+                                {i18n_view.t("views.calendar.no_events")}
                             </span>
                         })}
                     </div>
@@ -547,8 +581,11 @@ pub fn CalendarView() -> impl IntoView {
                     <Card class="min-h-0 flex-1 overflow-hidden p-0">
                         <CardContent class="flex h-full flex-col gap-0 p-0">
                             <div class="grid grid-cols-7 border-b border-border bg-muted/40">
-                                {WEEKDAYS.into_iter().map(|day| view! {
-                                    <div class="px-1 py-2 text-center text-[11px] font-medium text-muted-foreground">{day}</div>
+                                {(1..=7).map(|index| {
+                                    let key = format!("views.common.weekday.{index}");
+                                    view! {
+                                        <div class="px-1 py-2 text-center text-[11px] font-medium text-muted-foreground">{i18n_view.t(&key)}</div>
+                                    }
                                 }).collect_view()}
                             </div>
                             <div class="grid min-h-0 flex-1 auto-rows-fr grid-cols-7 overflow-y-auto">
@@ -565,7 +602,7 @@ pub fn CalendarView() -> impl IntoView {
                                                 variant=ButtonVariant::Ghost
                                                 size=ButtonSize::Icon
                                                 class="size-7 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
-                                                attr:aria-label="Crear documento"
+                                                attr:aria-label=i18n_view.t("views.common.create_document")
                                                 on:click=move |_| new_url.run(())
                                             >
                                                 <Icon name="Plus" class="size-4" />
@@ -610,7 +647,7 @@ pub fn CalendarView() -> impl IntoView {
                                                 }).collect_view()}
                                                 {(count > 3).then(|| view! {
                                                     <span class="px-1 text-[10px] text-muted-foreground">
-                                                        {format!("+{} más", count - 3)}
+                                                        {i18n_view.t_with("views.calendar.more", &[("count", &(count - 3).to_string())])}
                                                     </span>
                                                 })}
                                                 {(count > 0 && count <= 3).then(|| view! {

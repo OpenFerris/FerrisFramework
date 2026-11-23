@@ -30,7 +30,7 @@ pub struct BulkProgress {
 
 impl BulkProgress {
     /// Una línea por documento que falló, para el aviso.
-    pub fn failure_report(&self) -> Option<String> {
+    pub fn failure_report(&self, i18n: &impl crate::i18n::Translate) -> Option<String> {
         // Nada se reporta mientras el bucle corre. `failed` crece documento a
         // documento, y un aviso que se reescribe bajo los ojos del usuario —que
         // además cambia de longitud— no informa de nada. El avance lo lleva la
@@ -39,7 +39,7 @@ impl BulkProgress {
             return None;
         }
         if let Some(fatal) = &self.fatal {
-            return Some(format!("No se pudo eliminar nada: {fatal}"));
+            return Some(i18n.t_with("components.bulk.fatal", &[("reason", fatal)]));
         }
         if self.failed.is_empty() {
             return None;
@@ -49,11 +49,13 @@ impl BulkProgress {
             .iter()
             .map(|(name, reason)| format!("{name}: {reason}"))
             .collect();
-        Some(format!(
-            "No se pudieron eliminar {} de {} documentos: {}",
-            self.failed.len(),
-            self.total,
-            lines.join("; ")
+        Some(i18n.t_with(
+            "components.bulk.partial",
+            &[
+                ("failed", &self.failed.len().to_string()),
+                ("total", &self.total.to_string()),
+                ("lines", &lines.join("; ")),
+            ],
         ))
     }
 }
@@ -64,6 +66,16 @@ mod tests {
 
     /// Un borrado completo no tiene nada que avisar: si lo tuviera, el usuario
     /// leería un error donde sólo se borró lo que pidió.
+    fn es() -> crate::i18n::DeskI18n {
+        crate::i18n::DeskI18n::from_catalog(
+            "es",
+            &serde_json::json!({
+                "components.bulk.fatal": "No se pudo eliminar nada: {reason}",
+                "components.bulk.partial": "No se pudieron eliminar {failed} de {total} documentos: {lines}",
+            }),
+        )
+    }
+
     #[test]
     fn failure_report_is_absent_when_everything_was_deleted() {
         let p = BulkProgress {
@@ -73,7 +85,7 @@ mod tests {
             running: false,
             fatal: None,
         };
-        assert_eq!(p.failure_report(), None);
+        assert_eq!(p.failure_report(&crate::i18n::DeskI18n::default()), None);
     }
 
     /// El aviso tiene que decir qué falló y por qué, no sólo que algo falló: los
@@ -91,7 +103,7 @@ mod tests {
             running: false,
             fatal: None,
         };
-        let report = p.failure_report().expect("hay fallos que avisar");
+        let report = p.failure_report(&es()).expect("hay fallos que avisar");
         assert!(report.contains("2 de 3"), "no dice cuántos: {report}");
         assert!(report.contains("TASK00001: No permission"), "{report}");
         assert!(report.contains("TASK00002: Locked"), "{report}");
@@ -110,7 +122,7 @@ mod tests {
             running: true,
             fatal: None,
         };
-        assert_eq!(p.failure_report(), None);
+        assert_eq!(p.failure_report(&crate::i18n::DeskI18n::default()), None);
     }
 
     /// Un fallo previo al bucle no es un documento que falló: no se intentó
@@ -125,7 +137,7 @@ mod tests {
             running: false,
             fatal: Some("no runtime".to_string()),
         };
-        let report = p.failure_report().expect("hay algo que avisar");
+        let report = p.failure_report(&es()).expect("hay algo que avisar");
         assert!(report.contains("No se pudo eliminar nada"), "{report}");
         assert!(report.contains("no runtime"), "{report}");
         assert!(!report.contains("0 de 4"), "{report}");

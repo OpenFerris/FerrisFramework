@@ -7,8 +7,11 @@ use axum::{
 };
 use ferris_auth::middleware::OptionalUser;
 use ferris_auth::{AuthState, User, UserType};
+use ferris_core::I18n;
+use ferris_core::i18n::Locale;
 use ferris_db::Db;
 use ferris_schema::contract::identity::WebUser;
+use ferris_web::i18n::DeskI18n;
 use serde::Deserialize;
 
 use super::pages::page_path_matches;
@@ -118,6 +121,7 @@ fn engine_to_web_user(user: &User) -> WebUser {
             UserType::Guest => "Guest",
         }
         .to_string(),
+        language: user.language.clone(),
     }
 }
 
@@ -226,14 +230,41 @@ fn desk_engine_user(extensions: &axum::http::Extensions) -> Option<User> {
 /// context for the Desk. The identity is the one [`web_auth_guard`] resolved;
 /// a render that did not go through the guard falls back to the guest, which is
 /// exactly what `/login` renders as.
-pub(super) fn provide_desk_context(pool: Db) {
+pub(super) fn provide_desk_context(pool: Db, i18n: &I18n) {
     use ferris_auth::User;
     use leptos::prelude::{provide_context, use_context};
 
     // The request `Parts` carry what the guard resolved; `leptos_axum` provides
     // them for exactly this kind of layered context.
-    let identity = use_context::<axum::http::request::Parts>()
+    let parts = use_context::<axum::http::request::Parts>();
+    let identity = parts
+        .as_ref()
         .and_then(|parts| parts.extensions.get::<DeskIdentity>().cloned());
+
+    // Negotiate once per render. The catalogue travels in the context (SSR)
+    // and in the bootstrap `<meta>` (hydration), so the client never refetches.
+    let preferred = identity
+        .as_ref()
+        .and_then(|identity| identity.engine.language.as_deref())
+        .and_then(Locale::parse)
+        .filter(|locale| i18n.supported().contains(locale));
+    let locale = preferred.unwrap_or_else(|| {
+        parts
+            .as_ref()
+            .and_then(|parts| parts.headers.get(axum::http::header::ACCEPT_LANGUAGE))
+            .and_then(|value| value.to_str().ok())
+            .map_or_else(
+                || i18n.default_locale().clone(),
+                |tag| i18n.negotiate(Some(tag)),
+            )
+    });
+    let catalog = i18n.catalog_json(&locale);
+    let supported = i18n
+        .supported()
+        .iter()
+        .map(|locale| locale.as_str().to_string())
+        .collect();
+    provide_context(DeskI18n::from_catalog(locale.as_str(), &catalog).with_supported(supported));
 
     match identity {
         Some(identity) => {

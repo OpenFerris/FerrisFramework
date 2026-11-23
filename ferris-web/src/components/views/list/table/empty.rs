@@ -2,6 +2,7 @@
 
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
+use crate::i18n::{t, use_i18n};
 use leptos::prelude::*;
 
 /// The body's empty state, rendered full-width under the table header.
@@ -17,6 +18,7 @@ pub(super) fn ListEmptyBlock(
     on_create: Callback<()>,
     on_reset_filters: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="flex min-h-40 flex-col items-center justify-center gap-3 px-4 py-8 text-center text-muted-foreground">
             <span class="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -25,9 +27,9 @@ pub(super) fn ListEmptyBlock(
             <span class="text-sm">
                 {move || {
                     if filtered.get() {
-                        "No hay resultados con los filtros aplicados."
+                        i18n.t("components.list.empty.filtered")
                     } else {
-                        "Todavía no hay documentos."
+                        i18n.t("components.list.empty.none")
                     }
                 }}
             </span>
@@ -41,7 +43,7 @@ pub(super) fn ListEmptyBlock(
                                 on:click=move |_| on_create.run(())
                             >
                                 <Icon name="Plus" class="size-4" />
-                                "Crear"
+                                {t("components.list.empty.create")}
                             </Button>
                         }
                     })
@@ -53,7 +55,7 @@ pub(super) fn ListEmptyBlock(
                         on:click=move |_| on_reset_filters.run(())
                     >
                         <Icon name="FilterX" class="size-4" />
-                        "Limpiar filtros"
+                        {t("components.list.empty.clear_filters")}
                     </Button>
                 </Show>
             </div>

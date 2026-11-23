@@ -8,6 +8,7 @@
 use leptos::prelude::*;
 
 use crate::app::use_site_state;
+use crate::i18n::use_i18n;
 
 /// `Navbar Settings.announcement`, with its configured help link.
 ///
@@ -17,6 +18,7 @@ use crate::app::use_site_state;
 #[component]
 pub fn Announcement(bare_chrome: Memo<bool>, fullscreen: Signal<bool>) -> impl IntoView {
     let site = use_site_state();
+    let i18n = use_i18n();
 
     view! {
         {move || {
@@ -36,7 +38,7 @@ pub fn Announcement(bare_chrome: Memo<bool>, fullscreen: Signal<bool>) -> impl I
                             target="_blank"
                             rel="noopener noreferrer"
                         >
-                            "Ayuda"
+                            {i18n.t("desk.header.help")}
                         </a>
                     })}
                 </div>

@@ -22,7 +22,8 @@ use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::checkbox::Checkbox;
 use crate::components::views::form::{FormTabs, render_form_field};
 use crate::ext::UiCtx;
-use crate::views::services::{form_layout, validate_form};
+use crate::i18n::use_i18n;
+use crate::views::services::{form_layout, validate_form_with};
 
 use super::model;
 use super::params;
@@ -47,6 +48,7 @@ pub(super) fn WidgetProps(
     on_remove: Callback<String>,
 ) -> impl IntoView {
     let apps = expect_context::<UiCtx>().apps;
+    let i18n = use_i18n();
     let draft = RwSignal::new(None::<WidgetInstance>);
 
     // The draft follows the selection: on open (or when the confirmed
@@ -105,7 +107,7 @@ pub(super) fn WidgetProps(
             // markers applied (or the legacy `group` sections synthesized).
             // Typing mutates each field's own `value`/`checked` signal, so this
             // closure does not re-run and the inputs keep their focus.
-            let field_list = params::param_fields(&defs, &widget);
+            let field_list = params::param_fields_with(&defs, &widget, &i18n);
             let (tab_labels, default_tab, sections) = form_layout(&field_list);
             let fields = RwSignal::new(field_list);
 
@@ -115,21 +117,21 @@ pub(super) fn WidgetProps(
                         type="button"
                         class="absolute inset-0 bg-foreground/40 animate-in fade-in duration-200 motion-reduce:animate-none"
                         on:click=move |_| close.run(())
-                        aria-label="Cerrar los ajustes"
+                        aria-label=i18n.t("views.dashboard.close_settings")
                     ></button>
                     <aside
                         role="dialog"
                         aria-modal="true"
-                        aria-label="Ajustes del widget"
+                        aria-label=i18n.t("views.dashboard.widget_settings")
                         class="absolute inset-y-0 right-0 flex w-80 max-w-[90vw] flex-col border-l border-border bg-card text-card-foreground shadow-lg animate-in fade-in slide-in-from-right-4 duration-200 motion-reduce:animate-none"
                     >
                         <header class="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-                            <h2 class="text-sm font-semibold">"Ajustes"</h2>
+                            <h2 class="text-sm font-semibold">{i18n.t("views.dashboard.settings")}</h2>
                             <Button
                                 variant=ButtonVariant::Ghost
                                 size=ButtonSize::IconSm
                                 on:click=move |_| close.run(())
-                                attr:aria-label="Cerrar los ajustes"
+                                attr:aria-label=i18n.t("views.dashboard.close_settings")
                             >
                                 <icons::X class="size-4" />
                             </Button>
@@ -142,11 +144,11 @@ pub(super) fn WidgetProps(
 
                             <div class="space-y-2">
                                 <label class="block space-y-1">
-                                    <span class="block text-xs font-medium">"Título"</span>
+                                    <span class="block text-xs font-medium">{i18n.t("views.dashboard.title_field")}</span>
                                     <input
                                         type="text"
                                         class="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
-                                        placeholder="Vacío = el título del widget"
+                                        placeholder=i18n.t("views.dashboard.title_placeholder")
                                         prop:value=label_value(draft)
                                         on:input=move |ev| {
                                             set_label(&draft, event_target_value(&ev));
@@ -155,26 +157,26 @@ pub(super) fn WidgetProps(
                                 </label>
                                 <div class="flex items-center gap-2">
                                     <Checkbox
-                                        aria_label="Mostrar el título"
+                                        aria_label=i18n.t("views.dashboard.show_title")
                                         checked=show_title_value(draft)
                                         on_checked_change=Callback::new(move |checked: bool| {
                                             set_show_title(&draft, checked);
                                         })
                                     />
-                                    <span class="text-xs">"Mostrar título"</span>
+                                    <span class="text-xs">{i18n.t("views.dashboard.show_title")}</span>
                                 </div>
                                 <p class="text-[0.65rem] text-muted-foreground">
-                                    "El host pinta el título y el subtítulo; el widget sólo aporta el contenido."
+                                    {i18n.t("views.dashboard.host_paints_note")}
                                 </p>
                             </div>
 
                             <div class="space-y-2">
                                 <label class="block space-y-1">
-                                    <span class="block text-xs font-medium">"Subtítulo"</span>
+                                    <span class="block text-xs font-medium">{i18n.t("views.dashboard.subtitle_field")}</span>
                                     <input
                                         type="text"
                                         class="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
-                                        placeholder="Vacío = la descripción de la definición"
+                                        placeholder=i18n.t("views.dashboard.subtitle_placeholder")
                                         prop:value=subtitle_value(draft)
                                         on:input=move |ev| {
                                             set_subtitle(&draft, event_target_value(&ev));
@@ -183,19 +185,19 @@ pub(super) fn WidgetProps(
                                 </label>
                                 <div class="flex items-center gap-2">
                                     <Checkbox
-                                        aria_label="Mostrar el subtítulo"
+                                        aria_label=i18n.t("views.dashboard.show_subtitle")
                                         checked=show_subtitle_value(draft)
                                         on_checked_change=Callback::new(move |checked: bool| {
                                             set_show_subtitle(&draft, checked);
                                         })
                                     />
-                                    <span class="text-xs">"Mostrar subtítulo"</span>
+                                    <span class="text-xs">{i18n.t("views.dashboard.show_subtitle")}</span>
                                 </div>
                             </div>
 
                             <div class="flex gap-3">
                                 <label class="block flex-1 space-y-1">
-                                    <span class="block text-xs font-medium">"Columnas"</span>
+                                    <span class="block text-xs font-medium">{i18n.t("views.dashboard.columns")}</span>
                                     <select
                                         class="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm"
                                         prop:value=span_value(draft, sizing).to_string()
@@ -213,7 +215,7 @@ pub(super) fn WidgetProps(
                                     </select>
                                 </label>
                                 <label class="block flex-1 space-y-1">
-                                    <span class="block text-xs font-medium">"Filas"</span>
+                                    <span class="block text-xs font-medium">{i18n.t("views.dashboard.rows")}</span>
                                     <input
                                         type="number"
                                         min="1"
@@ -247,14 +249,14 @@ pub(super) fn WidgetProps(
                                 class="mr-auto"
                                 on:click=move |_| remove.run(())
                             >
-                                "Quitar"
+                                {i18n.t("views.dashboard.remove")}
                             </Button>
                             <Button
                                 variant=ButtonVariant::Ghost
                                 size=ButtonSize::Sm
                                 on:click=move |_| close.run(())
                             >
-                                "Cancelar"
+                                {i18n.t("common.cancel")}
                             </Button>
                             <Button
                                 variant=ButtonVariant::Default
@@ -264,7 +266,7 @@ pub(super) fn WidgetProps(
                                     // The form's own validation: a failure
                                     // paints through each field's `error`
                                     // signal and keeps the panel open.
-                                    if !validate_form(&field_list) {
+                                    if !validate_form_with(&field_list, &i18n) {
                                         return;
                                     }
                                     let Some(mut widget) = draft.get_untracked() else {
@@ -286,7 +288,7 @@ pub(super) fn WidgetProps(
                                     selected.set(None);
                                 }
                             >
-                                "Aplicar"
+                                {i18n.t("views.common.apply")}
                             </Button>
                         </footer>
                     </aside>

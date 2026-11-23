@@ -163,6 +163,24 @@ pub async fn logout() -> Result<(), String> {
     }
 }
 
+/// Persist the signed-in account's locale.
+///
+/// The server applies it to the next SSR render; the picker reloads the page so
+/// the new catalogue is used immediately.
+///
+/// # Errors
+///
+/// The server's message (no session, invalid tag, storage).
+pub async fn set_language(language: &str) -> Result<(), String> {
+    let body = serde_json::json!({ "language": language }).to_string();
+    let (status, text) = api_request_raw("PUT", "/api/auth/language", Some(&body)).await?;
+    if (200..300).contains(&status) {
+        Ok(())
+    } else {
+        Err(error_message(status, &text))
+    }
+}
+
 /// Current identity: `Some(user)` when the session cookie is valid, `None` for
 /// guests. A malformed or missing cookie is treated as "not signed in", not as
 /// an error.

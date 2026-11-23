@@ -24,6 +24,7 @@ use crate::components::ui::dialog::{
 };
 use crate::components::ui::input::{Input, InputType};
 use crate::components::ui::select_native::SelectNative;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 use crate::views::services::form_service::LayoutOp;
 
@@ -50,9 +51,9 @@ pub(crate) fn CreateFieldDialog(
         <Dialog>
             <DialogContent open=open class="max-w-md">
                 <DialogHeader>
-                    <DialogTitle>"Nuevo campo"</DialogTitle>
+                    <DialogTitle>{t("components.form.edit_mode.new_field")}</DialogTitle>
                     <DialogDescription>
-                        "Se añade al formulario como campo personalizado y se puede editar en el acto."
+                        {t("components.form.edit_mode.new_field_description")}
                     </DialogDescription>
                 </DialogHeader>
                 // Built when the dialog opens, so `anchor` is the rule that was
@@ -81,6 +82,7 @@ pub(super) fn CreateFieldPanel(
     on_created: Callback<String>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let name = RwSignal::new(String::new());
     let label = RwSignal::new(String::new());
     let fieldtype = RwSignal::new("Data".to_string());
@@ -97,6 +99,7 @@ pub(super) fn CreateFieldPanel(
     let saving = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let reload_signal = service.reload;
+    let hint_i18n = i18n;
 
     let create = Callback::new(move |()| {
         let is_break = matches!(
@@ -112,9 +115,9 @@ pub(super) fn CreateFieldPanel(
         }
         if fieldname.is_empty() {
             error.set(Some(if is_break {
-                "Escribe una etiqueta para la pestaña, sección o columna.".to_string()
+                i18n.t("components.form.edit_mode.break_label_required")
             } else {
-                "El nombre del campo es obligatorio.".to_string()
+                i18n.t("components.form.edit_mode.name_required")
             }));
             return;
         }
@@ -168,6 +171,7 @@ pub(super) fn CreateFieldPanel(
         let record_service = service.clone();
         error.set(None);
         saving.set(true);
+        let i18n = i18n;
         spawn_local(async move {
             let Ok(store) = DocStore::runtime() else {
                 saving.set(false);
@@ -202,8 +206,9 @@ pub(super) fn CreateFieldPanel(
                         value,
                     }),
                     Err(message) => {
-                        failure = Some(format!(
-                            "El campo se creó, pero no se pudo aplicar «{property}»: {message}"
+                        failure = Some(i18n.t_with(
+                            "components.form.edit_mode.extra_property_failed",
+                            &[("property", property), ("message", &message)],
                         ));
                         break;
                     }
@@ -220,22 +225,22 @@ pub(super) fn CreateFieldPanel(
         });
     });
 
-    let current_hint = Signal::derive(move || hint(&fieldtype.get()));
+    let current_hint = Signal::derive(move || hint(&fieldtype.get(), &hint_i18n));
 
     view! {
         <div class="flex flex-col gap-2 rounded-lg border bg-card p-2">
-            <p class="text-xs font-semibold">"Nuevo campo"</p>
+            <p class="text-xs font-semibold">{t("components.form.edit_mode.new_field")}</p>
             <Show when=move || error.get().is_some()>
                 <p class="text-xs text-destructive" role="alert">
                     {move || error.get().unwrap_or_default()}
                 </p>
             </Show>
             <label class="flex flex-col gap-1 text-xs">
-                <span class="font-medium text-muted-foreground">"Tipo"</span>
+                <span class="font-medium text-muted-foreground">{t("components.form.edit_mode.type")}</span>
                 <SelectNative
                     id="new-field-type"
                     value=fieldtype.read_only()
-                    aria_label="Tipo de campo"
+                    aria_label=t("components.form.edit_mode.field_type")
                     on_change=Callback::new(move |event: leptos::ev::Event| {
                         fieldtype.set(event_target_value(&event));
                     })
@@ -254,7 +259,7 @@ pub(super) fn CreateFieldPanel(
 
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label class="flex flex-col gap-1 text-xs">
-                    <span class="font-medium text-muted-foreground">"Nombre del campo"</span>
+                    <span class="font-medium text-muted-foreground">{t("components.form.edit_mode.field_name")}</span>
                     <Input
                         id="new-field-name"
                         r#type=InputType::Text
@@ -264,11 +269,11 @@ pub(super) fn CreateFieldPanel(
                     />
                 </label>
                 <label class="flex flex-col gap-1 text-xs">
-                    <span class="font-medium text-muted-foreground">"Etiqueta"</span>
+                    <span class="font-medium text-muted-foreground">{t("components.form.edit_mode.label")}</span>
                     <Input
                         id="new-field-label"
                         r#type=InputType::Text
-                        placeholder="La que se ve"
+                        placeholder=t("components.form.edit_mode.label_placeholder")
                         prop:value=move || label.get()
                         on_input=Callback::new(move |text: String| label.set(text))
                     />
@@ -276,11 +281,11 @@ pub(super) fn CreateFieldPanel(
             </div>
 
             <label class="flex flex-col gap-1 text-xs">
-                <span class="font-medium text-muted-foreground">"Opciones (Select/Link)"</span>
+                <span class="font-medium text-muted-foreground">{t("components.form.edit_mode.options")}</span>
                 <Input
                     id="new-field-options"
                     r#type=InputType::Text
-                    placeholder="Una por línea, o el DocType destino"
+                    placeholder=t("components.form.edit_mode.options_placeholder")
                     prop:value=move || options.get()
                     on_input=Callback::new(move |text: String| options.set(text))
                 />
@@ -288,21 +293,21 @@ pub(super) fn CreateFieldPanel(
 
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label class="flex flex-col gap-1 text-xs">
-                    <span class="font-medium text-muted-foreground">"Valor por defecto"</span>
+                    <span class="font-medium text-muted-foreground">{t("components.form.edit_mode.default_value")}</span>
                     <Input
                         id="new-field-default"
                         r#type=InputType::Text
-                        placeholder="Opcional"
+                        placeholder=t("components.form.edit_mode.optional")
                         prop:value=move || default_value.get()
                         on_input=Callback::new(move |text: String| default_value.set(text))
                     />
                 </label>
                 <label class="flex flex-col gap-1 text-xs">
-                    <span class="font-medium text-muted-foreground">"Marcador de posición"</span>
+                    <span class="font-medium text-muted-foreground">{t("components.form.edit_mode.placeholder_field")}</span>
                     <Input
                         id="new-field-placeholder"
                         r#type=InputType::Text
-                        placeholder="Opcional"
+                        placeholder=t("components.form.edit_mode.optional")
                         prop:value=move || placeholder.get()
                         on_input=Callback::new(move |text: String| placeholder.set(text))
                     />
@@ -311,23 +316,23 @@ pub(super) fn CreateFieldPanel(
 
             <label class="flex flex-col gap-1 text-xs">
                 <span class="font-medium text-muted-foreground">
-                    "Condición de visibilidad"
+                    {t("components.form.edit_mode.visibility_condition")}
                 </span>
                 <Input
                     id="new-field-depends"
                     r#type=InputType::Text
-                    placeholder="eval:doc.estado == \"Abierto\""
+                    placeholder=t("components.form.edit_mode.depends_example")
                     prop:value=move || depends_on.get()
                     on_input=Callback::new(move |text: String| depends_on.set(text))
                 />
             </label>
 
             <label class="flex flex-col gap-1 text-xs">
-                <span class="font-medium text-muted-foreground">"Insertar después de"</span>
+                <span class="font-medium text-muted-foreground">{t("components.form.edit_mode.insert_after")}</span>
                 <Input
                     id="new-field-after"
                     r#type=InputType::Text
-                    placeholder="Vacío = al final, __first__ = al principio"
+                    placeholder=t("components.form.edit_mode.insert_after_placeholder")
                     prop:value=move || after.get()
                     on_input=Callback::new(move |text: String| after.set(text))
                 />
@@ -335,44 +340,44 @@ pub(super) fn CreateFieldPanel(
 
             <div class="grid grid-cols-2 gap-x-3 gap-y-1">
                 <label class="flex items-center justify-between gap-2 text-xs">
-                    <span>"Obligatorio"</span>
+                    <span>{t("components.form.edit_mode.required")}</span>
                     <Checkbox
                         checked=Signal::derive(move || reqd.get())
-                        aria_label="Obligatorio"
+                        aria_label=t("components.form.edit_mode.required")
                         on_checked_change=Callback::new(move |checked: bool| reqd.set(checked))
                     />
                 </label>
                 <label class="flex items-center justify-between gap-2 text-xs">
-                    <span>"Oculto"</span>
+                    <span>{t("components.form.edit_mode.hidden")}</span>
                     <Checkbox
                         checked=Signal::derive(move || hidden.get())
-                        aria_label="Oculto"
+                        aria_label=t("components.form.edit_mode.hidden")
                         on_checked_change=Callback::new(move |checked: bool| hidden.set(checked))
                     />
                 </label>
                 <label class="flex items-center justify-between gap-2 text-xs">
-                    <span>"Solo lectura"</span>
+                    <span>{t("components.form.edit_mode.read_only")}</span>
                     <Checkbox
                         checked=Signal::derive(move || read_only.get())
-                        aria_label="Solo lectura"
+                        aria_label=t("components.form.edit_mode.read_only")
                         on_checked_change=Callback::new(move |checked: bool| read_only.set(checked))
                     />
                 </label>
                 <label class="flex items-center justify-between gap-2 text-xs">
-                    <span>"En la lista"</span>
+                    <span>{t("components.form.edit_mode.in_list_view")}</span>
                     <Checkbox
                         checked=Signal::derive(move || in_list_view.get())
-                        aria_label="En la lista"
+                        aria_label=t("components.form.edit_mode.in_list_view")
                         on_checked_change=Callback::new(move |checked: bool| {
                             in_list_view.set(checked);
                         })
                     />
                 </label>
                 <label class="flex items-center justify-between gap-2 text-xs">
-                    <span>"En los filtros"</span>
+                    <span>{t("components.form.edit_mode.in_filters")}</span>
                     <Checkbox
                         checked=Signal::derive(move || in_standard_filter.get())
-                        aria_label="En los filtros"
+                        aria_label=t("components.form.edit_mode.in_filters")
                         on_checked_change=Callback::new(move |checked: bool| {
                             in_standard_filter.set(checked);
                         })
@@ -386,7 +391,7 @@ pub(super) fn CreateFieldPanel(
                     size=ButtonSize::Sm
                     on:click=move |_| on_cancel.run(())
                 >
-                    "Cancelar"
+                    {t("common.cancel")}
                 </Button>
                 <Button
                     variant=ButtonVariant::Default
@@ -394,7 +399,7 @@ pub(super) fn CreateFieldPanel(
                     attr:disabled=move || saving.get()
                     on:click=move |_| create.run(())
                 >
-                    "Crear"
+                    {t("components.list.empty.create")}
                 </Button>
             </div>
         </div>

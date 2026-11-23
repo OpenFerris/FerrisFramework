@@ -10,6 +10,7 @@ use crate::api::types::{Assignment, Attachment, Share};
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
 use crate::components::views::user_identity::UserIdentity;
+use crate::i18n::{t, use_i18n};
 
 /// One row per assignee, with the button that removes the assignment.
 #[component]
@@ -34,7 +35,7 @@ pub(super) fn AssignmentsList(
                                         variant=ButtonVariant::Ghost
                                         size=ButtonSize::IconSm
                                         class="size-7 shrink-0 text-muted-foreground"
-                                        attr:aria-label="Quitar asignación"
+                                        attr:aria-label=t("components.form.sidebar.remove_assignment")
                                         on:click={
                                             let user = user.clone();
                                             move |_| on_remove.run(user.clone())
@@ -82,7 +83,7 @@ pub(super) fn AttachmentsList(
                                         variant=ButtonVariant::Ghost
                                         size=ButtonSize::IconSm
                                         class="size-7 shrink-0 text-muted-foreground"
-                                        attr:aria-label="Quitar adjunto"
+                                        attr:aria-label=t("components.form.sidebar.remove_attachment")
                                         on:click={
                                             let id = id.clone();
                                             move |_| on_remove.run(id.clone())
@@ -106,6 +107,7 @@ pub(super) fn SharesList(
     shares: RwSignal<Vec<Share>>,
     on_remove: Callback<String>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <Show when=move || !shares.get().is_empty()>
             <div class="flex flex-col gap-1.5">
@@ -117,11 +119,11 @@ pub(super) fn SharesList(
                             let user = share.user.clone();
                             let shown = user.clone();
                             let level = if share.write {
-                                "Puede editar"
+                                i18n.t("components.form.sidebar.can_edit")
                             } else if share.read {
-                                "Puede ver"
+                                i18n.t("components.form.sidebar.can_view")
                             } else {
-                                "—"
+                                "—".to_string()
                             };
                             view! {
                                 <div class="flex items-center justify-between gap-2 text-sm">
@@ -131,7 +133,7 @@ pub(super) fn SharesList(
                                         variant=ButtonVariant::Ghost
                                         size=ButtonSize::IconSm
                                         class="size-7 shrink-0 text-muted-foreground"
-                                        attr:aria-label="Quitar"
+                                        attr:aria-label=t("components.form.field.remove")
                                         on:click={
                                             let user = user.clone();
                                             move |_| on_remove.run(user.clone())
@@ -152,6 +154,7 @@ pub(super) fn SharesList(
 /// The document's tags as removable chips.
 #[component]
 pub(super) fn TagChips(tags: Memo<Vec<String>>, on_remove: Callback<String>) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <Show when=move || !tags.get().is_empty()>
             <div class="flex flex-wrap gap-1">
@@ -170,7 +173,10 @@ pub(super) fn TagChips(tags: Memo<Vec<String>>, on_remove: Callback<String>) -> 
                                     <button
                                         type="button"
                                         class="shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none max-md:-me-1 max-md:flex max-md:size-6 max-md:items-center max-md:justify-center"
-                                        aria-label=format!("Quitar etiqueta {}", tag)
+                                        aria-label=i18n.t_with(
+                                            "components.form.sidebar.remove_tag",
+                                            &[("tag", &tag)],
+                                        )
                                         on:click={
                                             let tag = tag.clone();
                                             move |_| on_remove.run(tag.clone())

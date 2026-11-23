@@ -142,8 +142,9 @@ pub(super) fn fresh_instance_id(existing: &[WidgetInstance], base: &str) -> Stri
 /// `category` (or an empty one) land in `Otros` always at the end, and the
 /// entries inside a group are ordered by `(owner, name)`. Each entry keeps its
 /// `owner` so the palette can badge which app provides it.
+pub(super) const UNGROUPED: &str = "views.dashboard.palette.others";
+
 pub(super) fn catalog_by_category(apps: &[AppUi]) -> Vec<(String, Vec<(String, WidgetDef)>)> {
-    const UNGROUPED: &str = "Otros";
     let mut named: std::collections::BTreeMap<String, Vec<(String, WidgetDef)>> =
         std::collections::BTreeMap::new();
     let mut untagged: Vec<(String, WidgetDef)> = Vec::new();
@@ -390,7 +391,7 @@ mod tests {
         let groups = catalog_by_category(&apps);
         assert_eq!(
             groups.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(),
-            ["Charts", "Metrics", "Otros"]
+            ["Charts", "Metrics", UNGROUPED]
         );
         assert_eq!(
             groups[0]

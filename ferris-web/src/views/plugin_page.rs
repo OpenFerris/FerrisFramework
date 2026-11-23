@@ -21,6 +21,7 @@ use leptos_router::hooks::use_location;
 use crate::components::ui::button::{Button, ButtonVariant};
 use crate::components::ui::icon::Icon;
 use crate::components::ui::skeleton::Skeleton;
+use crate::i18n::use_i18n;
 use crate::views::views_components::{EmptyState, Feedback, FeedbackKind};
 
 use crate::ext::{AppUi, Dashboard, UiCtx, WebsiteRoute};
@@ -33,10 +34,11 @@ use crate::views::DashboardGrid;
 pub fn PluginPage() -> impl IntoView {
     let ctx = expect_context::<UiCtx>();
     let location = use_location();
+    let i18n = use_i18n();
 
     view! {
         <div class="ferris-plugin-page h-full min-h-0">
-            {move || render_page(&ctx, &location.pathname.get())}
+            {move || render_page(&ctx, &location.pathname.get(), i18n)}
         </div>
     }
 }
@@ -68,7 +70,7 @@ fn resolve_page<'a>(apps: &'a [AppUi], path: &str) -> Page<'a> {
 }
 
 /// Build the view for [`resolve_page`]'s decision.
-fn render_page(ctx: &UiCtx, path: &str) -> AnyView {
+fn render_page(ctx: &UiCtx, path: &str, i18n: crate::i18n::I18n) -> AnyView {
     let apps = ctx.apps.get();
     if apps.is_empty() {
         // The feed has not landed, or it failed: a skeleton means "loading", an
@@ -78,7 +80,7 @@ fn render_page(ctx: &UiCtx, path: &str) -> AnyView {
         return ctx
             .error
             .get()
-            .map_or_else(placeholder, |message| feed_error(*ctx, message));
+            .map_or_else(placeholder, |message| feed_error(*ctx, message, i18n));
     }
     match resolve_page(&apps, path) {
         // Only possible with an empty feed, handled above; kept so the match
@@ -99,15 +101,15 @@ fn render_page(ctx: &UiCtx, path: &str) -> AnyView {
             <div class="p-4">
                 <EmptyState
                     icon="FileQuestion"
-                    title="Página no encontrada"
-                    description=format!("Ninguna app ha declarado una página en {path}.")
+                    title=i18n.t("error.not_found_title")
+                    description=i18n.t_with("views.plugin.not_found", &[("path", path)])
                 >
                     <A
                         href=crate::app::DESK_PATH
                         attr:class="inline-flex h-9 max-md:h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
                         <Icon name="House" class="size-4" />
-                        "Ir al escritorio"
+                        {i18n.t("views.common.go_to_desk")}
                     </A>
                 </EmptyState>
             </div>
@@ -118,7 +120,7 @@ fn render_page(ctx: &UiCtx, path: &str) -> AnyView {
 
 /// What a page shows when the app feed failed: the reason and a retry, instead
 /// of a loading skeleton that never ends.
-pub(crate) fn feed_error(ctx: UiCtx, message: String) -> AnyView {
+pub(crate) fn feed_error(ctx: UiCtx, message: String, i18n: crate::i18n::I18n) -> AnyView {
     view! {
         <div class="flex flex-col gap-3 p-4">
             <Feedback
@@ -126,7 +128,7 @@ pub(crate) fn feed_error(ctx: UiCtx, message: String) -> AnyView {
                 message=Signal::derive(move || Some(message.clone()))
             />
             <p class="text-sm text-muted-foreground">
-                "Esta página se apoya en el catálogo de extensiones de las apps."
+                {i18n.t("views.plugin.feed_error_body")}
             </p>
             <Button
                 variant=ButtonVariant::Outline
@@ -134,7 +136,7 @@ pub(crate) fn feed_error(ctx: UiCtx, message: String) -> AnyView {
                 on:click=move |_| ctx.refresh()
             >
                 <Icon name="RefreshCw" class="size-4" />
-                "Reintentar"
+                {i18n.t("views.common.retry")}
             </Button>
         </div>
     }
@@ -247,19 +249,27 @@ pub(crate) fn dashboard_view(owner: &str, dashboard: &Dashboard) -> AnyView {
 /// plugin's page component.
 fn website_view(owner: &str, route: &WebsiteRoute) -> impl IntoView {
     let ctx = expect_context::<UiCtx>();
+    let i18n = use_i18n();
     let anchor: NodeRef<leptos::html::Div> = NodeRef::new();
     let mounted_owner = owner.to_string();
     let mounted_route = route.clone();
+    let loading_text = i18n.t("common.loading");
 
     Effect::new(move |_| {
         #[cfg(target_arch = "wasm32")]
         {
             let apps = ctx.apps.get();
             crate::ext::loader::ensure_loaded(&apps);
-            mount_website(anchor.get(), &mounted_owner, &mounted_route, &apps);
+            mount_website(
+                anchor.get(),
+                &mounted_owner,
+                &mounted_route,
+                &apps,
+                &loading_text,
+            );
         }
         #[cfg(not(target_arch = "wasm32"))]
-        let _ = (anchor, ctx, &mounted_owner, &mounted_route);
+        let _ = (anchor, ctx, &mounted_owner, &mounted_route, &loading_text);
     });
 
     view! {
@@ -277,6 +287,7 @@ fn mount_website(
     owner: &str,
     route: &WebsiteRoute,
     apps: &[AppUi],
+    loading_text: &str,
 ) {
     let Some(anchor) = anchor else {
         return;
@@ -303,7 +314,9 @@ fn mount_website(
 
     // While the script travels, the page shows a line instead of a hole.
     if !defined && container.first_child().is_none() {
-        container.set_inner_html(r#"<div class="text-sm text-muted-foreground">Cargando…</div>"#);
+        container.set_inner_html(&format!(
+            r#"<div class="text-sm text-muted-foreground">{loading_text}</div>"#
+        ));
     }
 
     let route_path = route.path.clone();

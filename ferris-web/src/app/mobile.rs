@@ -17,6 +17,7 @@ use wasm_bindgen::JsCast;
 use crate::app::Workspace;
 use crate::desk::Sidebar;
 use crate::desk::session::{NotificationFeed, NotificationSettings};
+use crate::i18n::use_i18n;
 
 /// Where the per-device preferences are stored.
 pub const MOBILE_PREFS_STORAGE_KEY: &str = "ferris.mobile.preferences";
@@ -195,6 +196,7 @@ pub fn MobileSidebarDrawer(
     current_route: Memo<String>,
 ) -> impl IntoView {
     let prefs = use_mobile_prefs();
+    let i18n = use_i18n();
     // The drawer always renders the rail expanded: there is no room to fold a
     // 16rem rail inside an overlay, and opening the drawer is a request to see
     // the labels.
@@ -264,7 +266,7 @@ pub fn MobileSidebarDrawer(
                 data-name="MobileSidebarDrawer"
                 role="dialog"
                 aria-modal="true"
-                aria-label="Menú lateral"
+                aria-label=i18n.t("desk.drawer.label")
             >
                 <div
                     class="flex h-full w-[var(--sidebar-width)] flex-col bg-sidebar text-sidebar-foreground"
@@ -282,11 +284,11 @@ pub fn MobileSidebarDrawer(
                     }
                 >
                     <div class="flex shrink-0 items-center justify-between gap-2 border-b border-sidebar-border p-3">
-                        <span class="text-sm font-semibold">"Menú"</span>
+                        <span class="text-sm font-semibold">{i18n.t("desk.drawer.title")}</span>
                         <button
                             node_ref=close_ref
                             type="button"
-                            aria-label="Cerrar menú"
+                            aria-label=i18n.t("desk.drawer.close")
                             class="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                             on:click=move |_| open.set(false)
                         >

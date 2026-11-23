@@ -76,10 +76,30 @@ pub(super) fn param_to_field(param: &WidgetParam, instance: &WidgetInstance) -> 
 ///
 /// `hidden` parameters are dropped in both paths; their stored values are left
 /// untouched because they never enter the field list.
+#[cfg(test)]
 #[must_use]
 pub(in crate::views::dashboard) fn param_fields(
     defs: &[WidgetParam],
     instance: &WidgetInstance,
+) -> Vec<FormField> {
+    param_fields_with_section(defs, instance, "Ajustes")
+}
+
+/// Like `param_fields`, with the fallback section heading translated for the
+/// caller's locale.
+#[must_use]
+pub(in crate::views::dashboard) fn param_fields_with(
+    defs: &[WidgetParam],
+    instance: &WidgetInstance,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<FormField> {
+    param_fields_with_section(defs, instance, &i18n.t("views.dashboard.settings"))
+}
+
+fn param_fields_with_section(
+    defs: &[WidgetParam],
+    instance: &WidgetInstance,
+    default_section: &str,
 ) -> Vec<FormField> {
     let visible = || defs.iter().filter(|param| !param.hidden);
     if defs.iter().any(declares_layout) {
@@ -94,7 +114,7 @@ pub(in crate::views::dashboard) fn param_fields(
             .group
             .clone()
             .filter(|group| !group.is_empty())
-            .unwrap_or_else(|| "Ajustes".to_string());
+            .unwrap_or_else(|| default_section.to_string());
         if current.as_deref() != Some(group.as_str()) {
             fields.push(section_break(&group));
             current = Some(group);

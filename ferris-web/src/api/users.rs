@@ -277,10 +277,10 @@ pub fn cached_profile(id: &str) -> Option<Profile> {
 ///
 /// Falls back to the id itself: a missing, deleted or unauthorised user must not
 /// blank a provenance row.
-pub async fn display(id: &str) -> String {
+pub async fn display(id: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
     profile(id)
         .await
-        .map_or_else(|| fallback_label(id), |profile| profile.label)
+        .map_or_else(|| fallback_label(id, i18n), |profile| profile.label)
 }
 
 /// What to show when the user cannot be resolved.
@@ -288,7 +288,7 @@ pub async fn display(id: &str) -> String {
 /// A deleted or dangling id (an audit row whose user is gone) must not print a
 /// UUID: an email or a readable name is kept, an opaque id becomes a neutral
 /// label. The id stays in the tooltip, where it is useful and not in the way.
-fn fallback_label(id: &str) -> String {
+fn fallback_label(id: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
     let id = id.trim();
     if id.is_empty() {
         return String::new();
@@ -296,7 +296,7 @@ fn fallback_label(id: &str) -> String {
     if id.contains('@') || !ferris_web_shared::meta::is_opaque_name(id) {
         id.to_string()
     } else {
-        "Usuario desconocido".to_string()
+        i18n.t("components.user.unknown")
     }
 }
 

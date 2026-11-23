@@ -25,6 +25,7 @@ use crate::api::DynMeta;
 use crate::api::types::ConnectionGroup;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::separator::Separator;
+use crate::i18n::{t, use_i18n};
 use crate::views::services::form_service::{FormField, build_form_payload, strip_virtual_fields};
 
 /// The `DocType Action` buttons of the current DocType.
@@ -43,6 +44,7 @@ pub fn DocTypeActions(
     error: RwSignal<Option<String>>,
     reload: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let notice = RwSignal::new(None::<String>);
     view! {
         <Show when=move || {
@@ -50,7 +52,7 @@ pub fn DocTypeActions(
                 .is_some_and(|meta| meta.actions.iter().any(|action| !action.hidden))
         }>
             <section class="flex flex-col gap-2">
-                <h3 class="text-sm font-semibold">"Acciones"</h3>
+                <h3 class="text-sm font-semibold">{t("components.form.sidebar.actions")}</h3>
                 {move || {
                     meta.get()
                         .map(|meta| meta.actions)
@@ -58,6 +60,7 @@ pub fn DocTypeActions(
                         .into_iter()
                         .filter(|action| !action.hidden)
                         .map(|action| {
+                            let action_i18n = i18n;
                             let label = if action.label.is_empty() {
                                 action.action.clone()
                             } else {
@@ -88,6 +91,7 @@ pub fn DocTypeActions(
                                         on:click=move |_| {
                                             let method = method.clone();
                                             let invoked = invoked.clone();
+                                            let i18n = action_i18n;
                                             // The action sees what the user sees,
                                             // including unsaved edits (Frappe
                                             // passes the live document), but a
@@ -113,8 +117,9 @@ pub fn DocTypeActions(
                                                 match result {
                                                     Ok(_) => {
                                                         error.set(None);
-                                                        notice.set(Some(format!(
-                                                            "Acción «{invoked}» ejecutada."
+                                                        notice.set(Some(i18n.t_with(
+                                                            "components.form.action.ran",
+                                                            &[("label", &invoked)],
                                                         )));
                                                         reload.run(());
                                                     }
@@ -149,11 +154,12 @@ pub fn ConnectionsPanel(
     error: RwSignal<Option<String>>,
     modules: RwSignal<HashMap<String, String>>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <Show when=move || !connections.get().is_empty() || error.get().is_some()>
             <Separator />
             <section class="flex flex-col gap-2">
-                <h3 class="text-sm font-semibold">"Conexiones"</h3>
+                <h3 class="text-sm font-semibold">{t("components.form.sidebar.connections")}</h3>
                 <Show when=move || error.get().is_some()>
                     <p class="text-xs text-destructive">{move || error.get().unwrap_or_default()}</p>
                 </Show>
@@ -200,7 +206,13 @@ pub fn ConnectionsPanel(
                             view! {
                                 <div class="flex flex-col gap-1">
                                     <p class="text-xs text-muted-foreground">
-                                        {format!("{heading} ({count})")}
+                                        {i18n.t_with(
+                                            "components.form.sidebar.connections_group",
+                                            &[
+                                                ("heading", &heading),
+                                                ("count", &count.to_string()),
+                                            ],
+                                        )}
                                     </p>
                                     {documents}
                                 </div>

@@ -18,30 +18,34 @@ use super::menu::FormMenuAction;
 
 /// The form's actions, in Frappe's page-head order: the primary action first,
 /// then the record navigation, then the "⋯" menu.
-pub(super) fn form_actions(svc: &FormService, actions: &FormActions) -> Vec<TopBarAction> {
+pub(super) fn form_actions(
+    svc: &FormService,
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<TopBarAction> {
     // The layout editor is not a document: there is no state to submit, no
     // neighbour to walk to and nothing to delete, so the whole document bar is
     // replaced instead of being built and then disabled.
     if svc.layout_mode.get() {
-        return layout_actions(svc, actions);
+        return layout_actions(svc, actions, i18n);
     }
 
     let mut out = Vec::new();
 
-    if let Some(spec) = primary_action(svc, actions) {
+    if let Some(spec) = primary_action(svc, actions, i18n) {
         out.push(TopBarAction::Button(spec));
     }
 
     // Frappe hides navigation for a new document and for a Single.
     if !svc.is_new.get() && !svc.is_single.get() {
-        out.extend(navigation(svc, actions));
+        out.extend(navigation(svc, actions, i18n));
     }
 
     // A new document has nothing to act on yet: Frappe hides the menu too, and
     // a layout edit of a form that has not been saved is not a workflow this
     // bar offers.
     if !svc.is_new.get() {
-        out.push(TopBarAction::Dropdown(menu_spec(svc, actions)));
+        out.push(TopBarAction::Dropdown(menu_spec(svc, actions, i18n)));
     }
 
     out
@@ -56,14 +60,18 @@ pub(super) fn form_actions(svc: &FormService, actions: &FormActions) -> Vec<TopB
 ///
 /// They are also **only** here: the stacks are the editor's session (see
 /// [`FormService::can_undo`]), so the document view renders neither of them.
-fn layout_actions(svc: &FormService, actions: &FormActions) -> Vec<TopBarAction> {
-    layout_history_buttons(svc, actions)
+fn layout_actions(
+    svc: &FormService,
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<TopBarAction> {
+    layout_history_buttons(svc, actions, i18n)
         .into_iter()
         .chain(std::iter::once(TopBarAction::Dropdown(DropdownSpec {
             label: String::new(),
-            aria_label: Some("Más".to_string()),
+            aria_label: Some(i18n.t("components.form.menu.more")),
             icon: Some("ellipsis"),
-            items: edit_mode_items(actions),
+            items: edit_mode_items(actions, i18n),
             selectable: false,
         })))
         .collect()
@@ -75,7 +83,11 @@ fn layout_actions(svc: &FormService, actions: &FormActions) -> Vec<TopBarAction>
 /// touches customization writes, never the document. Both are always drawn in
 /// the editor (disabled while there is nothing to undo) so the controls do not
 /// appear and disappear as the user edits.
-fn layout_history_buttons(svc: &FormService, actions: &FormActions) -> Vec<TopBarAction> {
+fn layout_history_buttons(
+    svc: &FormService,
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<TopBarAction> {
     // Tracked reads: the bar's spec effect re-runs when a stack moves, which is
     // what flips the disabled state after an edit, an undo or a redo.
     let in_session = svc.layout_mode.get();
@@ -86,13 +98,13 @@ fn layout_history_buttons(svc: &FormService, actions: &FormActions) -> Vec<TopBa
         (
             can_undo,
             "rotate-ccw",
-            "Deshacer cambio de diseño",
+            i18n.t("components.form.layout.undo"),
             actions.undo,
         ),
         (
             can_redo,
             "rotate-cw",
-            "Rehacer cambio de diseño",
+            i18n.t("components.form.layout.redo"),
             actions.redo,
         ),
     ]
@@ -117,30 +129,46 @@ fn layout_history_buttons(svc: &FormService, actions: &FormActions) -> Vec<TopBa
 /// draft that is *clean* offers "Enviar", and the moment it is edited the same
 /// slot flips to "Guardar", because a dirty document cannot be submitted. That
 /// flip is what stops a submit from silently dropping unsaved edits.
-fn primary_action(svc: &FormService, actions: &FormActions) -> Option<ButtonSpec> {
+fn primary_action(
+    svc: &FormService,
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Option<ButtonSpec> {
     let status = svc.docstatus.get();
     let dirty = svc.dirty.get();
     let is_new = svc.is_new.get();
     let saving = svc.saving.get();
     let submittable = svc.is_submittable.get();
 
-    let (label, icon, on_click): (&str, Option<&'static str>, Callback<()>) =
+    let (label, icon, on_click): (String, Option<&'static str>, Callback<()>) =
         if submittable && status == 0 && !is_new && !dirty {
-            ("Enviar", None, actions.submit)
+            (
+                i18n.t("components.form.action.submit"),
+                None,
+                actions.submit,
+            )
         } else if status == 0 {
-            ("Guardar", None, actions.save)
+            (i18n.t("common.save"), None, actions.save)
         } else if status == 1 && submittable && dirty {
-            ("Actualizar", Some("pencil"), actions.save)
+            (
+                i18n.t("components.form.action.update"),
+                Some("pencil"),
+                actions.save,
+            )
         } else if status == 1 && svc.allow_cancel.get() {
-            ("Cancelar", None, actions.cancel)
+            (
+                i18n.t("components.form.action.cancel"),
+                None,
+                actions.cancel,
+            )
         } else if status == 2 && svc.allow_amend.get() {
-            ("Amendar", None, actions.amend)
+            (i18n.t("components.form.action.amend"), None, actions.amend)
         } else {
             return None;
         };
 
     Some(ButtonSpec {
-        label: label.to_string(),
+        label,
         aria_label: None,
         icon,
         variant: ButtonVariant::Default,
@@ -154,20 +182,24 @@ fn primary_action(svc: &FormService, actions: &FormActions) -> Option<ButtonSpec
 /// Frappe's record navigation: icon-only prev/next, disabled when there is no
 /// neighbour (an only document, or the end of the list). The click resolves the
 /// neighbour itself, so the button always walks the current ones.
-fn navigation(svc: &FormService, actions: &FormActions) -> Vec<TopBarAction> {
+fn navigation(
+    svc: &FormService,
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<TopBarAction> {
     let neighbors = svc.neighbors.get();
 
     [
         (
             neighbors.prev.is_none(),
             "chevron-left",
-            "Documento anterior",
+            i18n.t("components.form.nav.previous"),
             actions.prev,
         ),
         (
             neighbors.next.is_none(),
             "chevron-right",
-            "Documento siguiente",
+            i18n.t("components.form.nav.next"),
             actions.next,
         ),
     ]
@@ -186,12 +218,16 @@ fn navigation(svc: &FormService, actions: &FormActions) -> Vec<TopBarAction> {
 }
 
 /// The "⋯" menu.
-fn menu_spec(svc: &FormService, actions: &FormActions) -> DropdownSpec {
+fn menu_spec(
+    svc: &FormService,
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> DropdownSpec {
     DropdownSpec {
         label: String::new(),
-        aria_label: Some("Más".to_string()),
+        aria_label: Some(i18n.t("components.form.menu.more")),
         icon: Some("ellipsis"),
-        items: menu_items(svc, actions),
+        items: menu_items(svc, actions, i18n),
         selectable: false,
     }
 }
@@ -204,20 +240,39 @@ fn menu_spec(svc: &FormService, actions: &FormActions) -> DropdownSpec {
 /// which used to be a card between the bar and the fields), how the edit leaves
 /// the machine (fixtures) and how the user leaves the mode. Undo/redo are
 /// buttons in the bar itself, not rows here.
-fn edit_mode_items(actions: &FormActions) -> Vec<DropdownItem> {
+fn edit_mode_items(
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<DropdownItem> {
     vec![
-        DropdownItem::action("Ajustes del DocType", actions.doc_settings).with_icon("settings-2"),
+        DropdownItem::action(
+            i18n.t("components.form.menu.doctype_settings"),
+            actions.doc_settings,
+        )
+        .with_icon("settings-2"),
         DropdownItem::separator(),
-        DropdownItem::action("Exportar fixtures", actions.export).with_icon("download"),
+        DropdownItem::action(
+            i18n.t("components.form.menu.export_fixtures"),
+            actions.export,
+        )
+        .with_icon("download"),
         DropdownItem::separator(),
-        DropdownItem::action("Salir del editor de diseño", actions.exit_edit).with_icon("log-out"),
+        DropdownItem::action(
+            i18n.t("components.form.menu.exit_layout"),
+            actions.exit_edit,
+        )
+        .with_icon("log-out"),
     ]
 }
 
 /// The "⋯" menu entries, grouped with dividers the way Frappe groups its own.
-fn menu_items(svc: &FormService, actions: &FormActions) -> Vec<DropdownItem> {
+fn menu_items(
+    svc: &FormService,
+    actions: &FormActions,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> Vec<DropdownItem> {
     if svc.editing.get() {
-        return edit_mode_items(actions);
+        return edit_mode_items(actions, i18n);
     }
 
     let (is_single, is_new, ds) = (svc.is_single.get(), svc.is_new.get(), svc.docstatus.get());
@@ -225,31 +280,43 @@ fn menu_items(svc: &FormService, actions: &FormActions) -> Vec<DropdownItem> {
     let mut items = Vec::new();
 
     // Toggle the static form sidebar.
-    items.push(DropdownItem::action("Barra lateral", actions.sidebar).with_icon("panel-right"));
+    items.push(
+        DropdownItem::action(i18n.t("components.form.menu.sidebar"), actions.sidebar)
+            .with_icon("panel-right"),
+    );
 
     // Rename is a real engine operation (`allow_rename` + `Write`, validated in
     // `ferris-document`), so the entry is offered exactly when the DocType
     // permits it.
     if svc.allow_rename.get() {
-        items.push(DropdownItem::action("Renombrar", actions.rename).with_icon("pencil"));
+        items.push(
+            DropdownItem::action(i18n.t("components.form.menu.rename"), actions.rename)
+                .with_icon("pencil"),
+        );
     }
 
     // Not backed by the backend yet: shown inert and named, so the menu never
     // offers a click that does nothing.
     items.push(
-        DropdownItem::action("Email (no disponible)", actions.inert)
-            .with_icon("mail")
-            .disabled(),
+        DropdownItem::action(
+            i18n.t("components.form.menu.email_unavailable"),
+            actions.inert,
+        )
+        .with_icon("mail")
+        .disabled(),
     );
 
     // Reload from the source of truth.
-    items.push(DropdownItem::action("Recargar", actions.reload).with_icon("refresh-cw"));
+    items.push(
+        DropdownItem::action(i18n.t("components.form.menu.reload"), actions.reload)
+            .with_icon("refresh-cw"),
+    );
 
     // Delete, gated on the doctype's own permission and on the document being a
     // draft (a submitted document is cancelled, not deleted).
     if !is_single && !is_new && svc.allow_delete.get() && ds == 0 {
         items.push(
-            DropdownItem::action("Eliminar", actions.delete)
+            DropdownItem::action(i18n.t("components.form.menu.delete"), actions.delete)
                 .with_icon("trash")
                 .destructive(),
         );
@@ -257,14 +324,23 @@ fn menu_items(svc: &FormService, actions: &FormActions) -> Vec<DropdownItem> {
 
     // Duplicate, gated like the list view's own create affordance.
     if !is_single && !is_new && svc.allow_copy.get() && ds == 0 {
-        items.push(DropdownItem::action("Duplicar", actions.duplicate).with_icon("copy"));
+        items.push(
+            DropdownItem::action(i18n.t("components.form.menu.duplicate"), actions.duplicate)
+                .with_icon("copy"),
+        );
     }
 
     // New document of this doctype (a Single has exactly one).
     if !is_single {
         items.push(
-            DropdownItem::action(format!("Nuevo {}", svc.doctype.get()), actions.new_doc)
-                .with_icon("plus"),
+            DropdownItem::action(
+                i18n.t_with(
+                    "components.form.menu.new_doctype",
+                    &[("doctype", &svc.doctype.get())],
+                ),
+                actions.new_doc,
+            )
+            .with_icon("plus"),
         );
     }
 
@@ -272,18 +348,33 @@ fn menu_items(svc: &FormService, actions: &FormActions) -> Vec<DropdownItem> {
 
     // Jump to a field: Frappe opens a picker dialog for this, and so do we (the
     // shared menu model has no nested submenu).
-    items.push(DropdownItem::action("Ir a campo", actions.jump).with_icon("list"));
+    items.push(
+        DropdownItem::action(i18n.t("components.form.menu.jump_to_field"), actions.jump)
+            .with_icon("list"),
+    );
 
     // Show the linked documents in a dialog.
-    items.push(DropdownItem::action("Mostrar vínculos", actions.links).with_icon("link"));
+    items.push(
+        DropdownItem::action(
+            i18n.t("components.form.menu.linked_documents"),
+            actions.links,
+        )
+        .with_icon("link"),
+    );
 
     // Copy the document as JSON.
-    items.push(DropdownItem::action("Copiar al portapapeles", actions.copy_doc).with_icon("copy"));
+    items.push(
+        DropdownItem::action(i18n.t("components.form.menu.copy_json"), actions.copy_doc)
+            .with_icon("copy"),
+    );
 
     items.push(
-        DropdownItem::action("Recordarme (no disponible)", actions.inert)
-            .with_icon("bell")
-            .disabled(),
+        DropdownItem::action(
+            i18n.t("components.form.menu.remember_unavailable"),
+            actions.inert,
+        )
+        .with_icon("bell")
+        .disabled(),
     );
 
     items.push(DropdownItem::separator());
@@ -298,7 +389,7 @@ fn menu_items(svc: &FormService, actions: &FormActions) -> Vec<DropdownItem> {
     // "Ajustes" row navigated to the global `/settings` page, which is where a
     // user looking for form layout never found it.
     items.push(
-        DropdownItem::action("Diseño del formulario", actions.layout_route)
+        DropdownItem::action(i18n.t("components.form.menu.layout"), actions.layout_route)
             .with_icon("layout-panel-left"),
     );
 
@@ -314,9 +405,12 @@ fn menu_items(svc: &FormService, actions: &FormActions) -> Vec<DropdownItem> {
 
     // Not backed by the backend yet.
     items.push(
-        DropdownItem::action("Documentación (no disponible)", actions.inert)
-            .with_icon("book-open")
-            .disabled(),
+        DropdownItem::action(
+            i18n.t("components.form.menu.docs_unavailable"),
+            actions.inert,
+        )
+        .with_icon("book-open")
+        .disabled(),
     );
 
     items
@@ -357,14 +451,31 @@ fn declared_item(action: FormMenuAction, index: usize, actions: &FormActions) ->
 /// `No guardado` wins over the stored `docstatus` while the form holds unsaved
 /// changes (or is a not-yet-saved new document); otherwise the document's place
 /// in its workflow is shown.
-pub(super) fn status_of(docstatus: i64, dirty: bool, is_new: bool) -> (&'static str, BadgeVariant) {
+pub(super) fn status_of(
+    docstatus: i64,
+    dirty: bool,
+    is_new: bool,
+    i18n: &(impl crate::i18n::Translate + Sync),
+) -> (String, BadgeVariant) {
     if dirty || (is_new && docstatus == 0) {
-        return ("No guardado", BadgeVariant::Warning);
+        return (
+            i18n.t("components.form.status.unsaved"),
+            BadgeVariant::Warning,
+        );
     }
     match docstatus {
-        1 => ("Enviado", BadgeVariant::Success),
-        2 => ("Cancelado", BadgeVariant::Destructive),
-        _ => ("Borrador", BadgeVariant::Secondary),
+        1 => (
+            i18n.t("components.list.status.submitted"),
+            BadgeVariant::Success,
+        ),
+        2 => (
+            i18n.t("components.list.status.cancelled"),
+            BadgeVariant::Destructive,
+        ),
+        _ => (
+            i18n.t("components.list.status.draft"),
+            BadgeVariant::Secondary,
+        ),
     }
 }
 
