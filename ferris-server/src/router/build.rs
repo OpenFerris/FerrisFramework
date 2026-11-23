@@ -337,7 +337,10 @@ pub fn build_router(
             .with_features(settings.config.features.clone())
             // Native modules contribute their documented paths from the same
             // registry the router is built from.
-            .with_openapi_fragments(modules.openapi_fragments()),
+            .with_openapi_fragments(modules.openapi_fragments())
+            // Metadata endpoints project registry labels; they translate
+            // against the same catalogue set the Desk shell negotiates.
+            .with_i18n(settings.i18n.clone()),
         auth: auth_state.clone(),
         session: session_handlers.clone(),
         oauth: oauth_state,

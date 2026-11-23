@@ -28,6 +28,7 @@ use leptos_router::hooks::use_params_map;
 use serde_json::Value;
 
 use crate::api::{self, DocStore, ListParams};
+use crate::app::doctype_display;
 use crate::components::ui::badge::{Badge, BadgeSize, BadgeVariant};
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::card::Card;
@@ -230,7 +231,7 @@ pub fn KanbanView() -> impl IntoView {
         <div class="mx-auto flex h-full min-h-0 w-full min-w-0 flex-col gap-4 p-4">
             {move || view! {
                 <PageHeader
-                    title=doctype.get()
+                    title=doctype_display(&doctype.get())
                     description=tr("views.kanban.description")
                 />
             }}

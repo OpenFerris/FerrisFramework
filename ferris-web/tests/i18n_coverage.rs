@@ -65,6 +65,7 @@ fn add_catalog(dir: &Path, locale: &str, keys: &mut BTreeSet<String>) {
         format!("{locale}.desk.toml"),
         format!("{locale}.components.toml"),
         format!("{locale}.ui.toml"),
+        format!("{locale}.meta.toml"),
     ] {
         let path = dir.join(file);
         assert!(path.is_file(), "missing catalogue {}", path.display());

@@ -14,6 +14,7 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::api::drive;
+use crate::app::{doctype_display, module_display};
 use crate::components::ui::icon::Icon;
 use crate::desk::session::{self as desk_session, DeskSearchHit};
 use crate::i18n::{DeskI18n, use_i18n};
@@ -177,7 +178,11 @@ pub fn GlobalSearch(open: RwSignal<bool>, query: RwSignal<String>) -> impl IntoV
             out.push(Item {
                 label: label.clone(),
                 route: hit.route.clone(),
-                subtitle: format!("{} · {}", hit.module, hit.doctype),
+                subtitle: format!(
+                    "{} · {}",
+                    module_display(&hit.module),
+                    doctype_display(&hit.doctype)
+                ),
                 favorite: favs.iter().any(|f| f.route == hit.route),
                 group: "desk.search.group.results",
                 saved: SavedEntry {

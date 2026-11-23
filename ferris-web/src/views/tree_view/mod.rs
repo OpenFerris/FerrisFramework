@@ -27,6 +27,7 @@ use serde_json::Value;
 
 use crate::api::hooks::use_persisted_view_state;
 use crate::api::{self, DocStore, ListParams};
+use crate::app::doctype_display;
 use crate::components::ui::badge::{Badge, BadgeSize, BadgeVariant};
 use crate::components::ui::card::{Card, CardContent};
 use crate::components::ui::icon::Icon;
@@ -255,7 +256,7 @@ pub fn TreeView() -> impl IntoView {
         <div class="mx-auto flex h-full min-h-0 w-full min-w-0 flex-col gap-4 p-4">
             {move || view! {
                 <PageHeader
-                    title=doctype_value()
+                    title=doctype_display(&doctype_value())
                     description=tr("views.tree.description")
                 >
                     <div class="flex w-full min-w-0 items-center gap-2 sm:w-auto">

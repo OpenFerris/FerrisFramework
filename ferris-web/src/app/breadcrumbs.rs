@@ -29,6 +29,7 @@
 //! document names keep the casing they were given, and `Kanban` stays as it is
 //! (it names the board, not a translated concept).
 
+use crate::app::NavLabels;
 use crate::components::ui::breadcrumb::Crumb;
 #[cfg(test)]
 use crate::i18n::DeskI18n;
@@ -36,7 +37,11 @@ use crate::views::services::form_service::LAYOUT_SEGMENT;
 use ferris_web_shared::route::percent_decode;
 
 /// The trail for `path`, in reading order.
-pub(super) fn trail(path: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> Vec<Crumb> {
+pub(super) fn trail(
+    path: &str,
+    i18n: &(impl crate::i18n::Translate + Sync),
+    labels: &NavLabels,
+) -> Vec<Crumb> {
     let segments: Vec<&str> = path
         .split('/')
         .filter(|segment| !segment.is_empty())
@@ -44,28 +49,30 @@ pub(super) fn trail(path: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> 
     let home = i18n.t("nav.desk");
 
     match segments.as_slice() {
-        ["desk", module, doctype] => {
-            vec![link(&home, "/desk"), plain(module), current(doctype)]
-        }
+        ["desk", module, doctype] => vec![
+            link(&home, "/desk"),
+            plain(labels.module(module)),
+            current(labels.doctype(doctype)),
+        ],
         ["desk", module, doctype, LAYOUT_SEGMENT] => vec![
             link(&home, "/desk"),
-            plain(module),
+            plain(labels.module(module)),
             // The list is a real page and the way out of the editor, so it is
             // the one link in the tail. `/desk/<module>` has no page at all and
             // the mode segment is the page itself.
-            link(doctype, format!("/desk/{module}/{doctype}")),
+            link(labels.doctype(doctype), format!("/desk/{module}/{doctype}")),
             current(&i18n.t("desk.breadcrumb.layout")),
         ],
         ["desk", module, doctype, name] if collection_key(name).is_some() => vec![
             link(&home, "/desk"),
-            plain(module),
-            link(doctype, format!("/desk/{module}/{doctype}")),
+            plain(labels.module(module)),
+            link(labels.doctype(doctype), format!("/desk/{module}/{doctype}")),
             current(&i18n.t(collection_key(name).unwrap_or_default())),
         ],
         ["desk", module, doctype, name] => vec![
             link(&home, "/desk"),
-            plain(module),
-            link(doctype, format!("/desk/{module}/{doctype}")),
+            plain(labels.module(module)),
+            link(labels.doctype(doctype), format!("/desk/{module}/{doctype}")),
             // `new` is the route marker for an unsaved document, not a record
             // called "new": the trail is chrome, so it reads "Nuevo" (the
             // mobile header prefixes the DocType to it: "Task · Nuevo").
@@ -76,9 +83,18 @@ pub(super) fn trail(path: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> 
             },
         ],
         ["report", name] => vec![plain(&i18n.t("desk.breadcrumb.report")), current(name)],
-        ["kanban", doctype] => vec![plain(&i18n.t("desk.breadcrumb.kanban")), current(doctype)],
-        ["tree", doctype] => vec![plain(&i18n.t("desk.breadcrumb.tree")), current(doctype)],
-        ["gantt", doctype] => vec![plain(&i18n.t("desk.breadcrumb.gantt")), current(doctype)],
+        ["kanban", doctype] => vec![
+            plain(&i18n.t("desk.breadcrumb.kanban")),
+            current(labels.doctype(doctype)),
+        ],
+        ["tree", doctype] => vec![
+            plain(&i18n.t("desk.breadcrumb.tree")),
+            current(labels.doctype(doctype)),
+        ],
+        ["gantt", doctype] => vec![
+            plain(&i18n.t("desk.breadcrumb.gantt")),
+            current(labels.doctype(doctype)),
+        ],
         ["calendar"] => vec![current(&i18n.t("desk.breadcrumb.calendar"))],
         ["settings"] => vec![current(&i18n.t("nav.settings"))],
         ["settings", rest @ ..] => vec![
@@ -207,7 +223,7 @@ mod tests {
     /// The list view: home link, module label, doctype as the current page.
     #[test]
     fn a_list_route_ends_on_the_doctype_and_the_module_is_not_a_link() {
-        let crumbs = trail("/desk/Users/User", &es());
+        let crumbs = trail("/desk/Users/User", &es(), &NavLabels::default());
         assert_eq!(labels(&crumbs), ["Escritorio", "Users", "User"]);
         assert_eq!(hrefs(&crumbs), [Some("/desk"), None, None]);
         assert!(crumbs[2].is_current);
@@ -218,7 +234,11 @@ mod tests {
     /// is the current page.
     #[test]
     fn a_form_route_links_the_doctype_list_and_ends_on_the_name() {
-        let crumbs = trail("/desk/Users/User/Administrator", &es());
+        let crumbs = trail(
+            "/desk/Users/User/Administrator",
+            &es(),
+            &NavLabels::default(),
+        );
         assert_eq!(
             labels(&crumbs),
             ["Escritorio", "Users", "User", "Administrator"]
@@ -234,7 +254,7 @@ mod tests {
     /// "new": the trail is chrome and reads "Nuevo".
     #[test]
     fn the_new_document_marker_is_labelled() {
-        let crumbs = trail("/desk/Users/User/new", &es());
+        let crumbs = trail("/desk/Users/User/new", &es(), &NavLabels::default());
         assert_eq!(labels(&crumbs), ["Escritorio", "Users", "User", "Nuevo"]);
         assert!(crumbs[3].is_current);
         assert_eq!(crumbs[2].href.as_deref(), Some("/desk/Users/User"));
@@ -245,7 +265,7 @@ mod tests {
     /// (the desk home and the DocType's list).
     #[test]
     fn the_layout_route_ends_on_the_layout_label() {
-        let crumbs = trail("/desk/Users/User/layout", &es());
+        let crumbs = trail("/desk/Users/User/layout", &es(), &NavLabels::default());
         assert_eq!(labels(&crumbs), ["Escritorio", "Users", "User", "Diseño"]);
         assert_eq!(
             hrefs(&crumbs),
@@ -266,7 +286,11 @@ mod tests {
             ("gantt", "Gantt"),
             ("report", "Informe"),
         ] {
-            let crumbs = trail(&format!("/desk/Support/Task/{segment}"), &es());
+            let crumbs = trail(
+                &format!("/desk/Support/Task/{segment}"),
+                &es(),
+                &NavLabels::default(),
+            );
             assert_eq!(
                 labels(&crumbs),
                 ["Escritorio", "Support", "Task", label],
@@ -285,7 +309,10 @@ mod tests {
     #[test]
     fn dashboards_and_plugin_pages_have_no_trail() {
         for path in ["/", "/desk", "/planta", "/app/ops-overview", "/status"] {
-            assert!(trail(path, &es()).is_empty(), "{path} should have no trail");
+            assert!(
+                trail(path, &es(), &NavLabels::default()).is_empty(),
+                "{path} should have no trail"
+            );
         }
     }
 
@@ -293,28 +320,32 @@ mod tests {
     /// label because there is no section index route to link to.
     #[test]
     fn section_routes_label_the_section_and_end_on_the_item() {
-        let report = trail("/report/ops", &es());
+        let report = trail("/report/ops", &es(), &NavLabels::default());
         assert_eq!(labels(&report), ["Informe", "Ops"]);
         assert_eq!(hrefs(&report), [None, None]);
         assert!(report[1].is_current);
 
-        let kanban = trail("/kanban/Task", &es());
+        let kanban = trail("/kanban/Task", &es(), &NavLabels::default());
         assert_eq!(labels(&kanban), ["Kanban", "Task"]);
         assert!(kanban[1].is_current);
 
-        let settings = trail("/settings/general", &es());
+        let settings = trail("/settings/general", &es(), &NavLabels::default());
         assert_eq!(labels(&settings), ["Ajustes", "General"]);
         assert!(settings[1].is_current);
         assert_eq!(
-            labels(&trail("/settings/security", &es())),
+            labels(&trail("/settings/security", &es(), &NavLabels::default())),
             ["Ajustes", "Seguridad"]
         );
         assert_eq!(
-            labels(&trail("/settings/permissions", &es())),
+            labels(&trail(
+                "/settings/permissions",
+                &es(),
+                &NavLabels::default()
+            )),
             ["Ajustes", "Permisos"]
         );
 
-        let calendar = trail("/calendar", &es());
+        let calendar = trail("/calendar", &es(), &NavLabels::default());
         assert_eq!(labels(&calendar), ["Calendario"]);
         assert!(calendar[0].is_current);
     }
@@ -323,7 +354,7 @@ mod tests {
     /// would turn `CRM` into `Crm` and `TASK-0001` into `Task 0001`.
     #[test]
     fn labels_keep_their_own_casing() {
-        let crumbs = trail("/desk/Support/CRM/TASK-0001", &es());
+        let crumbs = trail("/desk/Support/CRM/TASK-0001", &es(), &NavLabels::default());
         assert_eq!(
             labels(&crumbs),
             ["Escritorio", "Support", "CRM", "TASK-0001"]
@@ -334,7 +365,11 @@ mod tests {
     /// written (`ada@example.com`, not `ada%40example.com`).
     #[test]
     fn percent_encoded_segments_are_decoded() {
-        let crumbs = trail("/desk/Users/User/ada%40example.com", &es());
+        let crumbs = trail(
+            "/desk/Users/User/ada%40example.com",
+            &es(),
+            &NavLabels::default(),
+        );
         assert_eq!(
             labels(&crumbs),
             ["Escritorio", "Users", "User", "Ada@example.com"]

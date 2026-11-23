@@ -27,6 +27,7 @@ use leptos_router::hooks::{use_navigate, use_params_map};
 use serde_json::Value;
 
 use crate::api::{self, DocStore, Filter, FilterOp, ListParams};
+use crate::app::doctype_display;
 use crate::components::ui::badge::{Badge, BadgeSize, BadgeVariant};
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::card::{Card, CardContent};
@@ -405,11 +406,11 @@ pub fn CalendarView() -> impl IntoView {
                                     let list = doctypes.get();
                                     let mut views: Vec<AnyView> = Vec::new();
                                     if !current.is_empty() && !list.contains(&current) {
-                                        let label = current.clone();
+                                        let label = doctype_display(&current);
                                         views.push(view! { <option value=current>{label}</option> }.into_any());
                                     }
                                     views.extend(list.into_iter().map(|name| {
-                                        let label = name.clone();
+                                        let label = doctype_display(&name);
                                         view! { <option value=name>{label}</option> }.into_any()
                                     }));
                                     views.into_iter().collect_view()

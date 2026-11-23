@@ -20,6 +20,7 @@ use serde_json::Value;
 
 use crate::api::types::filters_json;
 use crate::api::{self, DocStore, Filter, FilterOp, ListParams};
+use crate::app::doctype_display;
 use crate::components::ui::badge::{Badge, BadgeVariant};
 use crate::components::ui::card::{Card, CardContent, CardDescription, CardHeader, CardTitle};
 use crate::components::ui::table as t;
@@ -165,7 +166,7 @@ pub fn ReportView() -> impl IntoView {
         <div class="flex h-full flex-col gap-4 overflow-y-auto p-4">
             {move || view! {
                 <PageHeader
-                    title=doctype()
+                    title=doctype_display(&doctype())
                     description=tr("views.report.description")
                 />
             }}

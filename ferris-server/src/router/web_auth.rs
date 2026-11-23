@@ -265,6 +265,11 @@ pub(super) fn provide_desk_context(pool: Db, i18n: &I18n) {
         .map(|locale| locale.as_str().to_string())
         .collect();
     provide_context(DeskI18n::from_catalog(locale.as_str(), &catalog).with_supported(supported));
+    // The SSR bridge reads these to project metadata (DocType/field/workspace
+    // labels) in the same language as the shell, so the server-rendered page
+    // and the hydrated one agree on every label.
+    provide_context(i18n.clone());
+    provide_context(locale.clone());
 
     match identity {
         Some(identity) => {

@@ -16,6 +16,7 @@ use leptos::prelude::*;
 use crate::api;
 use crate::api::DocStore;
 use crate::api::types::PermissionMatrix;
+use crate::app::doctype_display;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::card::{Card, CardContent, CardDescription, CardHeader, CardTitle};
 use crate::components::ui::checkbox::Checkbox;
@@ -131,7 +132,7 @@ pub fn CustomPermissionManager() -> impl IntoView {
                                     .get()
                                     .into_iter()
                                     .map(|name| {
-                                        let label = name.clone();
+                                        let label = doctype_display(&name);
                                         view! { <option value=name>{label}</option> }
                                     })
                                     .collect_view()

@@ -33,12 +33,14 @@ use self::mobile::{MobileSidebarDrawer, bottom_nav_visible, unread_count};
 
 mod announcement;
 mod breadcrumbs;
+pub mod labels;
 pub mod mobile;
 mod routes;
 mod state;
 
 use self::routes::DeskRoutes;
 
+pub use labels::{NavLabels, doctype_display, module_display};
 pub use mobile::{MobilePrefs, MobilePrefsCtx, provide_mobile_prefs, use_mobile_prefs};
 pub(crate) use state::refresh_notifications;
 pub use state::{Workspace, WorkspaceItem, WorkspaceItemKind};
@@ -465,7 +467,12 @@ pub fn DeskApp() -> impl IntoView {
             <TopBar
                 // The app builds the trail; the signal keeps it following navigation.
                 breadcrumbs=Signal::derive(move || {
-                    breadcrumb_i18n.with_value(|i| breadcrumbs::trail(&location.pathname.get(), i))
+                    // The navigation labels are the server-translated names; the
+                    // signal read keeps the trail in step with the layout load.
+                    let labels = workspaces.with(|workspaces| NavLabels::from_workspaces(workspaces));
+                    breadcrumb_i18n.with_value(|i| {
+                        breadcrumbs::trail(&location.pathname.get(), i, &labels)
+                    })
                 })
                 leading=view! {
                     <Show when=move || form_chrome.get()>
