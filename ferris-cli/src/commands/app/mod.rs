@@ -128,7 +128,7 @@ fn install_package(catalogue: &SiteManager, source: &Path, name: Option<&str>) -
                     .collect::<Vec<_>>()
             })
         });
-        let tags = locales::validate(source, declared.as_deref())?;
+        let tags = super::app_catalogues::validate(source, declared.as_deref())?;
         if !tags.is_empty() {
             tracing::info!("Package ships catalogues for: {}", tags.join(", "));
         }
@@ -594,8 +594,6 @@ fn write_array(doc: &mut DocumentMut, names: &[String]) -> Result<()> {
     table["enabled"] = toml_edit::value(array);
     Ok(())
 }
-
-pub(in crate::commands) mod locales;
 
 fn save(path: &Path, doc: &DocumentMut) -> Result<()> {
     fs::write(path, doc.to_string()).with_context(|| format!("cannot write {}", path.display()))

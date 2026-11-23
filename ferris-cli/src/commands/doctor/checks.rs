@@ -57,7 +57,7 @@ pub(super) fn check_locales(bench_root: &Path) -> HealthCheck {
             .collect();
         apps.sort_by_key(std::fs::DirEntry::file_name);
         for app in apps {
-            match crate::commands::app::locales::validate(&app.path(), None) {
+            match crate::commands::app_catalogues::validate(&app.path(), None) {
                 Ok(tags) => catalogues += tags.len(),
                 Err(error) => {
                     broken.push(format!("{}: {error}", app.file_name().to_string_lossy()))

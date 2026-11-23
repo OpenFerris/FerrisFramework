@@ -40,10 +40,7 @@ const MAX_CATALOGUE_BYTES: u64 = 512 * 1024;
 ///
 /// A malformed tag, TOML or key, an oversized file, or a declaration that does
 /// not match the files on disk.
-pub(in crate::commands) fn validate(
-    package: &Path,
-    declared: Option<&[String]>,
-) -> Result<Vec<String>> {
+pub fn validate(package: &Path, declared: Option<&[String]>) -> Result<Vec<String>> {
     let directory = package.join(ferris_core::site::LOCALES_DIR);
     let mut shipped: BTreeSet<String> = BTreeSet::new();
 

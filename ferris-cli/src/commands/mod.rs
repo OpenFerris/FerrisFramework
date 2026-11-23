@@ -4,6 +4,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+pub mod app_catalogues;
+
 #[cfg(feature = "wasm")]
 pub mod app;
 pub mod backup;

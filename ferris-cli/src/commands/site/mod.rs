@@ -439,7 +439,7 @@ fn install_app(manager: &SiteManager, site: &str, app: &str, force: bool) -> Res
     // The catalogue was validated when it was installed; this catches a file
     // edited in place (or copied by hand) before it reaches the site's boot.
     let package = manager.global_app_dir(app)?;
-    let tags = super::app::locales::validate(&package, None)?;
+    let tags = super::app_catalogues::validate(&package, None)?;
     if !tags.is_empty() {
         info!("App '{app}' translates itself into: {}", tags.join(", "));
     }
