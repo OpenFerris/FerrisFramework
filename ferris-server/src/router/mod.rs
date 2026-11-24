@@ -34,6 +34,8 @@ mod plugins;
 mod realtime;
 mod security;
 mod state;
+#[cfg(feature = "api")]
+mod system;
 #[cfg(feature = "web")]
 mod web_auth;
 

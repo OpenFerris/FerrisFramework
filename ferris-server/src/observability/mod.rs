@@ -44,6 +44,7 @@ mod mirrors;
 
 pub use logs::{record_access, record_activity, record_request};
 pub use mirrors::spawn;
+pub(crate) use mirrors::{health_snapshot, storage_snapshot};
 
 /// Owner of every framework-written row, matching the convention the rest of
 /// the install uses for system documents.

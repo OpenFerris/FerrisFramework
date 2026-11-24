@@ -15,7 +15,6 @@ use ferris_document::engine::{DocumentEngine, ListQuery};
 #[cfg(feature = "jobs")]
 use ferris_jobs::{JobQueue, JobStatus};
 #[cfg(feature = "report")]
-use ferris_report::{PreparedReportStatus, ReportEngine};
 #[cfg(feature = "scheduler")]
 use ferris_scheduler::Scheduler;
 use tokio::task::JoinHandle;
@@ -50,10 +49,6 @@ async fn snapshot_once(
     mirrors: &mut Mirrors,
 ) -> ferris_core::Result<()> {
     write_version_once(pool, mirrors).await?;
-    write_health(pool).await;
-    write_storage_usage(pool, mirrors).await;
-    #[cfg(feature = "report")]
-    write_prepared_analytics(pool, mirrors).await;
 
     #[cfg(feature = "jobs")]
     if let Some(queue) = sources.queue.as_deref() {
@@ -105,62 +100,35 @@ async fn write_version_once(pool: &Db, mirrors: &mut Mirrors) -> ferris_core::Re
     Ok(())
 }
 
-/// One health snapshot per tick. The probe is intentionally cheap: if the pool
-/// cannot answer `SELECT 1`, the process is Down for every practical purpose.
-async fn write_health(pool: &Db) {
+/// The live health probe `GET /api/system/health` serves.
+///
+/// The probe is intentionally cheap: if the pool cannot answer `SELECT 1`, the
+/// process is Down for every practical purpose. It is computed on demand
+/// instead of persisted every five minutes: the old `System Health Report`
+/// row-per-tick was write-only and grew without retention.
+pub(crate) async fn health_snapshot(pool: &Db) -> serde_json::Value {
     let database = pool
         .fetch_optional(&Stmt::new("SELECT 1", vec![]))
         .await
         .is_ok();
-    let status = if database { "Healthy" } else { "Down" };
-    write_row(
-        pool,
-        "System Health Report",
-        serde_json::json!({
-            "status": status,
-            "details": serde_json::json!({
-                "database": if database { "ok" } else { "unreachable" },
-                "version": env!("CARGO_PKG_VERSION"),
-                "checked_at": Utc::now().to_rfc3339(),
-            })
-            .to_string(),
-            "generated_at": Utc::now().to_rfc3339(),
-        }),
-    )
-    .await;
+    serde_json::json!({
+        "status": if database { "Healthy" } else { "Down" },
+        "database": if database { "ok" } else { "unreachable" },
+        "version": env!("CARGO_PKG_VERSION"),
+        "checked_at": Utc::now().to_rfc3339(),
+    })
 }
 
-/// Per-table row counts and sizes, for the three supported dialects.
-///
-/// SQLite only exposes real per-table sizes through the `dbstat` virtual table;
-/// when the build lacks it the row count is still real and the size is `0`,
-/// which is honest about what could be measured instead of inventing a share.
-async fn write_storage_usage(pool: &Db, mirrors: &mut Mirrors) {
-    match table_usage(pool).await {
-        Ok(tables) => {
-            for table in tables {
-                upsert(
-                    pool,
-                    mirrors,
-                    format!("Database Storage Usage By Tables:{}", table.name),
-                    "Database Storage Usage By Tables",
-                    serde_json::json!({
-                        "table_name": table.name,
-                        "rows": table.rows,
-                        "size_mb": table.size_mb,
-                    }),
-                )
-                .await;
-            }
-        }
-        Err(error) => debug!(%error, "storage usage query failed"),
-    }
+/// The live per-table rows and sizes `GET /api/system/storage` serves.
+pub(crate) async fn storage_snapshot(pool: &Db) -> ferris_core::Result<Vec<TableUsage>> {
+    table_usage(pool).await
 }
 
-struct TableUsage {
-    name: String,
-    rows: i64,
-    size_mb: f64,
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct TableUsage {
+    pub name: String,
+    pub rows: i64,
+    pub size_mb: f64,
 }
 
 async fn table_usage(pool: &Db) -> ferris_core::Result<Vec<TableUsage>> {
@@ -252,46 +220,6 @@ async fn table_usage(pool: &Db) -> ferris_core::Result<Vec<TableUsage>> {
             }
             Ok(usage)
         }
-    }
-}
-
-/// Mirror prepared reports onto `Prepared Report Analytics`.
-#[cfg(feature = "report")]
-async fn write_prepared_analytics(pool: &Db, mirrors: &mut Mirrors) {
-    let engine = ReportEngine::new(pool.clone());
-    match engine.list_prepared(200).await {
-        Ok(reports) => {
-            for report in reports {
-                let status = match report.status {
-                    PreparedReportStatus::Queued | PreparedReportStatus::Running => "Queued",
-                    PreparedReportStatus::Completed => "Completed",
-                    PreparedReportStatus::Failed => "Failed",
-                };
-                let rows = report
-                    .result
-                    .as_ref()
-                    .map_or(0, ferris_report::ReportResult::total);
-                let duration_ms = (report.updated_at - report.created_at)
-                    .num_milliseconds()
-                    .max(0);
-                upsert(
-                    pool,
-                    mirrors,
-                    format!("Prepared Report Analytics:{}", report.id),
-                    "Prepared Report Analytics",
-                    serde_json::json!({
-                        "report": report.report,
-                        "status": status,
-                        "row_count": rows,
-                        "duration_ms": duration_ms,
-                    }),
-                )
-                .await;
-            }
-        }
-        // The table is created lazily by the first `prepare`; an install that
-        // never ran one has nothing to mirror.
-        Err(error) => debug!(%error, "prepared report list failed"),
     }
 }
 

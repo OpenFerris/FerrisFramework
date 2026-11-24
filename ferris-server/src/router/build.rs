@@ -414,7 +414,18 @@ pub fn build_router(
         for module in modules.modules() {
             module.register_methods(&app_state.api.methods);
         }
+        // Operational endpoints computed on demand, mounted with the rest of
+        // the API so they share its session gate. `GET /health` stays the
+        // public liveness probe; these three report schema-adjacent data.
+        let mut system = Router::new()
+            .route("/api/system/health", get(super::system::health))
+            .route("/api/system/storage", get(super::system::storage));
+        #[cfg(feature = "report")]
+        {
+            system = system.route("/api/report/prepared", get(super::system::prepared));
+        }
         let api_router = ferris_api::api_router_with_modules(app_state.clone(), modules.modules())
+            .merge(system)
             // `bind_client_identity` is outermost so the verified mTLS facts are
             // in request extensions *before* `require_auth_or_device` decides:
             // a device certificate is accepted as the credential for

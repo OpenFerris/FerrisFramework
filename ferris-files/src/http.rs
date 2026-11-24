@@ -228,7 +228,16 @@ async fn download(
         Err(error) => return failure(&error),
     };
     match files.store().download(&file, &context).await {
-        Ok(bytes) => download_response(&file, bytes),
+        Ok(bytes) => {
+            // The bytes were authorized and read; the audit row is best-effort
+            // and must not turn a served file into an error.
+            ferris_core::audit::record(ferris_core::audit::AuditEvent::FileAccess {
+                user: user.id.clone(),
+                file_type: "download".to_string(),
+                reference: id,
+            });
+            download_response(&file, bytes)
+        }
         Err(error) => failure(&error),
     }
 }
@@ -492,11 +501,19 @@ async fn download_signed_file(
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let context = user.0.as_ref().map(AccessContext::for_user);
-    signed_download_response(
-        files
-            .fetch(&path, expires, &signature, context.as_ref())
-            .await,
-    )
+    let response = files
+        .fetch(&path, expires, &signature, context.as_ref())
+        .await;
+    if response.is_ok()
+        && let Some(reader) = user.0.as_ref()
+    {
+        ferris_core::audit::record(ferris_core::audit::AuditEvent::FileAccess {
+            user: reader.id.clone(),
+            file_type: "signed_download".to_string(),
+            reference: path,
+        });
+    }
+    signed_download_response(response)
 }
 
 /// Map a [`SignedDownloads`] outcome to an HTTP response.
