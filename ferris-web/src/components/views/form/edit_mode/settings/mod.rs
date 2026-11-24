@@ -281,7 +281,7 @@ fn DocSettingsPanel(
 
     view! {
         <div class="mt-3 flex flex-col gap-4">
-            <Tabs default_value=first_view class="w-full">
+            <Tabs id="doctype-settings-tabs" default_value=first_view class="w-full">
                 <TabsList variant=TabsVariant::Line class="w-full justify-start overflow-x-auto">
                     {move || {
                         views

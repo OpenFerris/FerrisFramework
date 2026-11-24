@@ -179,7 +179,7 @@ pub fn NotificationsPanel(
                     )
                     inert=move || !open.get()
                 >
-                    <Tabs default_value="notifications" class="flex min-h-0 flex-1 flex-col gap-0">
+                    <Tabs id="notification-tabs" default_value="notifications" class="flex min-h-0 flex-1 flex-col gap-0">
                         {/* Tabs on the left, panel actions inline on the right */}
                         <div class="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
                             <TabsList class="h-7">

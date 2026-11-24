@@ -39,7 +39,14 @@ const QUILL_OPTIONS: &str = r#"{"theme":"snow","placeholder":"__FERRIS_PLACEHOLD
 /// be able to run script in the Desk (CMP-10). Quill then owns the subtree as
 /// usual; the sanitized value is what both SSR and the first hydrate render.
 #[component]
-pub fn TextEditorField(id: String, value: RwSignal<String>, read_only: bool) -> impl IntoView {
+pub fn TextEditorField(
+    id: String,
+    value: RwSignal<String>,
+    read_only: bool,
+    /// Accessible name: the Quill container has no `<label for>` target.
+    #[prop(into, optional)]
+    aria_label: String,
+) -> impl IntoView {
     let editor_id = format!("{id}-quill");
     let i18n = crate::i18n::use_i18n();
     let placeholder = i18n.t("components.form.editor.placeholder");
@@ -65,7 +72,14 @@ pub fn TextEditorField(id: String, value: RwSignal<String>, read_only: bool) -> 
         <div class="flex flex-col gap-2 ferris-quill" data-name="__TextEditorField">
             // The editor's own face: 16px on a phone, because a smaller
             // contenteditable makes iOS Safari zoom the page on focus.
-            <div id=editor_id class="text-sm max-md:text-base" inner_html=initial></div>
+            <div
+                id=editor_id
+                class="text-sm max-md:text-base"
+                aria-label=aria_label
+                role="textbox"
+                aria-multiline="true"
+                inner_html=initial
+            ></div>
         </div>
     }
 }
@@ -123,6 +137,9 @@ pub fn MarkdownField(
     placeholder: String,
     #[prop(default = 6u32)] rows: u32,
     #[prop(default = None)] max_length: Option<u32>,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     let toggle_i18n = crate::i18n::use_i18n();
     let showing = RwSignal::new(false);
@@ -150,6 +167,9 @@ pub fn MarkdownField(
                         rows=rows
                         class="font-mono text-sm max-md:text-base"
                         attr:maxlength=max_length
+                        aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+                        aria_describedby=aria_describedby.clone().unwrap_or_default()
+                        required=required
                     />
                 }
             >

@@ -45,6 +45,11 @@ pub fn render_form_field(f: &FormField) -> AnyView {
     let max = f.max_value.clone().unwrap_or_default();
     let max_length = f.max_length;
     let precision = f.precision;
+    // The invalid state and the ids travel to the *control*: `aria-invalid` on
+    // a non-focusable group is not announced when the user reaches the input.
+    let invalid = Signal::derive(move || error.get().is_some());
+    let described_by = format!("{error_id} {description_id}");
+    let label_id = format!("{id}-label");
 
     // The `tags` standard field is a plain comma-separated `Data` field on the
     // wire (the engine derives `Tag`/`Tag Link` from it), but the control is a
@@ -84,17 +89,34 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 checked=f.checked
                 read_only=read_only
                 label=label.clone()
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                aria_required=reqd
             />
         }
         .into_any(),
 
         "Rating" => view! {
-            <RatingField id=id value=f.value read_only=read_only />
+            <RatingField
+                id=id
+                value=f.value
+                read_only=read_only
+                aria_describedby=described_by.clone()
+                required=reqd
+            />
         }
         .into_any(),
 
         "Select" => view! {
-            <SelectField id=id value=f.value read_only=read_only options=options />
+            <SelectField
+                id=id
+                value=f.value
+                read_only=read_only
+                options=options
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
+            />
         }
         .into_any(),
 
@@ -118,6 +140,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                     placeholder=placeholder
                     read_only=read_only
                     target=target
+                    aria_invalid=invalid
+                    aria_describedby=described_by.clone()
+                    required=reqd
                 />
             }
             .into_any()
@@ -130,6 +155,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 placeholder=placeholder
                 read_only=read_only
                 target=options
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -144,6 +172,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                     placeholder=placeholder
                     rows=rows
                     max_length=max_length
+                    aria_invalid=invalid
+                    aria_describedby=described_by.clone()
+                    required=reqd
                 />
             }
             .into_any()
@@ -153,7 +184,12 @@ pub fn render_form_field(f: &FormField) -> AnyView {
         // the stored HTML, the markdown field swaps the textarea for a
         // marked-rendered preview on demand.
         "Text Editor" => view! {
-            <TextEditorField id=id value=f.value read_only=read_only />
+            <TextEditorField
+                id=id
+                value=f.value
+                read_only=read_only
+                aria_label=label.clone()
+            />
         }
         .into_any(),
 
@@ -165,6 +201,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 placeholder=placeholder
                 rows=6
                 max_length=max_length
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -177,6 +216,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 placeholder=placeholder
                 rows=6
                 max_length=max_length
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -187,6 +229,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 value=f.value
                 read_only=read_only
                 placeholder=placeholder
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -198,6 +243,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 read_only=read_only
                 placeholder=placeholder
                 max_length=max_length
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -216,6 +264,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                     options.clone()
                 }
                 precision=precision
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -229,6 +280,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 min=min
                 max=max
                 precision=precision
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -242,6 +296,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 min=min
                 max=max
                 step="1".to_string()
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -255,17 +312,36 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 min=min
                 max=max
                 step="any".to_string()
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
 
         "Date" => view! {
-            <DateField id=id value=f.value read_only=read_only placeholder=placeholder />
+            <DateField
+                id=id
+                value=f.value
+                read_only=read_only
+                placeholder=placeholder
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
+            />
         }
         .into_any(),
 
         "Datetime" => view! {
-            <DateTimeField id=id value=f.value read_only=read_only placeholder=placeholder />
+            <DateTimeField
+                id=id
+                value=f.value
+                read_only=read_only
+                placeholder=placeholder
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
+            />
         }
         .into_any(),
 
@@ -280,7 +356,15 @@ pub fn render_form_field(f: &FormField) -> AnyView {
         .into_any(),
 
         "Email" => view! {
-            <EmailField id=id value=f.value read_only=read_only placeholder=placeholder />
+            <EmailField
+                id=id
+                value=f.value
+                read_only=read_only
+                placeholder=placeholder
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
+            />
         }
         .into_any(),
 
@@ -290,17 +374,34 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 value=f.value
                 read_only=read_only
                 error=f.error
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
 
         "URL" => view! {
-            <UrlField id=id value=f.value read_only=read_only placeholder=placeholder />
+            <UrlField
+                id=id
+                value=f.value
+                read_only=read_only
+                placeholder=placeholder
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
+            />
         }
         .into_any(),
 
         "Color" => view! {
-            <ColorField id=id value=f.value read_only=read_only />
+            <ColorField
+                id=id
+                value=f.value
+                read_only=read_only
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
+            />
         }
         .into_any(),
 
@@ -349,12 +450,17 @@ pub fn render_form_field(f: &FormField) -> AnyView {
         // The gallery has no value of its own: the files live in the
         // engagement store, keyed by the document (see `gallery.rs`).
         "Attachment Gallery" => view! {
-            <AttachmentGalleryField id=id read_only=read_only />
+            <AttachmentGalleryField id=id read_only=read_only aria_label=label.clone() />
         }
         .into_any(),
 
         "Signature" => view! {
-            <SignatureField id=id value=f.value read_only=read_only />
+            <SignatureField
+                id=id
+                value=f.value
+                read_only=read_only
+                aria_label=label.clone()
+            />
         }
         .into_any(),
 
@@ -379,7 +485,7 @@ pub fn render_form_field(f: &FormField) -> AnyView {
         .into_any(),
 
         "Read Only" => view! {
-            <ReadOnlyField id=id value=f.value />
+            <ReadOnlyField id=id value=f.value aria_label=label.clone() />
         }
         .into_any(),
 
@@ -412,6 +518,9 @@ pub fn render_form_field(f: &FormField) -> AnyView {
                 readonly=read_only
                 placeholder=placeholder
                 attr:maxlength=max_length
+                aria_invalid=invalid
+                aria_describedby=described_by.clone()
+                required=reqd
             />
         }
         .into_any(),
@@ -429,6 +538,22 @@ pub fn render_form_field(f: &FormField) -> AnyView {
     // paints it as the widget's heading: a caption above either would show the
     // same word twice (and the `<label for>` would point at no control).
     let caption = !matches!(ft, "Button" | "Widget");
+    // Only a real form control can be named with `<label for>`. The rest carry
+    // their name as `aria-label` on the widget itself (rating, signature,
+    // gallery, read-only and the rich editor), so pointing `for` at their
+    // container would name nothing.
+    let labelable = !matches!(
+        ft,
+        "Rating"
+            | "Signature"
+            | "Attachment Gallery"
+            | "Read Only"
+            | "HTML"
+            | "Text Editor"
+            | "Button"
+            | "Widget"
+            | "Heading"
+    );
 
     // Clones for the `aria-describedby` closure: the ids are also written into
     // the elements they name, and a moved `String` cannot be used twice.
@@ -459,7 +584,11 @@ pub fn render_form_field(f: &FormField) -> AnyView {
             }
         >
             <Show when=move || caption>
-                <label for=field_id.clone() class=label_class>
+                <label
+                    id=label_id.clone()
+                    for=labelable.then(|| field_id.clone())
+                    class=label_class
+                >
                     <span class="min-w-0 break-words">{label.clone()}</span>
                     <Show when=move || reqd>
                         <span class="text-destructive">" *"</span>

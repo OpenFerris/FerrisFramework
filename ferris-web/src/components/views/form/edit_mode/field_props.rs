@@ -5,14 +5,19 @@
 //! Every control here maps to a property the engine applies: a control added
 //! for anything else would write a setter that changes nothing.
 
+use std::collections::BTreeMap;
+
 use leptos::prelude::*;
 
 use crate::api::types::Customization;
+use crate::components::ui::checkbox::Checkbox;
+use crate::components::ui::input::{Input, InputType};
 use crate::components::ui::select_native::SelectNative;
 use crate::i18n::t;
 
 use super::super::customize::FIELD_TYPES;
 use super::props::{PropCheck, PropText};
+use super::schema::{ADVANCED, AdvancedKind};
 
 /// The setter lookups the controls use for their "editado" markers.
 ///
@@ -67,6 +72,8 @@ pub(super) fn FieldPropertyInputs(
     in_list_view: RwSignal<bool>,
     in_standard_filter: RwSignal<bool>,
     insert_after: RwSignal<String>,
+    /// The advanced properties ([`ADVANCED`]), one string per property.
+    advanced: RwSignal<BTreeMap<String, String>>,
     overrides: Overrides,
     is_break: bool,
 ) -> impl IntoView {
@@ -209,5 +216,81 @@ pub(super) fn FieldPropertyInputs(
                 example=t("components.form.edit_mode.insert_after_example")
             />
         </section>
+
+        <section
+            class="flex flex-col gap-2 border-t pt-3"
+            aria-label=t("components.form.edit_mode.section_advanced")
+        >
+            <h4 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                {t("components.form.edit_mode.section_advanced")}
+            </h4>
+            {ADVANCED
+                .iter()
+                .map(|(property, kind)| advanced_control(property, *kind, advanced))
+                .collect_view()}
+        </section>
+    }
+}
+
+/// One advanced property control, chosen by [`AdvancedKind`].
+fn advanced_control(
+    property: &'static str,
+    kind: AdvancedKind,
+    advanced: RwSignal<BTreeMap<String, String>>,
+) -> AnyView {
+    let label = t(&format!("components.form.edit_mode.prop.{property}"));
+    let id = format!("prop-{property}");
+    match kind {
+        AdvancedKind::Flag => {
+            let checked = Signal::derive(move || {
+                advanced
+                    .get()
+                    .get(property)
+                    .is_some_and(|value| value == "1")
+            });
+            let on_change = Callback::new(move |value: bool| {
+                advanced.update(|map| {
+                    map.insert(
+                        property.to_string(),
+                        if value { "1" } else { "0" }.to_string(),
+                    );
+                });
+            });
+            view! {
+                <div class="flex items-center gap-2">
+                    <Checkbox
+                        id=id.clone()
+                        checked=checked
+                        aria_label=label.clone()
+                        on_checked_change=on_change
+                    />
+                    <label for=id class="text-sm text-foreground">{label}</label>
+                </div>
+            }
+            .into_any()
+        }
+        AdvancedKind::Text | AdvancedKind::Number => {
+            let numeric = kind == AdvancedKind::Number;
+            let value =
+                Signal::derive(move || advanced.get().get(property).cloned().unwrap_or_default());
+            let on_input = Callback::new(move |text: String| {
+                advanced.update(|map| {
+                    map.insert(property.to_string(), text.clone());
+                });
+            });
+            view! {
+                <div class="flex flex-col gap-1">
+                    <label for=id.clone() class="text-sm text-foreground">{label}</label>
+                    <Input
+                        id=id
+                        r#type=InputType::Text
+                        attr:inputmode=if numeric { "numeric" } else { "text" }
+                        prop:value=move || value.get()
+                        on_input=on_input
+                    />
+                </div>
+            }
+            .into_any()
+        }
     }
 }

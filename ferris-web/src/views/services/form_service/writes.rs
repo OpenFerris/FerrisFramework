@@ -272,7 +272,24 @@ impl FormService {
                 error.set(None);
                 notice.set(None);
                 if !validate_form_with(&fields.get(), &i18n) {
-                    let message = i18n.t("components.form.validation.check_fields");
+                    // Name the fields that blocked the save: a required field
+                    // inside a non-active tab is invisible, and the generic
+                    // "check the fields" banner did not say which one.
+                    let current = fields.get();
+                    let invalid: Vec<String> = current
+                        .iter()
+                        .filter(|field| field.error.get_untracked().is_some())
+                        .map(|field| field.label.clone())
+                        .collect();
+                    focus_first_invalid(&current);
+                    let message = if invalid.is_empty() {
+                        i18n.t("components.form.validation.check_fields")
+                    } else {
+                        i18n.t_with(
+                            "components.form.validation.summary",
+                            &[("fields", &invalid.join(", "))],
+                        )
+                    };
                     set_form_error(error, message.clone());
                     saving.set(false);
                     // The inline banner says where, the toast says that the
@@ -431,4 +448,34 @@ impl FormService {
         self.delete_action.set_value(delete_action);
         self.duplicate_action.set_value(duplicate_action);
     }
+}
+
+/// Focus the first invalid control, if it is reachable.
+///
+/// A field inside a non-active tab lives in a `display:none` panel, so the
+/// browser refuses the focus; the banner names it instead
+/// (`components.form.validation.summary`). This is the best-effort half.
+fn focus_first_invalid(fields: &[super::FormField]) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+
+        let Some(field) = fields
+            .iter()
+            .find(|field| field.error.get_untracked().is_some())
+        else {
+            return;
+        };
+        let id = format!("field-{}", field.fieldname);
+        let element = web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.get_element_by_id(&id));
+        if let Some(element) =
+            element.and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok())
+        {
+            let _ = element.focus();
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = fields;
 }

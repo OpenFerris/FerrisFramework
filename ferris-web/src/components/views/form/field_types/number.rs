@@ -28,6 +28,9 @@ pub fn NumberField(
     min: String,
     max: String,
     step: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     // `step = "1"` is how the renderer marks an `Int`: no separators at all.
     let allow_decimal = step != "1";
@@ -41,6 +44,9 @@ pub fn NumberField(
             max=max
             allow_decimal=allow_decimal
             class="tabular-nums".to_string()
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }
@@ -56,6 +62,9 @@ pub fn CurrencyField(
     max: String,
     prefix: String,
     precision: Option<u8>,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     let _ = precision;
     view! {
@@ -70,6 +79,9 @@ pub fn CurrencyField(
                 max=max
                 allow_decimal=true
                 class=GROUP_CONTROL.to_string()
+                aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+                aria_describedby=aria_describedby.clone().unwrap_or_default()
+                required=required
             />
         </InputGroup>
     }
@@ -85,6 +97,9 @@ pub fn PercentField(
     min: String,
     max: String,
     precision: Option<u8>,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     let _ = precision;
     view! {
@@ -99,6 +114,9 @@ pub fn PercentField(
                 max=max
                 allow_decimal=true
                 class=GROUP_CONTROL.to_string()
+                aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+                aria_describedby=aria_describedby.clone().unwrap_or_default()
+                required=required
             />
         </InputGroup>
     }
@@ -115,6 +133,9 @@ fn NumberInput(
     max: String,
     allow_decimal: bool,
     class: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     let _ = (min, max);
     let on_input = Callback::new(move |raw: String| {
@@ -135,6 +156,9 @@ fn NumberInput(
             prop:value=move || value.get()
             on_input=on_input
             class=class
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }

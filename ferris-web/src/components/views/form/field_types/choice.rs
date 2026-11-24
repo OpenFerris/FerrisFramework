@@ -16,12 +16,18 @@ pub fn SelectField(
     value: RwSignal<String>,
     read_only: bool,
     options: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
         <SelectNative
             id=id
             value=value.read_only()
             attr:disabled=read_only
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
             on_change=Callback::new(move |ev: leptos::ev::Event| {
                 value.set(event_target_value(&ev));
             })
@@ -50,6 +56,9 @@ pub fn CheckField(
     checked: RwSignal<bool>,
     read_only: bool,
     label: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] aria_required: bool,
 ) -> impl IntoView {
     view! {
         <Checkbox
@@ -62,17 +71,33 @@ pub fn CheckField(
                 label
             }
             disabled=Signal::derive(move || read_only)
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            aria_required=aria_required
         />
     }
 }
 
 /// Star rating (`Rating`, 1–5). Stored as text, like every other field value.
 #[component]
-pub fn RatingField(id: String, value: RwSignal<String>, read_only: bool) -> impl IntoView {
+pub fn RatingField(
+    id: String,
+    value: RwSignal<String>,
+    read_only: bool,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
+) -> impl IntoView {
     let i18n = use_i18n();
     let current = Signal::derive(move || value.get().parse::<u8>().unwrap_or(0));
     view! {
-        <div id=id class="flex items-center gap-0.5" role="radiogroup" aria-label=i18n.t("components.form.field.rating")>
+        <div
+            id=id
+            class="flex items-center gap-0.5"
+            role="radiogroup"
+            aria-label=i18n.t("components.form.field.rating")
+            aria-describedby=aria_describedby
+            aria-required=required
+        >
             {(1u8..=5)
                 .map(|star| {
                     let filled = Signal::derive(move || current.get() >= star);

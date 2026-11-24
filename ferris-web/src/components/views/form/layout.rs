@@ -378,7 +378,7 @@ pub fn FormTabs(
     let render_field_stored = StoredValue::new(render_field);
 
     view! {
-        <Tabs default_value=default_now class="w-full">
+        <Tabs id="form-tabs" default_value=default_now class="w-full">
             <Show when=move || { tab_labels.get().len() > 1 }>
                 <TabsList variant=TabsVariant::Line class="w-full justify-start overflow-x-auto">
                     {move || tab_labels.get().into_iter().map(|(val, label)| {
