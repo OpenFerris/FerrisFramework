@@ -109,6 +109,15 @@ pub fn DocPicker(
     /// not a selected user yet.
     #[prop(optional, into)]
     on_select: Option<Callback<Vec<String>>>,
+    /// Reactive invalid state, forwarded to the combobox input.
+    #[prop(optional, into)]
+    aria_invalid: Option<Signal<bool>>,
+    /// Id of the element that explains the field (its error/description).
+    #[prop(into, optional)]
+    aria_describedby: Option<String>,
+    /// Whether the field is required.
+    #[prop(optional)]
+    required: bool,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let chip_i18n = i18n;
@@ -464,6 +473,9 @@ pub fn DocPicker(
                         autocomplete="off"
                         placeholder=placeholder
                         readonly=read_only
+                        aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+                        aria_describedby=aria_describedby.clone().unwrap_or_default()
+                        required=required
                         node_ref=input_ref
                         prop:value=move || query.get()
                         on:input=on_input

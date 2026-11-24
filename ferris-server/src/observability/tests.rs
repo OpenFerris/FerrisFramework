@@ -286,3 +286,41 @@ async fn a_stable_named_mirror_updates_after_a_restart() {
         "the second process refreshed the existing row"
     );
 }
+
+/// The operational endpoints compute their payload on demand; the health probe
+/// is the cheap `SELECT 1` the old per-tick `System Health Report` row used to
+/// persist, without the table or the write.
+#[tokio::test]
+async fn the_live_health_snapshot_reports_the_database_and_version() {
+    let pool = ferris_db::memory_db().await.unwrap();
+    let snapshot = super::health_snapshot(&pool).await;
+    assert_eq!(
+        snapshot.get("status").and_then(serde_json::Value::as_str),
+        Some("Healthy")
+    );
+    assert_eq!(
+        snapshot.get("database").and_then(serde_json::Value::as_str),
+        Some("ok")
+    );
+    assert_eq!(
+        snapshot.get("version").and_then(serde_json::Value::as_str),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+    assert!(
+        snapshot
+            .get("checked_at")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+    );
+}
+
+/// The storage snapshot answers with the same shape the mirror rows had, so a
+/// caller can drop the stored table and read this instead.
+#[tokio::test]
+async fn the_live_storage_snapshot_lists_tables() {
+    let pool = ferris_db::memory_db().await.unwrap();
+    let tables = super::storage_snapshot(&pool).await.expect("storage query");
+    // SQLite always has its schema table; the assertion is about the shape, not
+    // the count.
+    assert!(tables.iter().all(|table| !table.name.is_empty()));
+}

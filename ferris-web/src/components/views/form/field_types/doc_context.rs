@@ -23,9 +23,12 @@ pub struct FormDocContext {
     /// The raw document as the API returned it (`Value::Null` on a `new`
     /// form): what a `Button` field hands to its action.
     pub doc: ReadSignal<Value>,
-    /// The banner the form view already renders; widgets report their outcome
-    /// here instead of inventing their own toast.
+    /// The success banner the form view already renders; widgets report their
+    /// outcome here instead of inventing their own toast.
     pub notice: RwSignal<Option<String>>,
+    /// The form's error banner. A widget that fails writes here, so a failure
+    /// is never painted with success styling.
+    pub failure: RwSignal<Option<String>>,
     /// Bumped to make the form reload — a `Button` action that changes the
     /// document server-side refreshes the view through this.
     pub reload: RwSignal<u64>,

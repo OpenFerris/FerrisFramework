@@ -16,9 +16,16 @@ pub fn DateField(
     value: RwSignal<String>,
     read_only: bool,
     placeholder: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
-        <Input id=id r#type=InputType::Date bind_value=value readonly=read_only placeholder=placeholder />
+        <Input id=id r#type=InputType::Date bind_value=value readonly=read_only placeholder=placeholder
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
+        />
     }
 }
 
@@ -37,6 +44,9 @@ pub fn DateTimeField(
     value: RwSignal<String>,
     read_only: bool,
     placeholder: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     let local = RwSignal::new(to_local_input(&value.get_untracked()));
     // Stored → input (a document load, a fetch_from, another widget).
@@ -60,6 +70,9 @@ pub fn DateTimeField(
             bind_value=local
             readonly=read_only
             placeholder=placeholder
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }

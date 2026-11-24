@@ -16,7 +16,7 @@ pub(super) fn write_gitignore(project_dir: &Path) -> Result<()> {
 ///
 /// A site's `site_config.json` carries the database password and its instances
 /// carry uploaded files and the app's secrets; none of that belongs in git.
-pub(super) fn write_bench_gitignore(root: &Path) -> Result<()> {
+pub(in crate::commands) fn write_bench_gitignore(root: &Path) -> Result<()> {
     let path = root.join(".gitignore");
     if path.exists() {
         return Ok(());

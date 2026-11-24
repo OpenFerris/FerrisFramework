@@ -21,6 +21,9 @@ pub fn TextField(
     rows: u32,
     /// `max_length` from the field metadata; omitted when the doctype sets none.
     max_length: Option<u32>,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
         <Textarea
@@ -30,6 +33,9 @@ pub fn TextField(
             placeholder=placeholder
             rows=rows
             attr:maxlength=max_length
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }
@@ -48,6 +54,9 @@ pub fn CodeField(
     placeholder: String,
     rows: u32,
     max_length: Option<u32>,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
         <Textarea
@@ -58,6 +67,9 @@ pub fn CodeField(
             rows=rows
             class="font-mono text-xs max-md:text-base"
             attr:maxlength=max_length
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }

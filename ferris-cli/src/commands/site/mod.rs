@@ -17,7 +17,7 @@
 //! (`serve`, `run`, `dev`), and the `421` Host allow-list belongs to the same
 //! decision: a process is authoritative for its site's `host_name`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use ferris_core::site::{SiteConfig, SiteManager, is_valid_site_name};
@@ -60,16 +60,30 @@ pub fn run(args: SiteArgs, config: &CliConfig) -> Result<()> {
             },
         ),
         SiteCommand::List => list_sites(&manager),
-        SiteCommand::Info { site } => site_info(&manager, &site),
+        SiteCommand::Info { site } => site_info(&manager, &required_site(site)?),
         SiteCommand::Delete { site, force } => delete_site(&manager, &site, force),
-        SiteCommand::Enable { site } => set_enabled(&manager, &site, true),
-        SiteCommand::Disable { site } => set_enabled(&manager, &site, false),
-        SiteCommand::Migrate { site, target } => migrate_site(&manager, &site, target),
-        SiteCommand::InstallApp { app, site, force } => install_app(&manager, &site, &app, force),
+        SiteCommand::Enable { site } => set_enabled(&manager, &required_site(site)?, true),
+        SiteCommand::Disable { site } => set_enabled(&manager, &required_site(site)?, false),
+        SiteCommand::Migrate { site, target } => {
+            migrate_site(&manager, &required_site(site)?, target)
+        }
+        SiteCommand::InstallApp { app, site, force } => {
+            install_app(&manager, &required_site(site)?, &app, force)
+        }
         SiteCommand::UninstallApp { app, site, purge } => {
-            uninstall_app(&manager, &site, &app, purge)
+            uninstall_app(&manager, &required_site(site)?, &app, purge)
         }
     }
+}
+
+/// The site a subcommand acts on: its argument, or the enclosing site when
+/// `context::prepare` filled it in.
+fn required_site(site: Option<String>) -> Result<String> {
+    site.ok_or_else(|| {
+        anyhow::anyhow!(
+            "this subcommand needs a site name; pass `<site>` or run it from inside `sites/<site>`"
+        )
+    })
 }
 
 /// The sites registry of this bench.
@@ -130,13 +144,26 @@ fn create_site(manager: &SiteManager, cli: &CliConfig, new: NewSite) -> Result<(
     site.default_locale.clone_from(&cli.i18n.default_locale);
     site.supported_locales.clone_from(&cli.i18n.normalized());
 
+    if site.database.r#type == ferris_core::DatabaseType::SQLite {
+        if plain_db_file_name(&site.database.name).is_none() {
+            anyhow::bail!(
+                "a SQLite `--db-name` is a file name, not a path: the database lives at \
+                 `sites/<site>/private/<name>`"
+            );
+        }
+        // The file is created when the pool opens, below; its directory has to
+        // exist first (the rest of the layout is written after provisioning, so
+        // a failed host check leaves no site behind).
+        manager.ensure_private_dir(&site.name)?;
+    }
+
     ensure_host_free(manager, &site)?;
     provision_operator(manager, &site, &new.admin_email, &new.admin_password)?;
 
     let site = manager.create(site)?;
     info!("Site '{}' created", site.name);
     info!("  host:     {}", site.host_name);
-    info!("  database: {}", site.database.name);
+    info!("  database: {}", site_database(manager, &site).name);
     info!("  admin:    {}", new.admin_email);
     info!("  files:    {}", site.files_path.display());
     info!(
@@ -193,28 +220,103 @@ fn ensure_host_free(manager: &SiteManager, site: &SiteConfig) -> Result<()> {
 /// a database that already exists is supported, so the login is looked up first
 /// and an existing one is reported instead of duplicated (a second row for the
 /// same email is not a second account, it is a broken install).
-/// The site's database with a relative SQLite file anchored at the bench root.
+/// The site's database with a relative SQLite file anchored inside the site.
 ///
-/// `site_config.json` keeps the name the operator wrote (a relative file moves
-/// with the bench). Opening it from an app directory must still hit the file
-/// `site new` created, so the path is resolved here, once, for every command
-/// that opens a site pool.
+/// A site is one directory: `sites/<site>/private/<db>` is where its SQLite
+/// file lives, so it moves with the site, stays inside the `0700` private root
+/// and disappears with `site delete` instead of being orphaned at the bench
+/// root. `site_config.json` keeps the bare name the operator wrote.
+///
+/// A site created before this layout kept the file at the bench root; the first
+/// command that opens the site adopts it, moving the file and its `-wal`/`-shm`
+/// once. A name that is not a bare file name is left at the bench root with a
+/// warning: older configs may hold a path, and moving it would change its
+/// meaning.
 pub(super) fn site_database(
     manager: &SiteManager,
     site: &SiteConfig,
 ) -> ferris_core::DatabaseConfig {
     let mut database = site.database.clone();
-    if database.r#type == ferris_core::DatabaseType::SQLite
-        && !database.name.is_empty()
-        && Path::new(&database.name).is_relative()
+    if database.r#type != ferris_core::DatabaseType::SQLite
+        || database.name.is_empty()
+        || !Path::new(&database.name).is_relative()
     {
-        let bench_root = manager
-            .sites_root()
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
-        database.name = bench_root.join(&database.name).display().to_string();
+        return database;
     }
+
+    let bench_root = manager
+        .sites_root()
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+
+    let Some(file_name) = plain_db_file_name(&database.name) else {
+        warn!(
+            site = %site.name,
+            database = %database.name,
+            "the SQLite `db_name` is not a file name; leaving it at the bench root"
+        );
+        database.name = bench_root.join(&database.name).display().to_string();
+        return database;
+    };
+
+    let Ok(private) = manager.ensure_private_dir(&site.name) else {
+        database.name = bench_root.join(&database.name).display().to_string();
+        return database;
+    };
+    let target = private.join(file_name);
+    adopt_bench_database(manager, file_name, &target);
+    database.name = target.display().to_string();
     database
+}
+
+/// A bare file name (`acme`), never `.`, `..` or a path.
+fn plain_db_file_name(name: &str) -> Option<&str> {
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(file)), None) => file.to_str(),
+        _ => None,
+    }
+}
+
+/// Move a pre-layout SQLite file (and its sidecars) from the bench root into
+/// the site's private directory, once.
+fn adopt_bench_database(manager: &SiteManager, file_name: &str, target: &Path) {
+    if target.exists() {
+        return;
+    }
+    let bench_root = manager
+        .sites_root()
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+    let legacy = bench_root.join(file_name);
+    if !legacy.is_file() {
+        return;
+    }
+    for suffix in ["", "-wal", "-shm"] {
+        let mut from = legacy.clone().into_os_string();
+        from.push(suffix);
+        let from = PathBuf::from(from);
+        if !from.is_file() {
+            continue;
+        }
+        let mut to = target.as_os_str().to_os_string();
+        to.push(suffix);
+        let to = PathBuf::from(to);
+        if let Err(error) = std::fs::rename(&from, &to) {
+            warn!(
+                from = %from.display(),
+                to = %to.display(),
+                %error,
+                "could not move the site database into its private directory"
+            );
+            return;
+        }
+    }
+    info!(
+        from = %legacy.display(),
+        to = %target.display(),
+        "moved the site database into the site's private directory"
+    );
 }
 
 fn provision_operator(
@@ -296,7 +398,10 @@ fn site_info(manager: &SiteManager, name: &str) -> Result<()> {
     println!("enabled:    {}", site.enabled);
     match site.database.r#type {
         ferris_core::DatabaseType::SQLite => {
-            println!("database:   SQLite {}", site.database.name);
+            // Show the file the process will open, not just the bare name in
+            // `site_config.json`: a site's SQLite database lives under its own
+            // `private/`.
+            println!("database:   SQLite {}", site_database(manager, &site).name);
         }
         kind => {
             println!(
@@ -490,7 +595,7 @@ fn uninstall_app(manager: &SiteManager, site: &str, app: &str, purge: bool) -> R
 /// allow-list is installed here for the same reason the site exists: this
 /// process is authoritative for `host_name` and must answer `421` to anything
 /// else.
-pub(in crate::commands) fn apply_site_by_name(config: &mut CliConfig, name: &str) -> Result<()> {
+pub(crate) fn apply_site_by_name(config: &mut CliConfig, name: &str) -> Result<()> {
     let manager = manager(config);
     if !manager.exists(name) {
         anyhow::bail!(

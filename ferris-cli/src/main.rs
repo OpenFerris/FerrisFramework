@@ -1,6 +1,6 @@
 //! Ferris CLI - Command line interface for the Ferris framework
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches, Parser};
 use color_eyre::Result;
 use tracing::error;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -38,7 +38,18 @@ struct Cli {
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let cli = Cli::parse();
+    // The zone decides which commands exist here: `ferris --help` inside a
+    // site, an app or an uninitialised folder lists a different set, and a
+    // command from another zone fails before any config or pool is opened.
+    let invocation = std::env::current_dir()?;
+    let zone = ferris_cli::context::detect(&invocation);
+    let command = Cli::command();
+    let command = ferris_cli::context::restrict(command, &zone);
+    let matches = command.get_matches();
+    let mut cli = Cli::from_arg_matches(&matches)?;
+    if let Err(error) = ferris_cli::context::check(&zone, &cli.command) {
+        return Err(color_eyre::eyre::eyre!("{error}"));
+    }
 
     // Setup logging
     let log_level = if cli.verbose { "debug" } else { "info" };
@@ -64,7 +75,7 @@ fn main() -> Result<()> {
     }
 
     // Load configuration
-    let config = CliConfig::load(cli.config.as_deref(), cli.dir.as_deref())?;
+    let mut config = CliConfig::load(cli.config.as_deref(), cli.dir.as_deref())?;
 
     // Install the `Secret` keyring (H3) as early as possible: `shell`, `migrate`
     // and the server's hooks all reach credentials through the document engine,
@@ -83,8 +94,15 @@ fn main() -> Result<()> {
     }
     std::env::set_current_dir(&project_dir)?;
 
+    // An enclosing site supplies the `--site` of serve/run/dev/migrate/..., and
+    // points the config at its database before the command opens it.
+    if let Err(error) = ferris_cli::context::prepare(&zone, &mut cli.command, &mut config) {
+        return Err(color_eyre::eyre::eyre!("{error}"));
+    }
+
     // Execute command
     let result = match cli.command {
+        Commands::Init(args) => commands::init::run(args, &config),
         Commands::New(args) => commands::new::run(args, &config),
         #[cfg(feature = "wasm")]
         Commands::Dev(args) => commands::dev::run(args, &config, cli.verbose),

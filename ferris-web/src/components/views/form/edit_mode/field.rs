@@ -93,6 +93,7 @@ pub(super) fn FieldInspector(
     let d_filter = RwSignal::new(draft.in_standard_filter);
     let d_unique = RwSignal::new(draft.unique);
     let d_insert_after = RwSignal::new(draft.insert_after.clone());
+    let d_advanced = RwSignal::new(draft.advanced.clone());
 
     // `get_untracked`: the markers are recomputed when the panel is rebuilt
     // (the parent re-reads the metadata after a save), so reading the signal in
@@ -180,6 +181,26 @@ pub(super) fn FieldInspector(
             d_filter.get_untracked(),
         );
         flag("unique", current.unique, d_unique.get_untracked());
+        // The advanced table: one diff per property, with the same
+        // "empty/false clears the override" rule the rest of the panel uses.
+        let advanced = d_advanced.get_untracked();
+        for (property, kind) in super::schema::ADVANCED {
+            let before = current.advanced.get(*property).cloned().unwrap_or_default();
+            let after = advanced.get(*property).cloned().unwrap_or_default();
+            if before == after {
+                continue;
+            }
+            let flag_kind = *kind == super::schema::AdvancedKind::Flag;
+            changes.push(Change {
+                property,
+                clear: if flag_kind {
+                    after != "1"
+                } else {
+                    after.trim().is_empty()
+                },
+                value: after,
+            });
+        }
 
         if changes.is_empty() {
             notice.set(Some(save_i18n.t("components.form.edit_mode.no_changes")));
@@ -416,6 +437,7 @@ pub(super) fn FieldInspector(
             in_list_view=d_list
             in_standard_filter=d_filter
             insert_after=d_insert_after
+            advanced=d_advanced
             overrides=overrides
             is_break=is_break
         />

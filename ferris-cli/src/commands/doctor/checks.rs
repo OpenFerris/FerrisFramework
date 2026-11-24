@@ -7,6 +7,12 @@ use crate::config::CliConfig;
 
 use super::health::HealthCheck;
 
+/// A site directory is recognised by its `site_config.json`; it is neither a
+/// crate nor a bench root, so the project checks branch on it.
+fn is_site_dir(cwd: &Path) -> bool {
+    cwd.join("site_config.json").is_file()
+}
+
 pub(super) fn check_rust_toolchain() -> HealthCheck {
     match Command::new("rustc").arg("--version").output() {
         Ok(out) if out.status.success() => HealthCheck {
@@ -89,6 +95,14 @@ pub(super) fn check_locales(bench_root: &Path) -> HealthCheck {
 }
 
 pub(super) fn check_cargo_toml(cwd: &Path, bench_root: &Path) -> HealthCheck {
+    if is_site_dir(cwd) {
+        return HealthCheck {
+            name: "Cargo.toml".to_string(),
+            passed: true,
+            message: "site directory: the app crates live under apps/".to_string(),
+            critical: true,
+        };
+    }
     let path = cwd.join("Cargo.toml");
     if path.is_file() {
         HealthCheck {
@@ -140,6 +154,28 @@ pub(super) fn check_project_structure(cwd: &Path, bench_root: &Path) -> HealthCh
         };
     }
 
+    if is_site_dir(cwd) {
+        let missing: Vec<&str> = ["private", "plugins"]
+            .into_iter()
+            .filter(|dir| !cwd.join(dir).is_dir())
+            .collect();
+        return if missing.is_empty() {
+            HealthCheck {
+                name: "Project structure".to_string(),
+                passed: true,
+                message: "site layout: private/ and plugins/ present".to_string(),
+                critical: true,
+            }
+        } else {
+            HealthCheck {
+                name: "Project structure".to_string(),
+                passed: false,
+                message: format!("missing site directories: {}", missing.join(", ")),
+                critical: true,
+            }
+        };
+    }
+
     let missing_src = !cwd.join("src").is_dir();
     let wit_message = if cwd.join("wit/ferris.wit").is_file() {
         "WIT interface present".to_string()
@@ -169,6 +205,14 @@ pub(super) fn check_project_structure(cwd: &Path, bench_root: &Path) -> HealthCh
 /// refuses to instantiate. Catching it here is the difference between a
 /// five-second fix and a server that will not boot.
 pub(super) fn check_wit_version(cwd: &Path, bench_root: &Path) -> HealthCheck {
+    if is_site_dir(cwd) {
+        return HealthCheck {
+            name: "WIT version".to_string(),
+            passed: true,
+            message: "site directory: each app's wit/ferris.wit is checked in apps/".to_string(),
+            critical: true,
+        };
+    }
     if cwd == bench_root {
         return HealthCheck {
             name: "WIT version".to_string(),

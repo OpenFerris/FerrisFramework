@@ -34,7 +34,6 @@ pub fn system_workspace() -> WorkspaceSpec {
         .module(crate::doctypes::MODULE)
         .icon("Server")
         .folder(FERRIS_FOLDER)
-        .item(Item::doctype("System Health Report"))
         .item(Item::doctype("System Settings"))
         .item(Item::doctype("Path Log"))
         .item(Item::doctype("Version"))
@@ -57,13 +56,7 @@ pub fn system_workspace() -> WorkspaceSpec {
                 Item::doctype("View Log"),
             ],
         )
-        .group(
-            "Reports",
-            vec![
-                Item::doctype("Database Storage Usage By Tables"),
-                Item::doctype("Prepared Report Analytics"),
-            ],
-        )
+        .group("Reports", vec![])
 }
 
 /// Register this crate's Desk workspace, returning the names and any validation
@@ -104,15 +97,12 @@ mod tests {
             "API Request Log",
             "Access Log",
             "Activity Log",
-            "Database Storage Usage By Tables",
             "Error Log",
             "Path Log",
-            "Prepared Report Analytics",
             "RQ Job",
             "RQ Worker",
             "Scheduled Job Log",
             "Scheduled Job Type",
-            "System Health Report",
             "System Settings",
             "Version",
             "View Log",

@@ -418,6 +418,7 @@ fn MetadataFormView() -> impl IntoView {
                         is_new: svc_view.is_new,
                         doc: svc_view.doc.read_only(),
                         notice: svc_view.notice,
+                        failure: svc_view.error,
                         reload: svc_view.reload,
                     });
                     // Edit mode: every field gets a click target that selects it

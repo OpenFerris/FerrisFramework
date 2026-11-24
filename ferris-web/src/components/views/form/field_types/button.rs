@@ -65,7 +65,7 @@ pub fn ButtonField(id: String, label: String, method: String) -> impl IntoView {
                             )));
                             ctx.reload.update(|tick| *tick += 1);
                         }
-                        Err(e) => ctx.notice.set(Some(i18n.t_with(
+                        Err(e) => ctx.failure.set(Some(i18n.t_with(
                             "components.form.action.failed_detail",
                             &[("label", &label), ("message", &e)],
                         ))),

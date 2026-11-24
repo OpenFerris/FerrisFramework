@@ -5,7 +5,6 @@ use tracing::{info, warn};
 
 use crate::commands::{BenchmarkArgs, BenchmarkWhat};
 use crate::config::CliConfig;
-use crate::project;
 
 use super::concurrency::clamp_concurrency;
 use super::scenarios::{
@@ -13,8 +12,6 @@ use super::scenarios::{
 };
 
 pub fn run(args: BenchmarkArgs, config: &CliConfig) -> Result<()> {
-    project::check_project_exists(&config.source.project_dir)?;
-
     let iterations = args.iterations.max(1);
     let (concurrency, note) = clamp_concurrency(args.concurrency);
     if let Some(note) = note {

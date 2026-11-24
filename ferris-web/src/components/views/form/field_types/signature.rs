@@ -20,7 +20,12 @@ const CANVAS_WIDTH: u32 = 600;
 const CANVAS_HEIGHT: u32 = 240;
 
 #[component]
-pub fn SignatureField(id: String, value: RwSignal<String>, read_only: bool) -> impl IntoView {
+pub fn SignatureField(
+    id: String,
+    value: RwSignal<String>,
+    read_only: bool,
+    #[prop(into, optional)] aria_label: String,
+) -> impl IntoView {
     let drawing = RwSignal::new(false);
     // `id` is consumed by several closures (the canvas handlers and the clear
     // button), and a `StoredValue` is `Copy` so each can read its own copy.
@@ -40,7 +45,7 @@ pub fn SignatureField(id: String, value: RwSignal<String>, read_only: bool) -> i
                 height=CANVAS_HEIGHT
                 class="h-40 w-full rounded-md border bg-background touch-none"
                 role="img"
-                aria-label=t("components.form.field.signature")
+                aria-label=aria_label.clone()
                 on:pointerdown=move |ev| {
                     drawing.set(true);
                     begin_draw(&id_store.get_value(), &ev);

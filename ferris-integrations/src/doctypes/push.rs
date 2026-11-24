@@ -21,8 +21,8 @@ pub fn push_notification_meta() -> DoctypeMeta {
         )
         .field(FieldMeta::text("body").label("Body"))
         .field(FieldMeta::link("user", "User").label("User"))
-        .field(FieldMeta::data("document_type").label("Document Type"))
-        .field(FieldMeta::data("document_name").label("Document Name"))
+        .field(FieldMeta::link("document_type", "DocType").label("Document Type"))
+        .field(FieldMeta::dynamic_link("document_name", "document_type").label("Document Name"))
         .field(
             FieldMeta::select("status", "Queued\nSent\nFailed")
                 .label("Status")

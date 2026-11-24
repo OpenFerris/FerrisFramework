@@ -40,6 +40,7 @@ use crate::api::DocStore;
 use crate::api::types::Customization;
 use crate::components::ui::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::ui::icon::Icon;
+use crate::components::ui::select_native::SelectNative;
 use crate::i18n::{t, use_i18n};
 use crate::views::services::FormService;
 
@@ -93,6 +94,10 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
     // The header owns the export button (next to the title) and the inspector
     // owns the dialog, so the trigger travels as a signal.
     let export_open = RwSignal::new(false);
+    // The picker mirrors the selection; `SelectNative` takes a `ReadSignal`, so
+    // the mirror is a signal of its own instead of a derived one.
+    let picker = RwSignal::new(selected.get_untracked().unwrap_or_default());
+    Effect::new(move |_| picker.set(selected.get().unwrap_or_default()));
     // `Copy` handle for the properties panel, whose `Show` children are rebuilt.
     let service_for_field = StoredValue::new(service);
 
@@ -131,9 +136,11 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
             ></button>
         </Show>
 
-        // Nothing selected: no panel at all. The form keeps its full width and
-        // the column is not claimed until a field is picked.
-        <Show when=move || selected.get().is_some()>
+        // In edit mode the column is always the property panel: without a
+        // selector there was no way back to a hidden field (it has no overlay)
+        // or to a section/tab break (the layout consumes it), so its properties
+        // could never be edited again after the first save.
+        <Show when=move || editing.get()>
             <aside
                 class="flex w-full min-w-0 flex-col gap-3 rounded-xl border bg-card text-sm shadow-xs max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[85dvh] max-lg:overflow-y-auto max-lg:rounded-t-2xl max-lg:border-t max-lg:shadow-2xl"
                 aria-label=t("components.form.edit_mode.field_properties")
@@ -167,6 +174,35 @@ pub fn InspectorPanel(service: FormService) -> impl IntoView {
                 </div>
 
                 <div class="flex min-w-0 flex-col gap-3 px-4 pb-4">
+                    <label class="flex flex-col gap-1" for="field-picker">
+                        <span class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            {i18n.t("components.form.edit_mode.pick_field")}
+                        </span>
+                        <SelectNative
+                            id="field-picker"
+                            value=picker.read_only()
+                            aria_label=i18n.t("components.form.edit_mode.pick_field")
+                            on_change=Callback::new(move |ev: leptos::ev::Event| {
+                                let value = event_target_value(&ev);
+                                picker.set(value.clone());
+                                selected.set((!value.is_empty()).then_some(value));
+                            })
+                        >
+                            <option value="">{i18n.t("components.form.edit_mode.pick_field_empty")}</option>
+                            {move || {
+                                meta.get()
+                                    .unwrap_or_default()
+                                    .fields
+                                    .into_iter()
+                                    .map(|field| {
+                                        let label = field.label.clone().unwrap_or_else(|| field.fieldname.clone());
+                                        let text = format!("{label} · {}", field.fieldtype);
+                                        view! { <option value=field.fieldname>{text}</option> }
+                                    })
+                                    .collect_view()
+                            }}
+                        </SelectNative>
+                    </label>
                     {move || match selected.get() {
                         None => ().into_any(),
                         Some(name) => {

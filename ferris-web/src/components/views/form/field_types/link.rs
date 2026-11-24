@@ -28,6 +28,9 @@ pub fn LinkFieldComponent(
     read_only: bool,
     target: String,
     #[prop(optional, into)] on_pick: Option<Callback<String>>,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     let selected = RwSignal::new(vec_or_empty(&value.get_untracked()));
 
@@ -67,6 +70,9 @@ pub fn LinkFieldComponent(
             placeholder=placeholder
             read_only=read_only
             on_change=on_change
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }
@@ -82,6 +88,9 @@ pub fn MultiLinkField(
     placeholder: String,
     read_only: bool,
     target: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     let selected = RwSignal::new(parse_name_list(&value.get_untracked()));
 
@@ -110,6 +119,9 @@ pub fn MultiLinkField(
             placeholder=placeholder
             read_only=read_only
             on_change=on_change
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }

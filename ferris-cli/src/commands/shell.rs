@@ -13,7 +13,6 @@
 //! without leaving the terminal, keeping the exit code of each one visible.
 
 use crate::config::CliConfig;
-use crate::project;
 use anyhow::Result;
 use std::io::{BufRead, Write};
 use tracing::info;
@@ -59,8 +58,6 @@ fn read_line(input: &mut impl BufRead) -> std::io::Result<Option<String>> {
 }
 
 pub fn run(args: super::ShellArgs, config: &CliConfig) -> Result<()> {
-    project::check_project_exists(&config.source.project_dir)?;
-
     if args.command.is_empty() {
         let stdin = std::io::stdin();
         let mut input = stdin.lock();

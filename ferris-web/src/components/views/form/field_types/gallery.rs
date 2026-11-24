@@ -21,7 +21,11 @@ use crate::components::ui::skeleton::Skeleton;
 use crate::i18n::{t, use_i18n};
 
 #[component]
-pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
+pub fn AttachmentGalleryField(
+    id: String,
+    read_only: bool,
+    #[prop(into, optional)] aria_label: String,
+) -> impl IntoView {
     let i18n = use_i18n();
     let reload_i18n = i18n;
     let add_i18n = i18n;
@@ -231,7 +235,13 @@ pub fn AttachmentGalleryField(id: String, read_only: bool) -> impl IntoView {
     };
 
     view! {
-        <div id=id class="flex flex-col gap-2" data-name="__AttachmentGalleryField">
+        <div
+            id=id
+            class="flex flex-col gap-2"
+            data-name="__AttachmentGalleryField"
+            aria-label=aria_label.clone()
+            role="group"
+        >
             {body}
             <Show
                 when=move || {

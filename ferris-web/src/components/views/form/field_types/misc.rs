@@ -25,6 +25,9 @@ pub fn PasswordField(
     read_only: bool,
     placeholder: String,
     max_length: Option<u32>,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
         <Input
@@ -35,6 +38,9 @@ pub fn PasswordField(
             placeholder=placeholder
             attr:maxlength=max_length
             autocomplete="new-password"
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }
@@ -49,6 +55,9 @@ pub fn JsonField(
     value: RwSignal<String>,
     read_only: bool,
     placeholder: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
         <Textarea
@@ -58,6 +67,9 @@ pub fn JsonField(
             placeholder=placeholder
             rows=6u32
             class="font-mono text-xs max-md:text-base"
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
         />
     }
 }
@@ -281,7 +293,11 @@ pub fn AttachField(
 
 /// Introspection field (`Read Only`): a value with no widget at all.
 #[component]
-pub fn ReadOnlyField(id: String, value: RwSignal<String>) -> impl IntoView {
+pub fn ReadOnlyField(
+    id: String,
+    value: RwSignal<String>,
+    #[prop(into, optional)] aria_label: String,
+) -> impl IntoView {
     // An empty introspection value used to be a blank bordered box, which reads
     // as a broken control; the em dash says "this field is empty" the same way
     // the rest of the Desk does.
@@ -291,6 +307,7 @@ pub fn ReadOnlyField(id: String, value: RwSignal<String>) -> impl IntoView {
             id=id
             class="rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground"
             class:text-muted-foreground=empty
+            aria-label=aria_label
         >
             {move || {
                 let v = value.get();

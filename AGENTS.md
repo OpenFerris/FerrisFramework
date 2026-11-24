@@ -101,7 +101,7 @@ FerrisCore by relative path**.
 | `ferris-integrations` | OAuth/Google/LDAP/webhook DocTypes and runtime adapters. |
 | `ferris-wasm` | Native wasmtime **host** + `wit/ferris.wit` component contract. |
 | `ferris-server` | axum router, server roles, module composition root, feature gate. |
-| `ferris-cli` | `ferris new/dev/serve/run/build/app/migrate/generate/deploy/tenant/shell/benchmark/info/doctor/config/role-permissions`. |
+| `ferris-cli` | `ferris init/new/dev/serve/run/build/app/migrate/generate/deploy/tenant/shell/benchmark/info/doctor/config/role-permissions`, with the available commands selected by the working directory (bench root, site, app or none). |
 
 Workspace: `resolver = "2"`, edition 2024, version **0.4.0**, Rust **1.98.1**,
 MIT.
@@ -165,6 +165,21 @@ the minimal server.
   `cargo check -p ferris-cli --no-default-features --features api` and
   `cargo check -p ferris-cli --features full`, in addition to the default
   `cargo check --all-targets`.
+
+### Bench, sites and the CLI context
+
+A bench is one `config/ferris.toml`, one `apps/` catalogue and one `sites/` tree;
+`ferris init` creates it in an existing directory. A site is a self-contained
+directory under `sites/<site>/`: `site_config.json`, `apps.txt`, `plugins/`,
+`private/` (files and, for SQLite, the database at `private/<db>`) and
+`public/files/`. Nothing a site needs lives outside that directory.
+
+`ferris-cli/src/context.rs` detects the zone from the working directory and
+decides which commands exist there (`restrict` hides the rest from `--help`,
+`check` rejects them, `prepare` fills the enclosing site's name and rewrites the
+config before a database is opened). Adding a command means adding it to the
+zone's catalogue in that module and covering it in the docs page
+`cli/init-y-contexto`.
 
 ### Plugin worlds
 

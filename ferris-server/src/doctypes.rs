@@ -41,24 +41,6 @@ fn audit_read() -> RolePermission {
     RolePermission::new("System Manager").read()
 }
 
-/// A generated health snapshot of the running install.
-#[must_use]
-pub fn system_health_report_meta() -> DoctypeMeta {
-    DoctypeMeta::new("System Health Report", MODULE)
-        .description("A generated health snapshot of the running install.")
-        .sort("creation", "desc")
-        .allow_delete()
-        .field(
-            FieldMeta::select("status", "Healthy\nDegraded\nDown")
-                .label("Status")
-                .default_value("Healthy")
-                .in_list_view(),
-        )
-        .field(FieldMeta::code("details").label("Details").options("JSON"))
-        .field(FieldMeta::datetime("generated_at").label("Generated At"))
-        .permission(system_manager())
-}
-
 /// Single: install-wide system defaults.
 #[must_use]
 pub fn system_settings_meta() -> DoctypeMeta {
@@ -254,7 +236,10 @@ pub fn error_log_meta() -> DoctypeMeta {
         )
         .field(FieldMeta::text("error").label("Error").in_list_view())
         .field(FieldMeta::link("reference_doctype", "DocType").label("Reference DocType"))
-        .field(FieldMeta::data("reference_name").label("Reference Document"))
+        .field(
+            FieldMeta::dynamic_link("reference_name", "reference_doctype")
+                .label("Reference Document"),
+        )
         .field(FieldMeta::text("traceback").label("Traceback"))
         .permission(audit_read())
 }
@@ -294,49 +279,11 @@ pub fn view_log_meta() -> DoctypeMeta {
                 .in_list_view(),
         )
         .field(
-            FieldMeta::data("reference_name")
+            FieldMeta::dynamic_link("reference_name", "reference_doctype")
                 .label("Reference Document")
                 .in_list_view(),
         )
         .permission(audit_read())
-}
-
-/// Report: table sizes in the database.
-#[must_use]
-pub fn database_storage_usage_by_tables_meta() -> DoctypeMeta {
-    DoctypeMeta::new("Database Storage Usage By Tables", MODULE)
-        .description("Report: table sizes in the database.")
-        .sort("modified", "desc")
-        .field(FieldMeta::data("table_name").label("Table").in_list_view())
-        .field(FieldMeta::int("rows").label("Rows").in_list_view())
-        .field(
-            FieldMeta::float("size_mb")
-                .label("Size (MB)")
-                .in_list_view(),
-        )
-        .permission(system_manager())
-}
-
-/// Report: prepared-report throughput and timings.
-#[must_use]
-pub fn prepared_report_analytics_meta() -> DoctypeMeta {
-    DoctypeMeta::new("Prepared Report Analytics", MODULE)
-        .description("Report: prepared-report throughput and timings.")
-        .sort("modified", "desc")
-        .field(
-            FieldMeta::link("report", "Report")
-                .label("Report")
-                .in_list_view(),
-        )
-        .field(
-            FieldMeta::select("status", "Queued\nCompleted\nFailed")
-                .label("Status")
-                .default_value("Queued")
-                .in_list_view(),
-        )
-        .field(FieldMeta::int("row_count").label("Row Count"))
-        .field(FieldMeta::int("duration_ms").label("Duration (ms)"))
-        .permission(system_manager())
 }
 
 /// Every DocType this crate declares, in registration order.
@@ -344,7 +291,6 @@ pub fn prepared_report_analytics_meta() -> DoctypeMeta {
 pub fn doctype_metas() -> Vec<DoctypeMeta> {
     vec![
         // Direct
-        system_health_report_meta(),
         system_settings_meta(),
         path_log_meta(),
         version_meta(),
@@ -358,8 +304,6 @@ pub fn doctype_metas() -> Vec<DoctypeMeta> {
         api_request_log_meta(),
         view_log_meta(),
         // Reports
-        database_storage_usage_by_tables_meta(),
-        prepared_report_analytics_meta(),
     ]
 }
 

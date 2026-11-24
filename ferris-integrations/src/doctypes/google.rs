@@ -64,7 +64,7 @@ pub fn google_settings_meta() -> DoctypeMeta {
         )
         .field(FieldMeta::data("client_id").label("Client ID"))
         .field(FieldMeta::secret("client_secret").label("Client Secret"))
-        .field(FieldMeta::data("redirect_uri").label("Redirect URI"))
+        .field(FieldMeta::url("redirect_uri").label("Redirect URI"))
         .field(FieldMeta::secret("refresh_token").label("Refresh Token"))
         .field(FieldMeta::link("user", "User").label("User"))
         .permission(system_manager_single())

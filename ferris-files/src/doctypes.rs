@@ -52,7 +52,10 @@ pub fn file_meta() -> DoctypeMeta {
         .field(FieldMeta::data("content_hash").label("Content Hash"))
         .field(FieldMeta::link("uploaded_by", "User").label("Uploaded By"))
         .field(FieldMeta::link("attached_to_doctype", "DocType").label("Attached To DocType"))
-        .field(FieldMeta::data("attached_to_name").label("Attached To Name"))
+        .field(
+            FieldMeta::dynamic_link("attached_to_name", "attached_to_doctype")
+                .label("Attached To Name"),
+        )
         .field(FieldMeta::data("attached_to_field").label("Attached To Field"))
         .field(FieldMeta::link("file_owner", "User").label("File Owner"))
         .permission(system_manager())

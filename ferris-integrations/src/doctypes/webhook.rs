@@ -30,7 +30,7 @@ pub fn webhook_meta() -> DoctypeMeta {
         )
         .field(FieldMeta::small_text("condition").label("Condition"))
         .field(
-            FieldMeta::data("request_url")
+            FieldMeta::url("request_url")
                 .label("Request URL")
                 .required(),
         )

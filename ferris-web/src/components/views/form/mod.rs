@@ -2,7 +2,6 @@
 
 pub mod child_table;
 pub mod customize;
-pub mod customize_links;
 pub mod edit_mode;
 pub mod engagement;
 pub mod field_renderer;
@@ -14,7 +13,6 @@ pub mod topbar;
 pub mod tour;
 
 pub use child_table::ChildTableField;
-pub use customize::CustomizeDialog;
 pub use edit_mode::{FieldEditCtx, InspectorPanel};
 pub use engagement::FormEngagement;
 pub use field_renderer::render_form_field;

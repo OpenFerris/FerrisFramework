@@ -40,7 +40,10 @@ pub enum SiteCommand {
     /// List the sites of this project
     List,
     /// Show one site's configuration
-    Info { site: String },
+    Info {
+        /// Site name (default: the enclosing site)
+        site: Option<String>,
+    },
     /// Delete a site's configuration (its database and files are kept)
     Delete {
         site: String,
@@ -50,20 +53,28 @@ pub enum SiteCommand {
         force: bool,
     },
     /// Enable a site so `--site` may serve it
-    Enable { site: String },
+    Enable {
+        /// Site name (default: the enclosing site)
+        site: Option<String>,
+    },
     /// Disable a site without touching its data
-    Disable { site: String },
+    Disable {
+        /// Site name (default: the enclosing site)
+        site: Option<String>,
+    },
     /// Apply the migrations to a site's own database
     Migrate {
-        site: String,
+        /// Site name (default: the enclosing site)
+        site: Option<String>,
         #[arg(long)]
         target: Option<u32>,
     },
     /// Install an app from the global catalogue into one site
     InstallApp {
         app: String,
+        /// Site name (default: the enclosing site)
         #[arg(long, value_name = "NAME")]
-        site: String,
+        site: Option<String>,
         /// Upgrade an already installed app, keeping the site's data and secrets
         #[arg(long)]
         force: bool,
@@ -71,8 +82,9 @@ pub enum SiteCommand {
     /// Remove an app from one site
     UninstallApp {
         app: String,
+        /// Site name (default: the enclosing site)
         #[arg(long, value_name = "NAME")]
-        site: String,
+        site: Option<String>,
         /// Delete the instance too (its data, files and secrets)
         #[arg(long)]
         purge: bool,

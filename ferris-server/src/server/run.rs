@@ -239,6 +239,70 @@ impl Server {
             warn!("settings: could not seed a Single — {line}");
         }
 
+        // The reference rows every `Link` points at: one `Module Def` per
+        // declared module and one `Language` per advertised locale. Without
+        // them the workspace module links dangle and the language pickers open
+        // empty on a fresh install.
+        let languages: Vec<String> = settings
+            .i18n
+            .supported()
+            .iter()
+            .map(|locale| locale.as_str().to_string())
+            .collect();
+        let reference = ferris_api::seed_reference_data(&pool, &languages).await;
+        info!(
+            "reference: {} module(s), {} language(s) seeded",
+            reference.modules, reference.languages
+        );
+        for line in &reference.warnings {
+            warn!("reference: could not seed a row — {line}");
+        }
+
+        // Audit sink: the events are emitted by `ferris-api` (login/logout) and
+        // `ferris-files` (file reads), which cannot depend on the host. The
+        // sink spawns the write so a slow insert never delays the operation it
+        // describes; without it, `record` is a no-op.
+        let audit_pool = pool.clone();
+        let installed = ferris_core::audit::set_sink(std::sync::Arc::new(move |event| {
+            let pool = audit_pool.clone();
+            let event = event.clone();
+            tokio::spawn(async move {
+                match event {
+                    ferris_core::audit::AuditEvent::Login { user, ip } => {
+                        crate::observability::record_activity(
+                            &pool,
+                            "login",
+                            &user,
+                            &ip,
+                            "Signed in",
+                        )
+                        .await;
+                    }
+                    ferris_core::audit::AuditEvent::Logout { user, ip } => {
+                        crate::observability::record_activity(
+                            &pool,
+                            "logout",
+                            &user,
+                            &ip,
+                            "Signed out",
+                        )
+                        .await;
+                    }
+                    ferris_core::audit::AuditEvent::FileAccess {
+                        user,
+                        file_type,
+                        reference,
+                    } => {
+                        crate::observability::record_access(&pool, &user, &file_type, &reference)
+                            .await;
+                    }
+                }
+            });
+        }));
+        if !installed {
+            warn!("audit: a sink is already installed; activity rows go to that one");
+        }
+
         // `System Settings` is the install-wide switchboard. Read after the seed,
         // so the row (with its `enable_scheduler` default of `1`) is guaranteed
         // to exist and the host never has to treat "not yet materialised" as a

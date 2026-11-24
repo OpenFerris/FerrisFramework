@@ -15,8 +15,6 @@ use ferris_auth::docperm::{DocPermRow, DocPermStore};
 use tracing::{info, warn};
 
 pub fn run(args: super::RolePermissionsArgs, config: &CliConfig) -> Result<()> {
-    crate::project::check_project_exists(&config.source.project_dir)?;
-
     let rt = crate::runtime::block_on_runtime(None)?;
 
     rt.block_on(async {

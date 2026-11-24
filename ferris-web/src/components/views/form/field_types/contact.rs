@@ -14,9 +14,16 @@ pub fn EmailField(
     value: RwSignal<String>,
     read_only: bool,
     placeholder: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
-        <Input id=id r#type=InputType::Email bind_value=value readonly=read_only placeholder=placeholder />
+        <Input id=id r#type=InputType::Email bind_value=value readonly=read_only placeholder=placeholder
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
+        />
     }
 }
 
@@ -34,7 +41,10 @@ pub fn PhoneField(
     value: RwSignal<String>,
     read_only: bool,
     error: RwSignal<Option<String>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
+    let _ = (aria_describedby, required);
     // Read once to seed the widget: it is the initial value, not a dependency
     // of this render (the `Effect` below keeps the two in step afterwards).
     let (loaded, loaded_country) = PhoneNumber::parse(&value.get_untracked(), Country::Spain);
@@ -75,8 +85,15 @@ pub fn UrlField(
     value: RwSignal<String>,
     read_only: bool,
     placeholder: String,
+    #[prop(optional, into)] aria_invalid: Option<Signal<bool>>,
+    #[prop(into, optional)] aria_describedby: Option<String>,
+    #[prop(optional)] required: bool,
 ) -> impl IntoView {
     view! {
-        <Input id=id r#type=InputType::Url bind_value=value readonly=read_only placeholder=placeholder />
+        <Input id=id r#type=InputType::Url bind_value=value readonly=read_only placeholder=placeholder
+            aria_invalid=Signal::derive(move || aria_invalid.is_some_and(|state| state.get()))
+            aria_describedby=aria_describedby.clone().unwrap_or_default()
+            required=required
+        />
     }
 }
