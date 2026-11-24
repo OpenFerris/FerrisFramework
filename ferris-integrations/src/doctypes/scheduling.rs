@@ -15,13 +15,13 @@ pub fn auto_repeat_meta() -> DoctypeMeta {
         .allow_delete()
         .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
-            FieldMeta::data("reference_doctype")
+            FieldMeta::link("reference_doctype", "DocType")
                 .label("Reference DocType")
                 .required()
                 .in_list_view(),
         )
         .field(
-            FieldMeta::data("reference_document")
+            FieldMeta::dynamic_link("reference_document", "reference_doctype")
                 .label("Reference Document")
                 .required()
                 .in_list_view(),
@@ -53,13 +53,13 @@ pub fn auto_email_report_meta() -> DoctypeMeta {
         .allow_delete()
         .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
-            FieldMeta::data("report")
+            FieldMeta::link("report", "Report")
                 .label("Report")
                 .required()
                 .in_list_view(),
         )
         .field(FieldMeta::link("user", "User").label("User"))
-        .field(FieldMeta::data("email_to").label("Email To").in_list_view())
+        .field(FieldMeta::text("email_to").label("Email To").in_list_view())
         .field(
             FieldMeta::select("frequency", "Daily\nWeekly\nMonthly")
                 .label("Frequency")
@@ -91,9 +91,9 @@ pub fn reminder_meta() -> DoctypeMeta {
                 .required()
                 .in_list_view(),
         )
-        .field(FieldMeta::data("document_type").label("Document Type"))
+        .field(FieldMeta::link("document_type", "DocType").label("Document Type"))
         .field(
-            FieldMeta::data("document_name")
+            FieldMeta::dynamic_link("document_name", "document_type")
                 .label("Document Name")
                 .in_list_view(),
         )

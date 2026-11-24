@@ -21,7 +21,7 @@ pub fn automation_flow_meta() -> DoctypeMeta {
                 .in_list_view(),
         )
         .field(
-            FieldMeta::data("document_type")
+            FieldMeta::link("document_type", "DocType")
                 .label("Document Type")
                 .in_list_view(),
         )
@@ -62,9 +62,9 @@ pub fn automation_trigger_queue_meta() -> DoctypeMeta {
                 .label("Flow")
                 .in_list_view(),
         )
-        .field(FieldMeta::data("document_type").label("Document Type"))
+        .field(FieldMeta::link("document_type", "DocType").label("Document Type"))
         .field(
-            FieldMeta::data("document_name")
+            FieldMeta::dynamic_link("document_name", "document_type")
                 .label("Document Name")
                 .in_list_view(),
         )
@@ -97,7 +97,7 @@ pub fn assignment_rule_meta() -> DoctypeMeta {
                 .in_list_view(),
         )
         .field(
-            FieldMeta::data("document_type")
+            FieldMeta::link("document_type", "DocType")
                 .label("Document Type")
                 .required()
                 .in_list_view(),
@@ -135,9 +135,9 @@ pub fn milestone_meta() -> DoctypeMeta {
                 .required()
                 .in_list_view(),
         )
-        .field(FieldMeta::data("document_type").label("Document Type"))
+        .field(FieldMeta::link("document_type", "DocType").label("Document Type"))
         .field(
-            FieldMeta::data("document_name")
+            FieldMeta::dynamic_link("document_name", "document_type")
                 .label("Document Name")
                 .in_list_view(),
         )

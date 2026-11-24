@@ -51,7 +51,7 @@ pub fn email_account_meta() -> DoctypeMeta {
         .allow_delete()
         .field(FieldMeta::section_break("section_details").label("Details"))
         .field(
-            FieldMeta::data("email")
+            FieldMeta::email("email")
                 .label("Email")
                 .required()
                 .in_list_view(),
@@ -61,7 +61,7 @@ pub fn email_account_meta() -> DoctypeMeta {
                 .label("Display Name")
                 .in_list_view(),
         )
-        .field(FieldMeta::data("from_email").label("From Email"))
+        .field(FieldMeta::email("from_email").label("From Email"))
         .field(FieldMeta::data("smtp_server").label("SMTP Server"))
         .field(
             FieldMeta::int("smtp_port")
@@ -149,7 +149,10 @@ pub fn communication_meta() -> DoctypeMeta {
                 .description("Name, content type and decoded size of each attachment."),
         )
         .field(FieldMeta::link("reference_doctype", "DocType").label("Reference DocType"))
-        .field(FieldMeta::data("reference_name").label("Reference Document"))
+        .field(
+            FieldMeta::dynamic_link("reference_name", "reference_doctype")
+                .label("Reference Document"),
+        )
         .field(
             FieldMeta::select("status", "Open\nReplied\nClosed")
                 .label("Status")
