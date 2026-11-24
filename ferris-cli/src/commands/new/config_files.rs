@@ -77,7 +77,7 @@ supported = ["en", "es"]
 ///
 /// Returns `true` when this call created the file, so a failed scaffold can
 /// roll back only what it created. An existing config is never overwritten.
-pub(super) fn write_bench_config(root: &Path) -> Result<bool> {
+pub(in crate::commands) fn write_bench_config(root: &Path) -> Result<bool> {
     let dir = root.join("config");
     fs::create_dir_all(&dir)?;
     let path = dir.join("ferris.toml");

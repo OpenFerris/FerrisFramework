@@ -176,3 +176,79 @@ fn a_malformed_allowed_hosts_table_is_an_error() {
     assert!(err.to_string().contains("array"), "{err}");
     let _ = std::fs::remove_file(&path);
 }
+
+/// A SQLite site is one directory: the database lives under its `private`
+/// root, not at the bench root where two sites could collide and `site delete`
+/// would leave it behind.
+#[test]
+fn a_relative_sqlite_database_lives_in_the_site_private_directory() {
+    let (root, manager) = scratch("sqlite-private");
+    let mut site = SiteConfig::new("erp");
+    site.database.r#type = ferris_core::DatabaseType::SQLite;
+    site.database.name = "erp.db".to_string();
+    let site = manager.create(site).expect("the site is created");
+
+    let database = site_database(&manager, &site);
+
+    let expected = root
+        .join("sites")
+        .join("erp")
+        .join("private")
+        .join("erp.db");
+    assert_eq!(database.name, expected.display().to_string());
+    assert!(root.join("sites/erp/private").is_dir());
+}
+
+/// A site created before the layout kept the file at the bench root; opening it
+/// moves the file (and its sidecars) once, preserving the bytes.
+#[test]
+fn a_bench_root_sqlite_file_is_adopted_once() {
+    let (root, manager) = scratch("sqlite-adopt");
+    let mut site = SiteConfig::new("erp");
+    site.database.r#type = ferris_core::DatabaseType::SQLite;
+    site.database.name = "erp".to_string();
+    let site = manager.create(site).expect("the site is created");
+
+    std::fs::write(root.join("erp"), b"sqlite-bytes").expect("the legacy file is written");
+    std::fs::write(root.join("erp-wal"), b"wal-bytes").expect("the legacy wal is written");
+
+    let database = site_database(&manager, &site);
+    let target = root.join("sites/erp/private/erp");
+    assert_eq!(database.name, target.display().to_string());
+    assert_eq!(
+        std::fs::read(&target).expect("the file moved"),
+        b"sqlite-bytes"
+    );
+    assert_eq!(
+        std::fs::read(root.join("sites/erp/private/erp-wal")).expect("the wal moved"),
+        b"wal-bytes"
+    );
+    assert!(!root.join("erp").exists(), "the bench root keeps no copy");
+
+    // Once the site has its own file, a stray legacy file is not adopted: the
+    // site's copy is authoritative.
+    std::fs::write(root.join("erp"), b"stale").expect("a stale file is written");
+    let again = site_database(&manager, &site);
+    assert_eq!(again.name, target.display().to_string());
+    assert_eq!(
+        std::fs::read(&target).expect("the site copy is read"),
+        b"sqlite-bytes"
+    );
+    assert!(root.join("erp").exists(), "the stray file is left alone");
+}
+
+/// A `db_name` that is a path keeps its historical meaning (relative to the
+/// bench root) instead of being silently rebased under `private/`.
+#[test]
+fn a_path_shaped_sqlite_name_stays_at_the_bench_root() {
+    let (root, manager) = scratch("sqlite-path");
+    let mut site = SiteConfig::new("erp");
+    site.database.r#type = ferris_core::DatabaseType::SQLite;
+    site.database.name = "dbs/erp.db".to_string();
+    let site = manager.create(site).expect("the site is created");
+
+    let database = site_database(&manager, &site);
+
+    assert_eq!(database.name, root.join("dbs/erp.db").display().to_string());
+    assert!(!root.join("sites/erp/private/dbs").exists());
+}

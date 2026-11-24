@@ -5,6 +5,7 @@
 
 pub mod commands;
 pub mod config;
+pub mod context;
 pub mod features;
 pub mod framework;
 pub mod project;

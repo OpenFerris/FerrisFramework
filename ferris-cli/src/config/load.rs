@@ -321,7 +321,7 @@ impl CliConfig {
 /// Reads a TOML config file and merges it over the compiled-in defaults so
 /// partial configs remain valid.
 /// Walk up from `start` looking for the bench root (`<dir>/config/ferris.toml`).
-fn find_bench_root(start: &Path) -> Option<(PathBuf, PathBuf)> {
+pub(crate) fn find_bench_root(start: &Path) -> Option<(PathBuf, PathBuf)> {
     let mut current = Some(start);
     while let Some(dir) = current {
         let path = dir.join("config").join("ferris.toml");

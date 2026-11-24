@@ -7,12 +7,9 @@
 use super::db_map::core_database;
 use super::*;
 use crate::config::CliConfig;
-use crate::project;
 use tracing::{error, info};
 
 pub fn run(args: super::MigrateArgs, config: &CliConfig) -> Result<()> {
-    project::check_project_exists(&config.source.project_dir)?;
-
     let rt = crate::runtime::block_on_runtime(None)?;
 
     rt.block_on(async {

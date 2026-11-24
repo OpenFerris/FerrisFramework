@@ -24,6 +24,7 @@ pub mod dev_frontend;
 pub mod doctor;
 pub mod generate;
 pub mod info;
+pub mod init;
 pub mod migrate;
 pub mod multi_site;
 pub mod new;
@@ -43,7 +44,10 @@ pub use site::{SiteArgs, SiteCommand};
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create a new Ferris project
+    /// Initialise a bench in an existing directory (`apps/`, `sites/`, config)
+    Init(InitArgs),
+
+    /// Create a new Ferris app (or a standalone project with `--standalone`)
     New(NewArgs),
 
     /// Start the development server (API + web + realtime)
@@ -103,6 +107,16 @@ pub enum Commands {
 
     /// Manage Role Permissions (DocPerm rows) in the configured database
     RolePermissions(RolePermissionsArgs),
+}
+
+#[derive(Parser)]
+pub struct InitArgs {
+    /// Directory to initialise (default: the working directory)
+    ///
+    /// The directory must already exist: `ferris init` fills it, it does not
+    /// create it.
+    #[arg(value_name = "DIR")]
+    pub path: Option<std::path::PathBuf>,
 }
 
 #[derive(Parser)]
