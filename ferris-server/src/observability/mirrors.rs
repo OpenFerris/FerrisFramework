@@ -18,7 +18,7 @@ use ferris_jobs::{JobQueue, JobStatus};
 #[cfg(feature = "scheduler")]
 use ferris_scheduler::Scheduler;
 use tokio::task::JoinHandle;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use super::{Mirrors, SNAPSHOT_INTERVAL, Sources, system_ctx, upsert, write_doc, write_row};
 
@@ -124,7 +124,7 @@ pub(crate) async fn storage_snapshot(pool: &Db) -> ferris_core::Result<Vec<Table
     table_usage(pool).await
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct TableUsage {
     pub name: String,
     pub rows: i64,
@@ -258,7 +258,7 @@ async fn write_rq_jobs(queue: &JobQueue, pool: &Db, mirrors: &mut Mirrors) {
                 .await;
             }
         }
-        Err(error) => debug!(%error, "job list failed"),
+        Err(error) => tracing::debug!(%error, "job list failed"),
     }
 }
 
@@ -294,7 +294,7 @@ async fn write_rq_workers(queue: &JobQueue, pool: &Db, mirrors: &mut Mirrors) {
                 .await;
             }
         }
-        Err(error) => debug!(%error, "worker list failed"),
+        Err(error) => tracing::debug!(%error, "worker list failed"),
     }
 }
 
@@ -310,7 +310,7 @@ async fn write_schedules(scheduler: &Scheduler, pool: &Db, mirrors: &mut Mirrors
     let listed = match scheduler.list_schedules().await {
         Ok(rows) => rows,
         Err(error) => {
-            debug!(%error, "schedule list failed");
+            tracing::debug!(%error, "schedule list failed");
             return;
         }
     };

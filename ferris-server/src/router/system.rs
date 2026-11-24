@@ -27,7 +27,19 @@ pub(super) async fn health(State(state): State<AppState>) -> Json<serde_json::Va
 /// `GET /api/system/storage` — per-table row counts and sizes.
 pub(super) async fn storage(State(state): State<AppState>) -> Response {
     match crate::observability::storage_snapshot(&state.api.pool).await {
-        Ok(tables) => Json(tables).into_response(),
+        Ok(tables) => {
+            let rows: Vec<serde_json::Value> = tables
+                .into_iter()
+                .map(|table| {
+                    serde_json::json!({
+                        "name": table.name,
+                        "rows": table.rows,
+                        "size_mb": table.size_mb,
+                    })
+                })
+                .collect();
+            Json(rows).into_response()
+        }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": error.to_string() })),
