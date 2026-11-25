@@ -121,10 +121,11 @@ jobs:
           MARIADB_ROOT_PASSWORD: test
           MARIADB_DATABASE: ferris_test
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -ptest"
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 12
+          --health-start-period 30s
         ports: ["3306:3306"]
       redis:
         image: redis:7-alpine
