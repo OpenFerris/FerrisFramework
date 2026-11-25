@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use ferris_auth::{AuthState, JwtConfig, JwtManager, SessionConfig, SessionManager};
+use ferris_auth::{AuthState, SessionConfig};
 use ferris_wasm::{
     ListenerTransport, OutboundPolicy, OutboundStreamSpec, PluginStore, RuntimeConfig,
     SharedRuntime,
@@ -80,11 +80,7 @@ pub async fn store_with_worlds(root: PathBuf) -> Arc<PluginStore> {
 }
 
 pub fn auth() -> AuthState {
-    AuthState::new(
-        JwtManager::new(JwtConfig::new("net-test-secret-at-least-32-bytes-long").unwrap()).unwrap(),
-        SessionManager::new(SessionConfig::default()),
-        SessionConfig::default(),
-    )
+    AuthState::new(SessionConfig::default())
 }
 
 pub fn connect_spec(port: u16, allow_private: bool) -> OutboundStreamSpec {

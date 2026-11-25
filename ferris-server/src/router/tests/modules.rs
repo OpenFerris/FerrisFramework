@@ -13,7 +13,7 @@ use axum::http::{Method, Request, StatusCode, header};
 use axum::middleware::from_fn_with_state;
 use ferris_api::ApiState;
 use ferris_auth::middleware::require_auth;
-use ferris_auth::{AuthState, JwtConfig, JwtManager, SessionConfig, SessionManager};
+use ferris_auth::{ApiKeyManager, AuthState, SessionConfig, UserStore, UserType};
 use ferris_core::FeatureFlags;
 use tower::ServiceExt;
 
@@ -23,6 +23,8 @@ use super::super::modules::native_modules;
 struct TestState {
     api: Arc<ApiState>,
     auth: AuthState,
+    /// `Authorization: token <key>:<secret>` for the test account.
+    authorization: String,
 }
 
 impl FromRef<TestState> for Arc<ApiState> {
@@ -37,30 +39,30 @@ impl FromRef<TestState> for AuthState {
     }
 }
 
-fn bearer(state: &TestState) -> String {
-    let roles = vec!["System Manager".to_string()];
-    format!(
-        "Bearer {}",
-        state
-            .auth
-            .jwt_manager
-            .generate_tokens("user-1", "user@example.com", &roles, None, "")
-            .expect("test token")
-            .access_token
-    )
-}
-
 async fn state(features: FeatureFlags) -> TestState {
     let pool = ferris_db::memory_db().await.expect("memory db");
-    let auth = AuthState::new(
-        JwtManager::new(JwtConfig::new("test-secret-that-is-at-least-32-chars-long").unwrap())
-            .expect("jwt"),
-        SessionManager::new(SessionConfig::default()),
-        SessionConfig::default(),
-    );
+    let store = UserStore::new(pool.clone());
+    store.init().await.expect("user table");
+    let owner = store
+        .create(
+            "modules@harness.local",
+            "Modules",
+            None,
+            UserType::SystemUser,
+            "Harness-Password-123",
+            &["System Manager".to_string()],
+        )
+        .await
+        .expect("test account");
+    let keys = ApiKeyManager::new();
+    let (record, secret) = keys.create(&owner.id, None, None).await.expect("api key");
+    let auth = AuthState::new(SessionConfig::default())
+        .with_user_validator(Arc::new(store))
+        .with_api_keys(Arc::new(keys));
     TestState {
         api: Arc::new(ApiState::new(pool).with_features(features)),
         auth,
+        authorization: format!("token {}:{secret}", record.key),
     }
 }
 
@@ -83,7 +85,7 @@ async fn request(
             Request::builder()
                 .method(method)
                 .uri(uri)
-                .header(header::AUTHORIZATION, bearer(state))
+                .header(header::AUTHORIZATION, state.authorization.clone())
                 .body(Body::empty())
                 .expect("request"),
         )

@@ -15,9 +15,8 @@ use super::redis::RedisConfig;
 use super::server::{ServerConfig, default_body_limit_mb};
 use super::types::{CliConfig, ConfigSource};
 
-/// Placeholder values that ships with `CliConfig::default()`. A JWT secret has
-/// no placeholder at all (it defaults to unset); the database defaults below
-/// are only bootstrap examples for a local dev database.
+/// Placeholder values that ship with `CliConfig::default()`. The database
+/// defaults below are only bootstrap examples for a local dev database.
 pub(super) const DEFAULT_DB_USER: &str = "ferris";
 pub(super) const DEFAULT_DB_PASSWORD: &str = "ferris";
 
@@ -62,11 +61,18 @@ impl Default for CliConfig {
                 external_url: None,
             },
             auth: AuthConfig {
-                jwt_secret: None,
-                jwt_expiry_hours: 24,
-                refresh_expiry_days: 30,
                 password_min_length: 8,
-                mfa_enabled: false,
+                password_require_uppercase: true,
+                password_require_lowercase: true,
+                password_require_numbers: true,
+                password_require_symbols: false,
+                session_idle_timeout_minutes: 30,
+                session_timeout_minutes: 60,
+                max_login_attempts: 5,
+                lockout_duration_minutes: 15,
+                max_sessions_per_user: 5,
+                mfa_issuer: "Ferris".to_string(),
+                require_email_verification: false,
                 oauth: ferris_core::OAuthConfig::default(),
             },
             files: FilesConfig::default(),

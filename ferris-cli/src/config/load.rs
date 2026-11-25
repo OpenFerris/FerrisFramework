@@ -62,7 +62,6 @@ impl CliConfig {
         // Env overrides apply regardless of whether a file was loaded, so
         // containerized deployments can drive config entirely via env vars.
         config.apply_env_overrides();
-        config.reject_insecure_jwt_secret()?;
         config.warn_insecure_defaults();
         config.source = source;
 
@@ -109,22 +108,9 @@ impl CliConfig {
             self.redis.url = redis_url;
         }
 
-        if let Ok(jwt_secret) =
-            std::env::var("FERRIS_JWT_SECRET").or_else(|_| std::env::var("JWT_SECRET"))
-        {
-            // An empty variable means "not set". `compose.yaml` forwards
-            // `FERRIS_JWT_SECRET: ${FERRIS_JWT_SECRET:-}` so a developer who has
-            // not exported a secret gets the fail-closed "not configured" error
-            // instead of a process that signs tokens with an empty key.
-            let jwt_secret = jwt_secret.trim();
-            if !jwt_secret.is_empty() {
-                self.auth.jwt_secret = Some(jwt_secret.to_string());
-            }
-        }
-
         // Secret-field key material. Both spellings are accepted: the flat one
-        // is what a container sets next to `FERRIS_JWT_SECRET`, the nested one is
-        // what `ferris_core::Config::load_from` (figment) reads, so a single
+        // is what a container sets, the nested one is what
+        // `ferris_core::Config::load_from` (figment) reads, so a single
         // `FERRIS_SECRETS__KEY` works for both loaders.
         if let Ok(key) =
             std::env::var("FERRIS_SECRET_KEY").or_else(|_| std::env::var("FERRIS_SECRETS__KEY"))
@@ -257,53 +243,6 @@ impl CliConfig {
                 warn!("FERRIS_CA_TTL_SECONDS={v:?} is not a u64; ignoring");
             }
         }
-    }
-
-    /// Placeholder JWT secrets are a hard error, never a warning: a config
-    /// carrying one would ship tokens anyone can forge.
-    ///
-    /// Two published shapes are rejected. `change-me-in-production` is the old
-    /// scaffold default; `dev-only-change-me-*` is the value `compose.yaml` used
-    /// to inject into every developer container, and it was accepted by `serve`
-    /// for as long as it lived in this file. `ferris dev` is unaffected: it
-    /// generates its own ephemeral secret when none is configured, and never
-    /// reaches this branch with a placeholder unless the operator exported one
-    /// on purpose — which is still a public signing key.
-    pub(super) fn reject_insecure_jwt_secret(&self) -> Result<()> {
-        const PLACEHOLDER: &str = "change-me-in-production";
-        const DEV_PREFIX: &str = "dev-only-change-me";
-
-        let Some(secret) = self.auth.jwt_secret.as_deref() else {
-            return Ok(());
-        };
-        // Never echo the value: the error travels to logs and to `ferris doctor`.
-        let placeholder = if secret == PLACEHOLDER {
-            "the old 'change-me-in-production' placeholder"
-        } else if secret.starts_with(DEV_PREFIX) {
-            "the 'dev-only-change-me-…' development placeholder"
-        } else {
-            return Ok(());
-        };
-
-        Err(Error::Config(ferris_core::ConfigError::Invalid {
-            key: "auth.jwt_secret".to_string(),
-            msg: format!(
-                "is {placeholder}; it would sign sessions with a key anyone can read. \
-                 Generate a real secret with `openssl rand -base64 48` and set it as \
-                 FERRIS_JWT_SECRET (or [auth] jwt_secret)"
-            ),
-        }))
-    }
-
-    /// Resolve the JWT secret required to sign/validate tokens, failing loudly
-    /// when it is not configured. Part of the fail-closed posture: commands
-    /// that touch auth never run anonymous.
-    pub fn require_jwt_secret(&self) -> Result<&str> {
-        self.auth.jwt_secret.as_deref().ok_or_else(|| {
-            Error::Config(ferris_core::ConfigError::Missing(
-                "auth.jwt_secret; set FERRIS_JWT_SECRET/JWT_SECRET".to_string(),
-            ))
-        })
     }
 
     /// Emits a `warn!` for every value that still matches its placeholder
@@ -446,69 +385,5 @@ pub(crate) fn merge_toml(base: &mut toml::Value, overlay: toml::Value) {
             }
         }
         (base, overlay) => *base = overlay,
-    }
-}
-
-/// Regression tests for the published JWT placeholders. They sit next to the
-/// guard instead of `config/tests.rs` because that file is outside this
-/// change's file list; move them there when the module is next touched.
-#[cfg(test)]
-mod jwt_placeholder_tests {
-    use super::*;
-
-    fn with_secret(secret: &str) -> CliConfig {
-        let mut config = CliConfig::default();
-        config.auth.jwt_secret = Some(secret.to_string());
-        config
-    }
-
-    #[test]
-    fn rejects_the_compose_development_placeholder() {
-        let config = with_secret("dev-only-change-me-32-characters");
-        let error = config
-            .reject_insecure_jwt_secret()
-            .expect_err("a published development secret must not reach `serve`");
-        let message = error.to_string();
-
-        assert!(
-            message.contains("openssl rand"),
-            "the error must say how to generate a real secret: {message}"
-        );
-        assert!(
-            !message.contains("32-characters"),
-            "the error must not echo the rejected secret: {message}"
-        );
-    }
-
-    #[test]
-    fn rejects_the_bare_development_prefix() {
-        let error = with_secret("dev-only-change-me")
-            .reject_insecure_jwt_secret()
-            .expect_err("the prefix alone is still the public default");
-        assert!(
-            error.to_string().contains("development placeholder"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn accepts_a_generated_secret() {
-        // Whatever `openssl rand -base64 48` prints.
-        let generated = "Zt7Kp2Qm9Xr4Lb8Vc1Nd6Hf3Jw5Sy0AuEeIiOoPpQqRrSsTt";
-        assert!(
-            with_secret(generated).reject_insecure_jwt_secret().is_ok(),
-            "a real secret must keep loading"
-        );
-    }
-
-    #[test]
-    fn only_the_prefix_is_rejected_not_the_substring() {
-        // `starts_with`, not `contains`: an operator-chosen secret that merely
-        // mentions the placeholder is theirs, not the published default.
-        assert!(
-            with_secret("my-dev-only-change-me-but-not-public-0123456789")
-                .reject_insecure_jwt_secret()
-                .is_ok()
-        );
     }
 }

@@ -159,7 +159,8 @@ fn path_prefix(declared: &str, path: &str) -> bool {
 }
 
 /// CSRF for cookie-authenticated mutations, mirroring the API middleware:
-/// safe methods, no session cookie and bearer callers are exempt.
+/// safe methods and a caller with no session cookie are exempt. The token is
+/// read from the same `tower-sessions` record the REST gate uses.
 async fn csrf_ok(app: &AppState, headers: &axum::http::HeaderMap) -> bool {
     let cookie_name = &app.auth.config.cookie_name;
     let Some(sid) = headers
@@ -180,11 +181,15 @@ async fn csrf_ok(app: &AppState, headers: &axum::http::HeaderMap) -> bool {
     else {
         return false;
     };
-    app.auth
-        .session_manager
-        .validate_csrf_token(&sid, token)
-        .await
-        .unwrap_or(false)
+    let Some(store) = &app.auth.session_store else {
+        return false;
+    };
+    match store.session_csrf(&sid).await {
+        Ok(Some(stored)) => {
+            ferris_auth::crypto::constant_time_eq(stored.as_bytes(), token.as_bytes())
+        }
+        _ => false,
+    }
 }
 
 /// A `capability(name)` route: the caller sends the provisioned token in

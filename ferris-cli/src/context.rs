@@ -14,6 +14,7 @@
 //! crate at the root) is an app zone with its own bench root, so `ferris dev`
 //! and `ferris build` keep working exactly as before.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
@@ -41,6 +42,47 @@ pub enum Zone {
     },
     /// No Ferris project above the working directory.
     Outside,
+}
+
+/// The directory the CLI should treat as its working directory.
+///
+/// `--dir` is a global flag and may appear before or after the subcommand, so
+/// the zone has to be resolved from the raw arguments *before* clap restricts
+/// the command list. Without this, `ferris --dir sites/acme --help` advertises
+/// the commands of the caller's directory, not the site's. `cwd` is the
+/// fallback when the flag is absent.
+#[must_use]
+pub fn invocation_dir<I, S>(args: I, cwd: PathBuf) -> PathBuf
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+{
+    let mut args = args.into_iter().map(Into::into);
+    while let Some(arg) = args.next() {
+        let text = arg.to_string_lossy();
+        if text == "--" {
+            break;
+        }
+        if text == "--dir" || text == "-d" {
+            if let Some(value) = args.next() {
+                return PathBuf::from(value);
+            }
+            break;
+        }
+        if let Some(value) = text.strip_prefix("--dir=") {
+            if !value.is_empty() {
+                return PathBuf::from(value);
+            }
+            break;
+        }
+        if let Some(value) = text.strip_prefix("-d") {
+            let value = value.strip_prefix('=').unwrap_or(value);
+            if !value.is_empty() {
+                return PathBuf::from(value);
+            }
+        }
+    }
+    cwd
 }
 
 /// Detect the zone from `cwd`.
@@ -555,5 +597,27 @@ mod tests {
         assert!(site_subcommand_allowed(&site, "install-app"));
         assert!(!site_subcommand_allowed(&site, "new"));
         assert!(!site_subcommand_allowed(&site, "delete"));
+    }
+
+    #[test]
+    fn the_dir_flag_wins_over_the_process_directory() {
+        let cwd = PathBuf::from("/tmp/caller");
+        assert_eq!(
+            invocation_dir(["--dir", "/bench/sites/acme"], cwd.clone()),
+            PathBuf::from("/bench/sites/acme")
+        );
+        assert_eq!(
+            invocation_dir(["--dir=/bench", "site", "info"], cwd.clone()),
+            PathBuf::from("/bench")
+        );
+        assert_eq!(
+            invocation_dir(["site", "info", "-d", "/bench"], cwd.clone()),
+            PathBuf::from("/bench")
+        );
+        assert_eq!(
+            invocation_dir(["site", "info"], cwd.clone()),
+            cwd,
+            "without --dir the process directory is the zone"
+        );
     }
 }

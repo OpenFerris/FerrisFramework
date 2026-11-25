@@ -124,7 +124,6 @@ fn is_secret_key(key: &str) -> bool {
         "password"
             | "passwd"
             | "secret"
-            | "jwt_secret"
             | "token"
             | "access_token"
             | "refresh_token"

@@ -41,7 +41,10 @@ fn main() -> Result<()> {
     // The zone decides which commands exist here: `ferris --help` inside a
     // site, an app or an uninitialised folder lists a different set, and a
     // command from another zone fails before any config or pool is opened.
-    let invocation = std::env::current_dir()?;
+    // `--dir` may point at a site or an app while the process still runs from
+    // somewhere else; the zone must follow the flag, not the caller's cwd.
+    let invocation =
+        ferris_cli::context::invocation_dir(std::env::args_os().skip(1), std::env::current_dir()?);
     let zone = ferris_cli::context::detect(&invocation);
     let command = Cli::command();
     let command = ferris_cli::context::restrict(command, &zone);

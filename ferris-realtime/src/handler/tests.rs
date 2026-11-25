@@ -19,17 +19,7 @@ fn test_handler_creation() {
 /// Build an `AuthState` with inputs strong enough for structural tests
 /// that never mint a token.
 fn test_auth_state() -> ferris_auth::AuthState {
-    let jwt = ferris_auth::JwtManager::new(
-        ferris_auth::JwtConfig::new("ferris-realtime-test-secret-32-chars+")
-            .expect("valid test secret"),
-    )
-    .expect("jwt manager");
-    let config = ferris_auth::SessionConfig::default();
-    ferris_auth::AuthState::new(
-        jwt,
-        ferris_auth::SessionManager::new(config.clone()),
-        config,
-    )
+    ferris_auth::AuthState::new(ferris_auth::SessionConfig::default())
 }
 
 /// V3-RT-1: auth attached through one `RealtimeHandler` clone must be seen
@@ -293,34 +283,46 @@ fn test_room_authz_denies_list_rooms_without_access() {
 
 // -- Handshake credentials --------------------------------------------------
 //
-// `authenticate` used to read only `Authorization: Bearer`, so a browser tab —
-// which has a session cookie and no bearer token — connected as a guest. These
-// drive `authenticate_headers`, the pure half of the handshake, with real
-// headers: a JWT the manager minted, and a session the manager created.
+// The socket upgrade is handled before the HTTP auth layers, so the handshake
+// reads the identity from the one `tower-sessions` record by cookie id. These
+// tests write that record directly and drive `authenticate_headers`, the pure
+// half of the handshake.
 
 use axum::http::{HeaderMap, HeaderValue, header};
 
-/// A session for `cookie@example.com` with the identity the Desk stores on it.
-async fn cookie_session(auth: &ferris_auth::AuthState) -> String {
-    let session = auth
-        .session_manager
-        .create_session("cookie@example.com".to_string(), None, None)
-        .await
-        .expect("session");
-    let mut data = HashMap::new();
-    data.insert(
-        "email".to_string(),
-        ferris_core::Value::from("cookie@example.com"),
+async fn session_auth() -> (ferris_auth::AuthState, ferris_auth::login::DbSessionStore) {
+    let pool = ferris_db::memory_db().await.expect("in-memory db");
+    let store = ferris_auth::login::DbSessionStore::new(pool);
+    store.ensure_table().await.expect("session table");
+    let config = ferris_auth::SessionConfig::default();
+    (
+        ferris_auth::AuthState::new(config).with_session_store(store.clone()),
+        store,
+    )
+}
+
+/// A live session for `cookie@example.com` with the identity the login stamps.
+async fn cookie_session(store: &ferris_auth::login::DbSessionStore) -> String {
+    use tower_sessions::SessionStore;
+    let mut record = tower_sessions::session::Record {
+        id: Default::default(),
+        data: std::collections::HashMap::new(),
+        expiry_date: time::OffsetDateTime::now_utc() + time::Duration::hours(1),
+    };
+    record.data.insert(
+        ferris_auth::login::keys::USER_ID_KEY.to_string(),
+        serde_json::json!("cookie@example.com"),
     );
-    data.insert(
-        "roles".to_string(),
-        ferris_core::Value::Array(vec![ferris_core::Value::from("System Manager")]),
+    record.data.insert(
+        ferris_auth::login::keys::EMAIL_KEY.to_string(),
+        serde_json::json!("cookie@example.com"),
     );
-    auth.session_manager
-        .update_session(&session.id, data)
-        .await
-        .expect("session identity");
-    session.id
+    record.data.insert(
+        ferris_auth::login::keys::ROLES_KEY.to_string(),
+        serde_json::json!(["System Manager"]),
+    );
+    store.create(&mut record).await.expect("session");
+    record.id.to_string()
 }
 
 fn cookie_header(auth: &ferris_auth::AuthState, session_id: &str) -> HeaderMap {
@@ -335,21 +337,22 @@ fn cookie_header(auth: &ferris_auth::AuthState, session_id: &str) -> HeaderMap {
 
 #[tokio::test]
 async fn a_session_cookie_authenticates_the_handshake() {
-    let auth = test_auth_state();
-    let session = cookie_session(&auth).await;
+    let (auth, store) = session_auth().await;
+    let session = cookie_session(&store).await;
 
-    let (user_id, email, roles) = authenticate_headers(&auth, &cookie_header(&auth, &session))
+    let identity = authenticate_headers(&auth, &cookie_header(&auth, &session))
         .await
         .expect("the session cookie must authenticate the socket");
 
-    assert_eq!(user_id, "cookie@example.com");
-    assert_eq!(email, "cookie@example.com");
-    assert_eq!(roles, vec!["System Manager".to_string()]);
+    assert_eq!(identity.user_id, "cookie@example.com");
+    assert_eq!(identity.email, "cookie@example.com");
+    assert_eq!(identity.roles, vec!["System Manager".to_string()]);
+    assert_eq!(identity.session_id, session);
 }
 
 #[tokio::test]
 async fn an_unknown_session_cookie_stays_anonymous() {
-    let auth = test_auth_state();
+    let (auth, _store) = session_auth().await;
     assert!(
         authenticate_headers(&auth, &cookie_header(&auth, "not-a-session"))
             .await
@@ -358,8 +361,29 @@ async fn an_unknown_session_cookie_stays_anonymous() {
 }
 
 #[tokio::test]
+async fn an_expired_session_stays_anonymous() {
+    use tower_sessions::SessionStore;
+    let (auth, store) = session_auth().await;
+    let mut record = tower_sessions::session::Record {
+        id: Default::default(),
+        data: std::collections::HashMap::new(),
+        expiry_date: time::OffsetDateTime::now_utc() - time::Duration::minutes(1),
+    };
+    record.data.insert(
+        ferris_auth::login::keys::USER_ID_KEY.to_string(),
+        serde_json::json!("cookie@example.com"),
+    );
+    store.save(&record).await.expect("expired session");
+    assert!(
+        authenticate_headers(&auth, &cookie_header(&auth, &record.id.to_string()))
+            .await
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn a_handshake_without_credentials_stays_anonymous() {
-    let auth = test_auth_state();
+    let (auth, _store) = session_auth().await;
     assert!(
         authenticate_headers(&auth, &HeaderMap::new())
             .await
@@ -371,36 +395,8 @@ async fn a_handshake_without_credentials_stays_anonymous() {
     assert!(authenticate_headers(&auth, &headers).await.is_none());
 }
 
-/// The explicit credential wins when both are present: a client that minted a
-/// token meant it, and the cookie may belong to a different tab.
-#[tokio::test]
-async fn a_bearer_token_wins_over_a_session_cookie() {
-    let auth = test_auth_state();
-    let session = cookie_session(&auth).await;
-    let token = auth
-        .jwt_manager
-        .generate_tokens(
-            "token@example.com",
-            "token@example.com",
-            &["User".to_string()],
-            None,
-            "",
-        )
-        .expect("token")
-        .access_token;
-
-    let mut headers = cookie_header(&auth, &session);
-    headers.insert(
-        header::AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {token}")).expect("authorization"),
-    );
-    let (user_id, _, roles) = authenticate_headers(&auth, &headers).await.expect("bearer");
-    assert_eq!(user_id, "token@example.com");
-    assert_eq!(roles, vec!["User".to_string()]);
-}
-
-/// A disabled account is refused on the cookie path too — the same rule the
-/// bearer path applies — because the socket must not outlive the account.
+/// A disabled account is refused on the cookie path too — the socket must not
+/// outlive the account.
 #[tokio::test]
 async fn a_disabled_user_is_rejected_on_the_cookie_path() {
     struct Disabled;
@@ -415,8 +411,9 @@ async fn a_disabled_user_is_rejected_on_the_cookie_path() {
         }
     }
 
-    let auth = test_auth_state().with_user_validator(std::sync::Arc::new(Disabled));
-    let session = cookie_session(&auth).await;
+    let (auth, store) = session_auth().await;
+    let auth = auth.with_user_validator(std::sync::Arc::new(Disabled));
+    let session = cookie_session(&store).await;
     assert!(
         authenticate_headers(&auth, &cookie_header(&auth, &session))
             .await

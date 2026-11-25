@@ -477,6 +477,40 @@ pub enum AppCommand {
         /// Publish it under this name (default: the file stem)
         #[arg(long)]
         name: Option<String>,
+        /// Trust store with the publisher keys allowed to sign apps (TOML or
+        /// JSON); required for a package that carries `app.sig`
+        #[arg(long, value_name = "FILE")]
+        trust: Option<PathBuf>,
+        /// Install a package with no signature. Explicit escape hatch: the
+        /// component is not attributable to a publisher
+        #[arg(long)]
+        allow_unsigned: bool,
+        /// Approve every grant the signed manifest requests
+        #[arg(long)]
+        yes: bool,
+        /// Approve one requested grant (repeatable): a capability name, an
+        /// HTTP host, or a process bin (`process:bin/tool`, `http:api.example.com`)
+        #[arg(long = "grant", value_name = "GRANT")]
+        grant: Vec<String>,
+    },
+    /// Sign a package: write the key id into `plugin.toml`, hash `<app>.wasm`
+    /// and write `app.sig` next to the manifest
+    Sign {
+        /// Package directory with `plugin.toml` and `<app>.wasm`
+        #[arg(long, value_name = "DIR")]
+        app: PathBuf,
+        /// PKCS#8 Ed25519 private key (DER or PEM)
+        #[arg(long, value_name = "FILE")]
+        key: PathBuf,
+    },
+    /// Verify a package or installed app against a trust store
+    Verify {
+        /// Package directory with `plugin.toml`, `<app>.wasm` and `app.sig`
+        #[arg(long, value_name = "DIR")]
+        app: PathBuf,
+        /// Trust store with the publisher keys (TOML or JSON)
+        #[arg(long, value_name = "FILE")]
+        trust: PathBuf,
     },
     /// Remove an app from the global catalogue (or from `[apps] wasm_dir` on an
     /// older install); the world is kept unless `--purge` is given

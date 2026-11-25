@@ -106,6 +106,18 @@ FerrisCore by relative path**.
 Workspace: `resolver = "2"`, edition 2024, version **0.4.0**, Rust **1.98.1**,
 MIT.
 
+### Document storage is columnar
+
+A `tab<DocType>` table has **no JSON `data` column**. A document is
+reconstructed from three places: the system columns (`name`, `owner`,
+`docstatus`, `creation`, `modified`, `modified_by`, `amended_from`,
+`workflow_state`), one column per declared field (custom fields included), and
+the real child tables for `Table` fields. A field that is neither a column nor a
+child table is a write error. JSON survives only as a value in itself: declared
+`JSON` fields keep a JSON column, and `tab_version.data` (plus the tombstone in
+`Deleted Document`) keeps a historical snapshot of the reconstructed document.
+There is no legacy blob to backfill and no migration for old databases.
+
 ### Sibling Core is mandatory
 
 Every crate that needs the engine points at the sibling checkout:

@@ -67,7 +67,7 @@ fn plugin_stream_auth_required() -> bool {
 /// Whether the edge must refuse this stream request.
 ///
 /// A verified client certificate counts as an authenticated caller: an mTLS
-/// device carries no session or bearer token, so a `required` policy that only
+/// device carries no session cookie, so a `required` policy that only
 /// looked at `user` locked every device out with 401 (H6 / plan Fase 2). The
 /// certificate is bound by `bind_client_identity`; the plugin remains the
 /// authority on what the certificate *means* (the host only forwards the facts).

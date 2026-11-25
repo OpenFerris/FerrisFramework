@@ -56,9 +56,28 @@ use tokio::task::AbortHandle;
 /// The cap protects the host; it is not a per-app setting because an app that
 /// genuinely needs more should write to a file in its world instead of piping
 /// gigabytes through a guest call. Crossing it fails the call (see
-/// [`read_capped`]): truncating would hand the guest a short read it cannot
+/// [`read_capped_with`]): truncating would hand the guest a short read it cannot
 /// detect.
 const MAX_OUTPUT: usize = 8 * 1024 * 1024;
+
+/// Wall-clock cap for one child when neither the guest nor the operator asks
+/// for another one. Thirty seconds is enough for a converter or a build step
+/// and short enough that a wedged program does not hold a slot forever.
+const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+
+/// Operator allow-list of binaries an app may run, comma-separated.
+///
+/// An entry is a bare name (`convert`) or a path relative to the app world
+/// (`bin/convert`). An empty list preserves the older behaviour — the world is
+/// the boundary — while a non-empty list is a strict additional filter applied
+/// before spawn.
+const ALLOWED_BINS_ENV: &str = "FERRIS_APP_ALLOWED_BINS";
+
+/// Optional override for [`DEFAULT_TIMEOUT_MS`], in milliseconds.
+const TIMEOUT_ENV: &str = "FERRIS_APP_PROCESS_TIMEOUT_MS";
+
+/// Optional override for the per-stream output cap, in bytes.
+const OUTPUT_ENV: &str = "FERRIS_APP_PROCESS_MAX_OUTPUT";
 
 /// The only `PATH` a child sees: the system tools, never the host's shell
 /// profile or a deployment-specific directory.
@@ -81,6 +100,166 @@ const ALLOWED_PROGRAMS_ENV: &str = "FERRIS_APP_ALLOWED_PROGRAMS";
 /// batch of converters and small enough that one app cannot starve the rest.
 const MAX_RUNNING_PER_APP: usize = 8;
 
+/// Limits and the binary allow-list applied to every app process.
+///
+/// The policy is host configuration, not something a guest can widen: the
+/// deadline is a cap (`min` with the guest's `timeout-ms`), the output cap is
+/// passed to the reader, and [`ProcessPolicy::check_program`] refuses a program
+/// before [`Command::spawn`] when the operator listed the binaries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessPolicy {
+    allowed_bins: Vec<String>,
+    timeout_ms: u64,
+    max_output: usize,
+}
+
+impl Default for ProcessPolicy {
+    fn default() -> Self {
+        Self {
+            allowed_bins: Vec::new(),
+            timeout_ms: DEFAULT_TIMEOUT_MS,
+            max_output: MAX_OUTPUT,
+        }
+    }
+}
+
+impl ProcessPolicy {
+    /// Build a policy from already-parsed values.
+    ///
+    /// # Errors
+    ///
+    /// A zero timeout/output cap, a NUL byte, an absolute path or a `..`
+    /// component in an allow-list entry.
+    pub fn new(allowed_bins: Vec<String>, timeout_ms: u64, max_output: usize) -> Result<Self> {
+        if timeout_ms == 0 {
+            anyhow::bail!("{TIMEOUT_ENV} must be greater than zero");
+        }
+        if max_output == 0 {
+            anyhow::bail!("{OUTPUT_ENV} must be greater than zero");
+        }
+        let mut normalized = Vec::with_capacity(allowed_bins.len());
+        for bin in allowed_bins {
+            let bin = bin.trim().trim_start_matches("./").to_string();
+            if bin.is_empty() {
+                continue;
+            }
+            if bin.contains('\0') || bin.contains("..") || Path::new(&bin).is_absolute() {
+                anyhow::bail!(
+                    "{ALLOWED_BINS_ENV}: `{bin}` must be a name or a relative path inside the app world"
+                );
+            }
+            normalized.push(bin);
+        }
+        normalized.sort();
+        normalized.dedup();
+        Ok(Self {
+            allowed_bins: normalized,
+            timeout_ms,
+            max_output,
+        })
+    }
+
+    /// Read the policy from the environment, falling back to the defaults for
+    /// every variable that is absent.
+    ///
+    /// # Errors
+    ///
+    /// The parse/validation errors of [`ProcessPolicy::from_values`].
+    pub fn from_env() -> Result<Self> {
+        let allowed = std::env::var(ALLOWED_BINS_ENV).ok();
+        let timeout = std::env::var(TIMEOUT_ENV).ok();
+        let output = std::env::var(OUTPUT_ENV).ok();
+        Self::from_values(allowed.as_deref(), timeout.as_deref(), output.as_deref())
+    }
+
+    /// Testable form of [`ProcessPolicy::from_env`].
+    ///
+    /// # Errors
+    ///
+    /// [`ProcessPolicy::new`] plus a non-numeric timeout/output value.
+    pub fn from_values(
+        allowed_bins: Option<&str>,
+        timeout_ms: Option<&str>,
+        max_output: Option<&str>,
+    ) -> Result<Self> {
+        let allowed = allowed_bins.map_or_else(Vec::new, |raw| {
+            raw.split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .collect()
+        });
+        let timeout = parse_limit(timeout_ms, TIMEOUT_ENV, DEFAULT_TIMEOUT_MS)?;
+        let output = parse_limit(
+            max_output,
+            OUTPUT_ENV,
+            u64::try_from(MAX_OUTPUT).unwrap_or(u64::MAX),
+        )?;
+        let max_output = usize::try_from(output)
+            .map_err(|_| anyhow::anyhow!("{OUTPUT_ENV} does not fit this platform"))?;
+        Self::new(allowed, timeout, max_output)
+    }
+
+    /// The admitted binary names/paths, sorted and normalized.
+    #[must_use]
+    pub fn allowed_bins(&self) -> &[String] {
+        &self.allowed_bins
+    }
+
+    /// The host's wall-clock cap.
+    #[must_use]
+    pub fn timeout_ms(&self) -> u64 {
+        self.timeout_ms
+    }
+
+    /// The per-stream output cap.
+    #[must_use]
+    pub fn max_output(&self) -> usize {
+        self.max_output
+    }
+
+    /// Refuse a program the operator did not list. An empty list means the
+    /// world boundary alone decides, which is the behaviour before the policy
+    /// existed.
+    ///
+    /// # Errors
+    ///
+    /// A typed `unsupported` bridge error naming the allow-list variable.
+    pub fn check_program(&self, program: &str) -> Result<()> {
+        if self.allowed_bins.is_empty() {
+            return Ok(());
+        }
+        let program = program.trim().trim_start_matches("./");
+        if self.allowed_bins.iter().any(|bin| bin == program) {
+            return Ok(());
+        }
+        Err(BridgeError::unsupported(format!(
+            "platform::process: `{program}` is not in the operator's process allow-list \
+             ({ALLOWED_BINS_ENV})"
+        )))
+    }
+
+    /// The guest's deadline clamped to the host cap. `None`/`0` from the guest
+    /// still gets the host deadline, because "no deadline" is how a runaway
+    /// process kept a slot for the lifetime of the server.
+    #[must_use]
+    fn effective_timeout_ms(&self, requested: Option<u32>) -> Option<u32> {
+        let cap = u32::try_from(self.timeout_ms).unwrap_or(u32::MAX);
+        match requested.filter(|ms| *ms > 0) {
+            Some(ms) => Some(ms.min(cap)),
+            None => Some(cap).filter(|ms| *ms > 0),
+        }
+    }
+}
+
+fn parse_limit(raw: Option<&str>, variable: &str, default: u64) -> Result<u64> {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(default);
+    };
+    raw.parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("{variable} must be a positive integer, got `{raw}`"))
+}
+
 /// One spawned process the app may still wait for or kill.
 struct Running {
     app: String,
@@ -96,6 +275,7 @@ struct Running {
 struct Core {
     plugins: Arc<PluginStore>,
     running: Mutex<HashMap<String, usize>>,
+    policy: ProcessPolicy,
 }
 
 /// The process-wide supervisor behind `platform::process-*`.
@@ -116,13 +296,29 @@ impl std::fmt::Debug for ProcessSupervisor {
 }
 
 impl ProcessSupervisor {
-    /// A supervisor over the loaded apps (their worlds and grants).
+    /// A supervisor over the loaded apps (their worlds and grants), with the
+    /// process policy read from the environment.
+    ///
+    /// An invalid policy is a loud warning and the safe defaults, never a
+    /// silently widened one: the server keeps running, but the deadline and the
+    /// output cap are still the conservative values.
     #[must_use]
     pub fn new(plugins: Arc<PluginStore>) -> Self {
+        let policy = ProcessPolicy::from_env().unwrap_or_else(|error| {
+            tracing::warn!(%error, "invalid app process policy; using the defaults");
+            ProcessPolicy::default()
+        });
+        Self::with_policy(plugins, policy)
+    }
+
+    /// A supervisor with an explicit policy (tests and embedders).
+    #[must_use]
+    pub fn with_policy(plugins: Arc<PluginStore>, policy: ProcessPolicy) -> Self {
         Self {
             core: Arc::new(Core {
                 plugins,
                 running: Mutex::new(HashMap::new()),
+                policy,
             }),
             children: Mutex::new(HashMap::new()),
         }
@@ -194,6 +390,8 @@ impl Core {
     fn validate(&self, app: &str, spec: &ProcessSpec) -> Result<()> {
         let world = self.world(app)?;
         resolve_program(&world, &spec.program)?;
+        self.policy.check_program(&spec.program)?;
+        check_process_grant(&world, &spec.program)?;
         resolve_cwd(&world, spec.cwd.as_deref())?;
         Ok(())
     }
@@ -211,7 +409,13 @@ impl Core {
         let _slot = self.admit(app)?;
         let world = self.world(app)?;
         let program = resolve_program(&world, &spec.program)?;
+        // Re-check here as well: `execute` is also reached from `spawn` after
+        // its own validation, and a child must never be forked for a binary
+        // outside the operator's list.
+        self.policy.check_program(&spec.program)?;
+        check_process_grant(&world, &spec.program)?;
         let cwd = resolve_cwd(&world, spec.cwd.as_deref())?;
+        let timeout_ms = self.policy.effective_timeout_ms(spec.timeout_ms);
         let mut command = Command::new(&program);
         command
             .args(&spec.args)
@@ -255,7 +459,7 @@ impl Core {
             // waits for.
             drop(stdin);
         }
-        Box::pin(collect(child, spec.timeout_ms)).await
+        Box::pin(collect(child, timeout_ms, self.policy.max_output())).await
     }
 }
 
@@ -341,11 +545,18 @@ impl ProcessService for ProcessSupervisor {
 // One arm awaits and the other returns, so the suggested `map_or_else` cannot
 // express it without an async block in each closure.
 #[allow(clippy::option_if_let_else)]
-async fn collect(mut child: Child, timeout_ms: Option<u32>) -> Result<ProcessOutput> {
+async fn collect(
+    mut child: Child,
+    timeout_ms: Option<u32>,
+    max_output: usize,
+) -> Result<ProcessOutput> {
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let collect = Box::pin(async {
-        let (stdout, stderr) = tokio::join!(read_capped(stdout), read_capped(stderr));
+        let (stdout, stderr) = tokio::join!(
+            read_capped_with(stdout, max_output),
+            read_capped_with(stderr, max_output)
+        );
         let status = child.wait().await.context("platform::process: waiting")?;
         Ok::<ProcessOutput, anyhow::Error>(ProcessOutput {
             status: status.code().unwrap_or(-1),
@@ -375,7 +586,11 @@ async fn collect(mut child: Child, timeout_ms: Option<u32>) -> Result<ProcessOut
 /// record saying so. A typed failure is the only honest answer — and dropping
 /// the pipe also sends the writer an `EPIPE`, so the program stops instead of
 /// writing into the void.
-async fn read_capped(pipe: Option<impl AsyncRead + Unpin>) -> Result<Vec<u8>> {
+/// Read one pipe under the policy's cap.
+async fn read_capped_with(
+    pipe: Option<impl AsyncRead + Unpin>,
+    max_output: usize,
+) -> Result<Vec<u8>> {
     let Some(mut pipe) = pipe else {
         return Ok(Vec::new());
     };
@@ -389,9 +604,9 @@ async fn read_capped(pipe: Option<impl AsyncRead + Unpin>) -> Result<Vec<u8>> {
         if read == 0 {
             break;
         }
-        if captured.len().saturating_add(read) > MAX_OUTPUT {
+        if captured.len().saturating_add(read) > max_output {
             return Err(BridgeError::unsupported(format!(
-                "platform::process: output exceeds the {MAX_OUTPUT} byte cap; write to a file in \
+                "platform::process: output exceeds the {max_output} byte cap; write to a file in \
                  the app world instead of piping it through the call"
             )));
         }
@@ -469,6 +684,38 @@ fn resolve_program_in(world: &Path, program: &str, allowed: &[String]) -> Result
     )))
 }
 
+/// Enforce the operator's approved grant when the installed world carries one.
+///
+/// `grants.toml` is written by `ferris app install`; the host checks **that**
+/// file, not the app's manifest. A world without the file predates trusted
+/// installs (or is a test), so the policy and the world boundary remain the
+/// only gates, exactly as before.
+fn check_process_grant(world: &Path, program: &str) -> Result<()> {
+    let path = world.join(ferris_wasm::trust::GRANTS_FILE);
+    if !path.is_file() {
+        return Ok(());
+    }
+    let grants = ferris_wasm::trust::GrantSet::load(&path).map_err(|error| {
+        BridgeError::unsupported(format!(
+            "platform::process: cannot read the approved grants {}: {error}",
+            path.display()
+        ))
+    })?;
+    if !grants.allows_capability("process") {
+        return Err(BridgeError::unsupported(format!(
+            "platform::process: the operator did not approve the `process` capability in {}",
+            path.display()
+        )));
+    }
+    if !grants.allows_process_bin(program) {
+        return Err(BridgeError::unsupported(format!(
+            "platform::process: `{program}` is not an approved process bin in {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Resolve `cwd` inside the world, refusing anything that escapes it.
 fn resolve_cwd(world: &Path, cwd: Option<&str>) -> Result<PathBuf> {
     let Some(cwd) = cwd.map(str::trim).filter(|value| !value.is_empty()) else {
@@ -491,6 +738,106 @@ fn resolve_cwd(world: &Path, cwd: Option<&str>) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The allow-list and the two limits parse together; the defaults keep the
+    /// old 8 MiB cap and add the 30 s wall clock.
+    #[test]
+    fn the_policy_parses_its_allowlist_and_limits() {
+        let policy = ProcessPolicy::from_values(
+            Some(" bin/tool.sh, convert ,, ./helper "),
+            Some("5000"),
+            Some("1024"),
+        )
+        .expect("valid policy");
+        assert_eq!(
+            policy
+                .allowed_bins()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["bin/tool.sh", "convert", "helper"]
+        );
+        assert_eq!(policy.timeout_ms(), 5_000);
+        assert_eq!(policy.max_output(), 1_024);
+        assert!(policy.check_program("convert").is_ok());
+        assert!(policy.check_program("./bin/tool.sh").is_ok());
+        assert!(policy.check_program("sh").is_err());
+    }
+
+    #[test]
+    fn the_policy_defaults_to_thirty_seconds() {
+        let policy = ProcessPolicy::from_values(None, None, None).expect("defaults");
+        assert_eq!(policy.timeout_ms(), DEFAULT_TIMEOUT_MS);
+        assert_eq!(policy.max_output(), MAX_OUTPUT);
+        assert!(policy.allowed_bins().is_empty());
+        assert!(
+            policy.check_program("anything").is_ok(),
+            "an empty allow-list keeps the world as the boundary"
+        );
+    }
+
+    #[test]
+    fn the_policy_rejects_zero_and_escapes() {
+        assert!(ProcessPolicy::from_values(None, Some("0"), None).is_err());
+        assert!(ProcessPolicy::from_values(None, None, Some("0")).is_err());
+        assert!(ProcessPolicy::from_values(None, Some("soon"), None).is_err());
+        assert!(ProcessPolicy::from_values(Some("../sh"), None, None).is_err());
+        assert!(ProcessPolicy::from_values(Some("/bin/sh"), None, None).is_err());
+    }
+
+    /// A guest deadline can be shorter than the host cap, never longer.
+    #[test]
+    fn the_guest_deadline_cannot_outlive_the_host_cap() {
+        let policy = ProcessPolicy::new(Vec::new(), 5_000, MAX_OUTPUT).expect("policy");
+        assert_eq!(policy.effective_timeout_ms(None), Some(5_000));
+        assert_eq!(policy.effective_timeout_ms(Some(0)), Some(5_000));
+        assert_eq!(policy.effective_timeout_ms(Some(100)), Some(100));
+        assert_eq!(policy.effective_timeout_ms(Some(60_000)), Some(5_000));
+    }
+
+    /// The host reads the operator's `grants.toml`, not the app manifest: a bin
+    /// the approval does not name is refused before spawn.
+    #[test]
+    fn the_operator_grant_is_what_admits_a_bin() {
+        let world = std::env::temp_dir().join(format!(
+            "ferris-proc-grant-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_nanos())
+        ));
+        std::fs::create_dir_all(&world).expect("world");
+        assert!(
+            check_process_grant(&world, "bin/convert").is_ok(),
+            "no grants.toml keeps the pre-trust behaviour"
+        );
+        let grants = ferris_wasm::trust::GrantSet::new(
+            vec!["process".to_string()],
+            Vec::new(),
+            vec!["bin/convert".to_string()],
+        );
+        grants
+            .save(&world.join(ferris_wasm::trust::GRANTS_FILE))
+            .expect("grants");
+        assert!(check_process_grant(&world, "bin/convert").is_ok());
+        let error = check_process_grant(&world, "bin/other").expect_err("not approved");
+        assert!(error.to_string().contains("not an approved"), "{error}");
+
+        let without = ferris_wasm::trust::GrantSet::new(
+            Vec::new(),
+            Vec::new(),
+            vec!["bin/convert".to_string()],
+        );
+        without
+            .save(&world.join(ferris_wasm::trust::GRANTS_FILE))
+            .expect("grants");
+        let error = check_process_grant(&world, "bin/convert").expect_err("capability withheld");
+        assert!(
+            error.to_string().contains("`process` capability"),
+            "{error}"
+        );
+        let _ = std::fs::remove_dir_all(&world);
+    }
 
     #[test]
     fn an_absolute_program_is_refused() {
@@ -560,7 +907,7 @@ mod tests {
     #[tokio::test]
     async fn output_past_the_cap_is_an_error_not_a_truncation() {
         let data = vec![b'x'; MAX_OUTPUT + 1];
-        let err = read_capped(Some(&data[..]))
+        let err = read_capped_with(Some(&data[..]), MAX_OUTPUT)
             .await
             .expect_err("over the cap");
         assert!(err.to_string().contains("exceeds"), "{err}");
@@ -569,7 +916,9 @@ mod tests {
     #[tokio::test]
     async fn output_at_the_cap_is_returned_whole() {
         let data = vec![b'x'; MAX_OUTPUT];
-        let captured = read_capped(Some(&data[..])).await.expect("at the cap");
+        let captured = read_capped_with(Some(&data[..]), MAX_OUTPUT)
+            .await
+            .expect("at the cap");
         assert_eq!(captured.len(), MAX_OUTPUT);
     }
 }

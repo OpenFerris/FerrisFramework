@@ -221,10 +221,15 @@ fn page_response(page: &WebPage) -> Response {
 /// GET renders the form; POST is the submission handler; anything else is a
 /// 405 with the methods the route supports. A form is never served on a method
 /// that could create a document without going through the submission gate.
-async fn form_response(state: &AppState, request: Request, form: &WebForm, next: Next) -> Response {
+async fn form_response(
+    _state: &AppState,
+    request: Request,
+    form: &WebForm,
+    next: Next,
+) -> Response {
     match *request.method() {
         Method::GET | Method::HEAD => {
-            let token = session_csrf_token(state, request.headers()).await;
+            let token = ferris_auth::login::csrf_from_extensions(request.extensions()).await;
             let action = request.uri().path().to_string();
             html_response(
                 StatusCode::OK,
@@ -251,6 +256,16 @@ pub(super) async fn website_form_submit(
     let Ok(PublicRoute::Form(form)) = resolve_public_route(&state.api.pool, &path).await else {
         return not_found_fallback(request).await;
     };
+    // Resolve the caller and the session's CSRF proof before the request is
+    // split: both live in request extensions, and `Form::from_request`
+    // consumes the reconstructed request below.
+    let session_csrf = ferris_auth::login::csrf_from_extensions(request.extensions()).await;
+    let user = ferris_auth::middleware::resolve_principal(
+        request.headers(),
+        request.extensions(),
+        &state.auth,
+    )
+    .await;
     let (parts, body) = request.into_parts();
     let headers = parts.headers.clone();
     let peer = parts
@@ -285,7 +300,14 @@ pub(super) async fn website_form_submit(
     {
         return html_response(StatusCode::OK, form.render_success());
     }
-    if !csrf_ok(&state, &headers, fields.get("_csrf").map(String::as_str)).await {
+    if !csrf_ok(
+        &state,
+        &headers,
+        session_csrf.as_deref(),
+        fields.get("_csrf").map(String::as_str),
+    )
+    .await
+    {
         FORM_LIMITER.record_failure(&limiter_key);
         return html_response(
             StatusCode::FORBIDDEN,
@@ -296,7 +318,6 @@ pub(super) async fn website_form_submit(
             ),
         );
     }
-    let user = ferris_auth::middleware::resolve_principal(&headers, &state.auth).await;
     if !form.can_submit(user.as_ref()) {
         FORM_LIMITER.record_failure(&limiter_key);
         return html_response(
@@ -342,36 +363,24 @@ pub(super) async fn website_form_submit(
 /// credential to ride, so there is nothing a forged cross-site request could
 /// gain — but the browser `Origin` is still compared with `Host` when present,
 /// which is the cheap check that catches a cross-origin form post.
-async fn csrf_ok(state: &AppState, headers: &HeaderMap, field_token: Option<&str>) -> bool {
-    let Some(session_id) = cookie_value(headers, &state.auth.config.cookie_name) else {
+async fn csrf_ok(
+    state: &AppState,
+    headers: &HeaderMap,
+    session_csrf: Option<&str>,
+    field_token: Option<&str>,
+) -> bool {
+    let has_session = cookie_value(headers, &state.auth.config.cookie_name).is_some();
+    if !has_session {
         return origin_matches(headers);
-    };
+    }
     let token = headers
         .get(ferris_auth::CSRF_HEADER.as_str())
         .and_then(|value| value.to_str().ok())
         .or(field_token);
-    let Some(token) = token else {
+    let (Some(stored), Some(token)) = (session_csrf, token) else {
         return false;
     };
-    state
-        .auth
-        .session_manager
-        .validate_csrf_token(&session_id, token)
-        .await
-        .unwrap_or(false)
-}
-
-/// The CSRF token of the caller's session, for the hidden form field.
-async fn session_csrf_token(state: &AppState, headers: &HeaderMap) -> Option<String> {
-    let session_id = cookie_value(headers, &state.auth.config.cookie_name)?;
-    state
-        .auth
-        .session_manager
-        .get_session(&session_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|session| session.csrf_token)
+    ferris_auth::crypto::constant_time_eq(stored.as_bytes(), token.as_bytes())
 }
 
 /// A named cookie from the raw `Cookie` header.

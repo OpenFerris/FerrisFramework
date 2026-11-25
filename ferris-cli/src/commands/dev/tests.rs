@@ -464,40 +464,15 @@ fn no_bundle_anywhere_is_an_honest_ssr_only_fallback() {
     std::fs::remove_dir_all(&root).unwrap();
 }
 
-/// `ferris dev` must boot on a fresh `ferris new` project even though the
-/// scaffold deliberately writes no credential. The fill is dev-only: it never
-/// touches the caller's config (so `serve`/`run` keep failing closed) and it
-/// never writes the secret to disk.
+/// `ferris dev` no longer invents a signing secret: the session cookie is the
+/// only credential and the dev profile only relaxes `Secure`. The clone must
+/// preserve the caller's config exactly.
 #[test]
-fn dev_fills_an_ephemeral_secret_without_touching_the_input() {
+fn dev_preserves_the_project_config() {
     let mut config = crate::config::CliConfig::default();
-    config.auth.jwt_secret = None;
+    config.auth.password_min_length = 12;
 
     let dev = dev_config(&config);
 
-    let secret = dev.auth.jwt_secret.as_deref().expect("a dev secret");
-    assert!(secret.len() >= 32, "{secret}");
-    assert!(
-        config.auth.jwt_secret.is_none(),
-        "the caller's config must stay unmodified"
-    );
-}
-
-/// A configured secret is used verbatim; the production requirement is not
-/// weakened by the development exception.
-#[test]
-fn dev_keeps_a_configured_secret_and_the_production_path_still_refuses() {
-    let mut config = crate::config::CliConfig::default();
-    let configured = "a".repeat(32);
-    config.auth.jwt_secret = Some(configured.clone());
-
-    let dev = dev_config(&config);
-
-    assert_eq!(dev.auth.jwt_secret.as_deref(), Some(configured.as_str()));
-    assert!(
-        crate::config::CliConfig::default()
-            .require_jwt_secret()
-            .is_err(),
-        "serve/run must still fail without an operator secret"
-    );
+    assert_eq!(dev.auth.password_min_length, 12);
 }

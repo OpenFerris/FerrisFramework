@@ -4,10 +4,41 @@ use super::super::RealHostApi;
 use super::super::http::HttpPolicy;
 use ferris_auth::user::User;
 use ferris_document::engine::DocumentEngine;
+use ferris_schema::{DoctypeMeta, FieldMeta};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 
+/// The ad-hoc `Probe` and `Notification` metadata these tests use.
+///
+/// The document tables are columnar; without a declaration a body field has no
+/// column and is dropped. Registering the fixtures is what lets the tests
+/// exercise the same path a real app takes.
+fn register_fixtures() {
+    ferris_schema::register_doctype(DoctypeMeta {
+        name: "Probe".to_string(),
+        fields: vec![
+            FieldMeta::data("title"),
+            FieldMeta::data("region"),
+            FieldMeta::data("amount"),
+        ],
+        ..Default::default()
+    });
+    ferris_schema::register_doctype(DoctypeMeta {
+        name: "Notification".to_string(),
+        fields: vec![
+            FieldMeta::data("user"),
+            FieldMeta::data("notification_type"),
+            FieldMeta::data("title"),
+            FieldMeta::data("description"),
+            FieldMeta::data("route"),
+            FieldMeta::check("is_read"),
+        ],
+        ..Default::default()
+    });
+}
+
 pub(super) async fn memory_pool() -> ferris_db::Db {
+    register_fixtures();
     ferris_db::create_pool(&ferris_core::DatabaseConfig {
         r#type: ferris_core::DatabaseType::SQLite,
         host: "localhost".into(),

@@ -76,8 +76,9 @@ pub struct AppState {
     /// middleware's session store and the api pool.
     pub session: SessionHandlers,
     /// The OAuth2 login surface (`/api/oauth/*`). Built here, alongside the
-    /// session handlers, because the callback opens a session on the *same*
-    /// `SessionManager`; empty (no providers) when the operator configured none.
+    /// session handlers, because the callback opens a session through the same
+    /// `axum-login` backend; empty (no providers) when the operator configured
+    /// none.
     pub oauth: OAuthState,
     /// Process-wide pubsub bus backing the `/events` SSE bridge. Present only
     /// with `wasm`: the bus is the plugin `pubsub::publish` fan-out, so a build

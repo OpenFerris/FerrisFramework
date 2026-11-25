@@ -62,7 +62,7 @@ fn deploy_docker(args: &super::DeployArgs) -> Result<()> {
     // registry that has nothing to do with the user's. Push only when asked for,
     // with the registry the user names.
     let Some(registry) = args.registry.as_deref() else {
-        info!("Built {image} locally. Pass --registry to tag and push it.");
+        info!("No image was built: pass --registry to run docker build, tag and push {image}.");
         return Ok(());
     };
 

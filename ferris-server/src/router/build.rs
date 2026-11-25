@@ -33,6 +33,7 @@ use axum::{
     routing::get,
 };
 use ferris_api::{ApiState, OAuthState, SessionHandlers};
+use ferris_auth::login::{Backend, DbSessionStore, auth_layer};
 use ferris_auth::middleware::require_csrf;
 use ferris_auth::{AuthState, OAuthManager};
 use ferris_db::Db;
@@ -201,6 +202,8 @@ pub fn build_router(
     pool: Db,
     auth_state: AuthState,
     session_handlers: SessionHandlers,
+    backend: Backend,
+    session_store: DbSessionStore,
     modules: &ferris_api::ModuleRegistry,
 ) -> Router {
     // Framework-owned DocTypes are registered on every boot, independent of any
@@ -276,8 +279,10 @@ pub fn build_router(
     // / H7: the OAuth2 **login** surface. Built here, before
     // `AppState`, because the routes resolve `OAuthState` through `FromRef` (the
     // axum embedding pattern) and because the callback opens the session on the
-    // same `SessionHandlers` the rest of the server reads. A deployment with no
-    // providers gets an inert state and no routes.
+    // same `SessionHandlers` the rest of the server reads. Pending states live in
+    // `tab_oauth_state` (the manager is built over the pool), so a callback can
+    // land on any replica. A deployment with no providers gets an inert state and
+    // no routes.
     //
     // An empty `[auth.oauth].providers` is not necessarily "no OAuth": the
     // `Social Login Key`/`Connected App` DocTypes can carry the clients. The
@@ -285,7 +290,7 @@ pub fn build_router(
     // read (INT-01).
     let (oauth_state, oauth_ready) = if settings.config.auth.oauth.providers.is_empty() {
         match oauth_config_from_doctypes(&pool) {
-            Some(config) => match OAuthManager::new(config) {
+            Some(config) => match OAuthManager::with_db(config, pool.clone()) {
                 Ok(manager) => {
                     info!("OAuth providers loaded from Social Login Key/Connected App");
                     (OAuthState::new(manager, session_handlers.clone()), true)
@@ -308,7 +313,9 @@ pub fn build_router(
             ),
         }
     } else {
-        match oauth_config_from_settings(settings).and_then(OAuthManager::new) {
+        match oauth_config_from_settings(settings)
+            .and_then(|config| OAuthManager::with_db(config, pool.clone()))
+        {
             Ok(manager) => (OAuthState::new(manager, session_handlers.clone()), true),
             Err(e) => {
                 warn!(
@@ -393,6 +400,26 @@ pub fn build_router(
                 "/api/auth/mfa/verify",
                 axum::routing::post(ferris_api::verify_mfa),
             )
+            // Recovery and invitation acceptance are ways in for someone with
+            // no session yet, so they stay outside `require_auth` like login.
+            // They answer a generic `204`/`400` and never say whether an
+            // address has an account.
+            .route(
+                "/api/auth/password-reset/request",
+                axum::routing::post(ferris_api::request_password_reset),
+            )
+            .route(
+                "/api/auth/password-reset/confirm",
+                axum::routing::post(ferris_api::confirm_password_reset),
+            )
+            .route(
+                "/api/auth/email/verify/confirm",
+                axum::routing::post(ferris_api::confirm_email_verification),
+            )
+            .route(
+                "/api/auth/invitations/accept",
+                axum::routing::post(ferris_api::accept_invitation),
+            )
             .merge(
                 Router::new()
                     .route("/api/auth/logout", axum::routing::post(ferris_api::logout))
@@ -405,6 +432,33 @@ pub fn build_router(
                     .route(
                         "/api/auth/language",
                         axum::routing::put(ferris_api::set_language),
+                    )
+                    // API-key lifecycle: the caller's own keys only. The
+                    // plaintext secret is returned once, by `POST`.
+                    .route(
+                        "/api/auth/api-keys",
+                        get(ferris_api::list_api_keys).post(ferris_api::create_api_key),
+                    )
+                    .route(
+                        "/api/auth/api-keys/{id}",
+                        axum::routing::delete(ferris_api::delete_api_key),
+                    )
+                    // Verification is requested by the signed-in account about
+                    // itself; the token goes to its mailbox, not to the caller.
+                    .route(
+                        "/api/auth/email/verify/request",
+                        axum::routing::post(ferris_api::request_email_verification),
+                    )
+                    // Invitations are a `System Manager` surface (the handlers
+                    // re-check the role); the CSRF gate is the same one every
+                    // other mutating auth route uses.
+                    .route(
+                        "/api/auth/invitations",
+                        get(ferris_api::list_invitations).post(ferris_api::create_invitation),
+                    )
+                    .route(
+                        "/api/auth/invitations/{id}",
+                        axum::routing::delete(ferris_api::delete_invitation),
                     )
                     .route_layer(from_fn_with_state(auth_state.clone(), require_csrf)),
             ),
@@ -690,7 +744,7 @@ pub fn build_router(
                     get(plugin_handle_request).post(plugin_handle_request),
                 );
         }
-        // Resolve the optional desk session (bearer/cookie) so plugin
+        // Resolve the optional desk session cookie so plugin
         // `session` imports see the real caller; anonymous stays a guest.
         // `bind_client_identity` exposes the verified mTLS certificate facts
         // to the plugin REST/stream handlers and the RPC path.
@@ -800,16 +854,6 @@ pub fn build_router(
         security_headers_with_policy,
     ));
 
-    // The socket.io layer must be the **last** layer applied: in axum the last
-    // `.layer()` call is the outermost, and `Router::layer` also wraps the
-    // catch-all fallback — the only path an unmatched `/socket.io` request
-    // flows through. Applied earlier, the engine would sit inside a routing
-    // table that never dispatches to it for a path with no matching route.
-    #[cfg(feature = "realtime")]
-    if let Some(layer) = realtime_socket_layer {
-        router = router.layer(layer);
-    }
-
     // SRV7: the request-path producers sit below CORS and outside `require_auth`
     // so every finished request — the 404 fallback and a timeout 504 included —
     // is recorded with its final status.
@@ -817,6 +861,27 @@ pub fn build_router(
         app_state.clone(),
         crate::observability::record_request,
     ));
+
+    // The one session stack, mounted outside every auth gate and inside the
+    // socket.io layer: request and response cookies pass through it for every
+    // HTTP route, and `record_request` sits inside it so the access log sees
+    // the same `AuthSession`/`Session` extensions instead of parsing a
+    // credential twice. The socket engine is mounted *above* it: an upgrade is
+    // handled by socketioxide itself and resolves the session from the shared
+    // store (see `ferris-realtime`), so it neither needs nor disturbs cookie
+    // handling.
+    router = router.layer(auth_layer(&auth_state.config, session_store, backend));
+
+    // The socket.io layer must be the **last** layer applied before CORS: in
+    // axum the last `.layer()` call is the outermost, and `Router::layer` also
+    // wraps the catch-all fallback — the only path an unmatched `/socket.io`
+    // request flows through. Applied earlier, the engine would sit inside a
+    // routing table that never dispatches to it for a path with no matching
+    // route.
+    #[cfg(feature = "realtime")]
+    if let Some(layer) = realtime_socket_layer {
+        router = router.layer(layer);
+    }
 
     // CORS outermost so `/socket.io` polling preflights and cross-origin API
     // calls are answered before the request reaches the router.

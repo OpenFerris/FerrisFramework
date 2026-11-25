@@ -254,27 +254,33 @@ async fn health_check() -> &'static str {
     "OK"
 }
 
-/// Returns `true` when the request carries a valid bearer token.
+/// Returns `true` when the request carries a live Desk session.
 ///
-/// Fails closed: if no `AuthState` is configured, every request is rejected
+/// The operational endpoints are not part of the guided API; they accept the
+/// same cookie the Desk uses and read the one `tower-sessions` store. Fails
+/// closed: no `AuthState`, no store, no cookie or an expired record all reject
 /// rather than exposing rooms/presence anonymously.
-fn request_is_authorized(state: &RealtimeServer, headers: &HeaderMap) -> bool {
+async fn request_is_authorized(state: &RealtimeServer, headers: &HeaderMap) -> bool {
     let Some(auth) = &state.auth_state else {
         return false;
     };
-    let Some(token) = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|h| h.strip_prefix("Bearer "))
-    else {
+    let Some(session_id) = ferris_auth::middleware::session_cookie(&auth.config, headers) else {
         return false;
     };
-    auth.jwt_manager.validate_access_token(token).is_ok()
+    let Some(store) = &auth.session_store else {
+        return false;
+    };
+    store
+        .session_identity(&session_id)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
 }
 
 /// Stats endpoint (requires authentication)
 async fn stats_handler(State(state): State<Arc<RealtimeServer>>, headers: HeaderMap) -> Response {
-    if !request_is_authorized(&state, &headers) {
+    if !request_is_authorized(&state, &headers).await {
         return (StatusCode::UNAUTHORIZED, "Authentication required").into_response();
     }
 
@@ -478,17 +484,7 @@ mod tests {
     use super::*;
 
     fn test_auth_state() -> AuthState {
-        let jwt = ferris_auth::JwtManager::new(
-            ferris_auth::JwtConfig::new("ferris-realtime-test-secret-32-chars+")
-                .expect("valid test secret"),
-        )
-        .expect("jwt manager");
-        let config = ferris_auth::SessionConfig::default();
-        AuthState::new(
-            jwt,
-            ferris_auth::SessionManager::new(config.clone()),
-            config,
-        )
+        AuthState::new(ferris_auth::SessionConfig::default())
     }
 
     #[tokio::test]

@@ -19,7 +19,7 @@
 //!
 //! * `none` — dispatched as an anonymous guest, whatever session the caller
 //!   happens to carry. The plugin decides what to do with the request.
-//! * `session` — a desk session (cookie or bearer) is required; the host answers
+//! * `session` — a desk session cookie is required; the host answers
 //!   `401` before dispatch and binds the resolved user to `platform::current-user`.
 //! * `capability(name)` — a machine-to-machine credential. The caller sends
 //!   `x-ferris-capability: <token>` and the host compares it in constant time

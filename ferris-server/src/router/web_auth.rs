@@ -209,7 +209,7 @@ pub(super) async fn web_auth_guard(
 ///
 /// Mounted *inside* the guard (see `build_router`): the guard is the outer
 /// layer, so the `DeskIdentity` it inserts into the request extensions is
-/// already there when this layer runs, and the cookie/bearer resolution happens
+/// already there when this layer runs, and the cookie resolution happens
 /// once per request.
 pub(super) async fn bind_desk_user(request: Request, next: Next) -> Response {
     let user = desk_engine_user(request.extensions());

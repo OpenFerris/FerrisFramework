@@ -57,7 +57,7 @@ fn read_line(input: &mut impl BufRead) -> std::io::Result<Option<String>> {
     }
 }
 
-pub fn run(args: super::ShellArgs, config: &CliConfig) -> Result<()> {
+pub fn run(args: super::ShellArgs, _config: &CliConfig) -> Result<()> {
     if args.command.is_empty() {
         let stdin = std::io::stdin();
         let mut input = stdin.lock();

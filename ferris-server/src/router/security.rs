@@ -161,7 +161,7 @@ async fn apply_security_headers(
                 HeaderValue::from_static("private, no-store"),
             );
         }
-        // The response body depends on the caller's cookie or bearer token.
+        // The response body depends on the caller's cookie.
         headers.append(
             header::VARY,
             HeaderValue::from_static("Cookie, Authorization"),

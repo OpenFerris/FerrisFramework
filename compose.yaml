@@ -8,11 +8,9 @@
 # visible immediately. Build artifacts stay in the host's target/ through the
 # same mount (or in a named volume if you prefer isolation; see below).
 #
-# Before running `ferris serve`/`ferris run`, copy `.env.example` to `.env` and
-# set a real `FERRIS_JWT_SECRET` (`openssl rand -base64 48`). Compose forwards
-# it; when it is unset the variable reaches the container empty, which the CLI
-# treats as "not configured" and the server refuses to boot. There is no default
-# secret on purpose (DX-18).
+# Sessions live in `tab_session_store` and need no signing secret. Copy
+# `.env.example` to `.env` only for the database/Redis credentials a profile
+# needs; `ferris serve`/`ferris dev` boot without an authentication secret.
 #
 # Images are pinned by tag *and* digest (DX-17). The digest is the OCI image
 # index, so both amd64 and arm64 resolve; bump tag and digest together.
@@ -39,8 +37,6 @@ services:
       - "127.0.0.1:8000:8000" # ferris serve / dev
       - "127.0.0.1:4321:4321" # documentation site (Astro)
     environment:
-      # Forwarded from the shell or `.env`, never defaulted: see the header.
-      FERRIS_JWT_SECRET: ${FERRIS_JWT_SECRET:-}
       RUST_BACKTRACE: "1"
     tty: true
     stdin_open: true

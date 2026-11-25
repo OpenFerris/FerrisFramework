@@ -204,9 +204,8 @@ mod tests {
     use axum::body::Body;
     use axum::extract::FromRef;
     use axum::http::Request as HttpRequest;
-    use axum::http::header;
     use axum::routing::get;
-    use ferris_auth::{AuthState, JwtConfig, JwtManager, SessionConfig, SessionManager};
+    use ferris_auth::{AuthState, SessionConfig};
     use tower::ServiceExt;
 
     /// Minimal state so the handler can be exercised through a real router:
@@ -230,15 +229,7 @@ mod tests {
     }
 
     fn state() -> SseTestState {
-        let jwt = JwtManager::new(
-            JwtConfig::new("sse-test-secret-at-least-32-bytes-long").expect("valid test secret"),
-        )
-        .expect("jwt manager");
-        let auth = AuthState::new(
-            jwt,
-            SessionManager::new(SessionConfig::default()),
-            SessionConfig::default(),
-        );
+        let auth = AuthState::new(SessionConfig::default());
         SseTestState {
             auth,
             bus: PubsubBus::new(),
@@ -264,13 +255,11 @@ mod tests {
         }
     }
 
-    fn request(uri: &str, token: Option<&str>) -> HttpRequest<Body> {
-        let builder = HttpRequest::builder().uri(uri);
-        let builder = match token {
-            Some(token) => builder.header(header::AUTHORIZATION, format!("Bearer {token}")),
-            None => builder,
-        };
-        builder.body(Body::empty()).expect("request builds")
+    fn request(uri: &str) -> HttpRequest<Body> {
+        HttpRequest::builder()
+            .uri(uri)
+            .body(Body::empty())
+            .expect("request builds")
     }
 
     #[tokio::test]
@@ -285,42 +274,10 @@ mod tests {
     #[tokio::test]
     async fn events_requires_authentication() {
         let response = app(state())
-            .oneshot(request("/events?channel=user:42", None))
+            .oneshot(request("/events?channel=user:42"))
             .await
             .expect("the router answers");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[tokio::test]
-    async fn events_refuses_a_channel_outside_the_callers_scope() {
-        let state = state();
-        let token = state
-            .auth
-            .jwt_manager
-            .generate_tokens("42", "user@example.com", &[], None, "session-1")
-            .expect("token pair")
-            .access_token;
-        let response = app(state)
-            .oneshot(request("/events?channel=app:test", Some(&token)))
-            .await
-            .expect("the router answers");
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn events_accepts_a_channel_inside_the_callers_scope() {
-        let state = state();
-        let token = state
-            .auth
-            .jwt_manager
-            .generate_tokens("42", "user@example.com", &[], None, "session-1")
-            .expect("token pair")
-            .access_token;
-        let response = app(state)
-            .oneshot(request("/events?channel=user:42:inbox", Some(&token)))
-            .await
-            .expect("the router answers");
-        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]

@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use ferris_auth::{AuthState, JwtConfig, JwtManager, SessionConfig, SessionManager};
+use ferris_auth::{AuthState, SessionConfig};
 use ferris_server::router::plugin_routes::{RouteMode, declared_route_router};
 use ferris_wasm::descriptor::{NetworkSpec, RouteKind, RouteSpec};
 use ferris_wasm::{PluginStore, RuntimeConfig, SharedRuntime};
@@ -64,12 +64,7 @@ async fn store() -> Option<Arc<PluginStore>> {
 }
 
 fn auth() -> AuthState {
-    AuthState::new(
-        JwtManager::new(JwtConfig::new("route-test-secret-at-least-32-bytes-long").unwrap())
-            .unwrap(),
-        SessionManager::new(SessionConfig::default()),
-        SessionConfig::default(),
-    )
+    AuthState::new(SessionConfig::default())
 }
 
 fn spec(id: &str, method: &str, path: &str, auth: Option<ferris_wasm::RouteAuth>) -> RouteSpec {

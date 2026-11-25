@@ -1,7 +1,9 @@
 //! API: platform-aware data access for the Desk.
 
+pub mod authz;
 pub mod client;
 pub mod dashboard_layout;
+pub mod doctype_admin;
 pub mod export;
 pub mod files;
 pub mod hooks;

@@ -488,7 +488,6 @@ url = "redis://:s3cret@cache.internal:6379"
     #[test]
     fn secrets_never_reach_the_output() {
         let mut config = CliConfig::default();
-        config.auth.jwt_secret = Some("super-secret-value".into());
         config.database.password = "hunter2".into();
         config.redis.url = "redis://:s3cret@cache.internal:6379".into();
 
@@ -496,13 +495,11 @@ url = "redis://:s3cret@cache.internal:6379"
             serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
         redact(&mut json, &[]);
 
-        assert_eq!(json["auth"]["jwt_secret"], REDACTED);
         assert_eq!(json["database"]["password"], REDACTED);
         assert_eq!(json["redis"]["url"], REDACTED);
         let rendered = serde_json::to_string(&json).unwrap();
         assert!(!rendered.contains("hunter2"), "{rendered}");
         assert!(!rendered.contains("s3cret"), "{rendered}");
-        assert!(!rendered.contains("super-secret-value"), "{rendered}");
         // Everything else is still there: a redacted config is still useful.
         assert_eq!(json["database"]["name"], "ferris_dev");
         assert_eq!(json["redis"]["max_connections"], 20);

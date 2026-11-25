@@ -4,8 +4,6 @@
 #[cfg(feature = "wasm")]
 use std::sync::Arc;
 
-use anyhow::Result;
-
 use ferris_core::Config;
 #[cfg(feature = "wasm")]
 use ferris_wasm::PluginStore;
@@ -58,21 +56,6 @@ pub(super) fn install_secret_keyring(config: &Config) -> anyhow::Result<()> {
         Err(error) => anyhow::bail!("invalid secret-field key material: {error}"),
     }
     Ok(())
-}
-
-/// Resolve the JWT signing secret, or fail with an actionable boot error.
-///
-/// SRV16: `ferris-auth` rejects an empty secret with a message that never names
-/// the setting, and the old `unwrap_or_default()` deferred that failure to an
-/// unrelated place. This is the one seam that decides what the operator is told
-/// and what the rest of the boot path receives.
-pub(super) fn jwt_secret(config: &ferris_core::Config) -> Result<String> {
-    config.auth.jwt_secret.clone().ok_or_else(|| {
-        anyhow::anyhow!(
-            "FERRIS_JWT_SECRET is not configured: the server requires a JWT signing \
-             secret of at least 32 characters (env FERRIS_JWT_SECRET or [auth] jwt_secret)"
-        )
-    })
 }
 
 /// §C4 boot seam: start the WASM epoch clock for whatever plugin store the

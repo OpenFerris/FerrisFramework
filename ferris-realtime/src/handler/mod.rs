@@ -40,10 +40,8 @@ struct ConnectionAuth {
     /// A socket used to keep the handshake's authorization for its whole life,
     /// so a logout, a disabled account or a withdrawn role never interrupted
     /// delivery (RT-01). Recording the credential lets the maintenance task and
-    /// the revocation hook re-check it.
+    /// the revocation hook re-check it against the one `tower-sessions` store.
     session_id: Option<String>,
-    /// For a bearer connection, when the token stops being valid on its own.
-    token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Connection information
@@ -116,8 +114,7 @@ impl RealtimeHandler {
         let connection_id = socket.id.to_string();
         debug!("New connection: {}", connection_id);
 
-        // Authenticate from the handshake (`Authorization: Bearer ...` or the
-        // session cookie).
+        // Authenticate from the handshake's session cookie.
         if let Some(auth) = self.authenticate(&socket).await {
             let user_id = auth.user_id.clone();
             let user_name = auth.user_name.clone();
@@ -157,23 +154,22 @@ impl RealtimeHandler {
     /// Returns `None` for anonymous connections and for users rejected by the
     /// configured [`ferris_auth::UserValidator`] (e.g. disabled accounts).
     ///
-    /// The credential itself is kept on the returned record (its session id or
-    /// the bearer token's expiry), because the handshake is only the first
-    /// authorization: [`Self::revalidate_connections`] and the session
-    /// revocation hook re-check it later (RT-01).
+    /// The credential itself is kept on the returned record (its session id),
+    /// because the handshake is only the first authorization:
+    /// [`Self::revalidate_connections`] and the session revocation hook
+    /// re-check it later (RT-01).
     async fn authenticate(&self, socket: &SocketRef) -> Option<ConnectionAuth> {
         // Clone the `AuthState` out of the shared cell before any `.await`:
         // the read guard is not `Send` and must not be held across the
         // `validator.validate(..).await` below (V3-RT-1).
         let auth = self.auth_state.read().clone()?;
         let headers = &socket.req_parts().headers;
-        let (user_id, user_name, roles) = authenticate_headers(&auth, headers).await?;
+        let identity = authenticate_headers(&auth, headers).await?;
         Some(ConnectionAuth {
-            user_id,
-            user_name,
-            roles,
-            session_id: ferris_auth::middleware::session_cookie(&auth.config, headers),
-            token_expires_at: bearer_expiry(&auth, headers),
+            user_id: identity.user_id,
+            user_name: identity.email,
+            roles: identity.roles,
+            session_id: Some(identity.session_id),
         })
     }
 
@@ -281,37 +277,24 @@ impl RealtimeHandler {
 
 /// Whether a connection still holds the authorization it was opened with.
 ///
-/// Bearer connections are checked against the token's expiry and the user
-/// validator; cookie connections are checked against the session store, so a
-/// deleted session closes its socket. A role change is treated as a revocation:
-/// the socket re-handshakes and picks the new roles up, instead of keeping the
-/// old ones for the connection's lifetime.
+/// A connection is checked against the session store, so a deleted session
+/// closes its socket, and against the user validator, so a disabled account or
+/// a role change is treated as a revocation: the socket re-handshakes and picks
+/// the new roles up instead of keeping the old ones for the connection's
+/// lifetime.
 async fn connection_is_current(
     auth: &ferris_auth::AuthState,
     connection: &ConnectionAuth,
-    now: chrono::DateTime<Utc>,
+    _now: chrono::DateTime<Utc>,
 ) -> bool {
-    if connection
-        .token_expires_at
-        .is_some_and(|expires_at| expires_at <= now)
-    {
-        return false;
-    }
     if let Some(session_id) = &connection.session_id {
-        match auth.session_manager.get_session(session_id).await {
-            Ok(Some(session)) => {
-                // Absolute expiry: the idle window is refreshed by the Desk's
-                // own session traffic, not by socket heartbeats, and a live
-                // socket is activity in its own right.
-                if session.user_id != connection.user_id || session.is_expired() {
-                    return false;
-                }
-            }
-            Ok(None) => return false,
-            Err(error) => {
-                tracing::warn!(%error, "realtime: session check failed; closing the socket");
-                return false;
-            }
+        let Some(store) = &auth.session_store else {
+            // No store means this process cannot prove the session still
+            // exists; a socket must not outlive its credential.
+            return false;
+        };
+        if !store.is_active(session_id, &connection.user_id).await {
+            return false;
         }
     }
     match &auth.user_validator {
@@ -323,42 +306,18 @@ async fn connection_is_current(
     }
 }
 
-/// The expiry of the bearer token in `headers`, when there is one.
-///
-/// A token that does not validate is not a credential; the handshake has
-/// already refused it, so `None` here only means "this is a cookie
-/// connection".
-fn bearer_expiry(
-    auth: &ferris_auth::AuthState,
-    headers: &axum::http::HeaderMap,
-) -> Option<chrono::DateTime<Utc>> {
-    let token = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))?;
-    let claims = auth.jwt_manager.validate_access_token(token).ok()?;
-    chrono::DateTime::from_timestamp(claims.exp, 0)
-}
-
 /// Resolve the handshake identity from its headers.
 ///
-/// Two credentials are accepted, in this order:
-///
-/// 1. `Authorization: Bearer <jwt>` — the explicit credential a native client,
-///    the CLI or a plugin uses;
-/// 2. the Desk's **session cookie** — what a browser tab actually has. Without
-///    this the Desk's own realtime connection was anonymous: the browser never
-///    sends a bearer token, so presence, the personal `user:` room and every
-///    `session_can` decision ran as a guest.
+/// The Desk's browser sends the session cookie; there is no bearer credential
+/// any more. The socket upgrade is handled before the HTTP auth layers, so the
+/// identity is read from the same `tower-sessions` record by id
+/// ([`DbSessionStore::session_identity`](ferris_auth::login::DbSessionStore::session_identity)).
+/// When a [`UserValidator`](ferris_auth::middleware::UserValidator) is
+/// configured its answer is the current one — a disabled account is refused at
+/// the handshake and a role change is adopted here rather than waiting for the
+/// maintenance tick.
 ///
 /// No credential at all stays anonymous, exactly as before.
-///
-/// The cookie goes through the same [`SessionManager`](ferris_auth::SessionManager)
-/// the REST middleware uses (`touch_session` also refuses an expired or idle
-/// session), and the identity it yields is validated the same way a bearer
-/// token's is, so a disabled account cannot hold a socket open. When no
-/// `UserValidator` is configured the session's own stored identity is the
-/// answer, matching what `GET /api/auth/session` reports.
 ///
 /// Residual risk, deliberately not papered over here: a cross-site WebSocket
 /// hijack would need the browser to attach the session cookie to a handshake
@@ -370,72 +329,19 @@ fn bearer_expiry(
 pub(super) async fn authenticate_headers(
     auth: &ferris_auth::AuthState,
     headers: &axum::http::HeaderMap,
-) -> Option<(String, String, Vec<String>)> {
-    if let Some(token) = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|h| h.strip_prefix("Bearer "))
-    {
-        return authenticate_token(auth, token).await;
-    }
+) -> Option<ferris_auth::login::SessionIdentity> {
     let session_id = ferris_auth::middleware::session_cookie(&auth.config, headers)?;
-    authenticate_session(auth, &session_id).await
-}
-
-/// The bearer half: validate the JWT, then resolve the user (roles included)
-/// through the validator when one is configured.
-async fn authenticate_token(
-    auth: &ferris_auth::AuthState,
-    token: &str,
-) -> Option<(String, String, Vec<String>)> {
-    let claims = auth.jwt_manager.validate_access_token(token).ok()?;
+    let store = auth.session_store.as_ref()?;
+    let mut identity = store.session_identity(&session_id).await.ok()??;
     if let Some(validator) = &auth.user_validator {
-        let user = validator.validate(&claims.sub).await?;
+        let user = validator.validate(&identity.user_id).await?;
         if !user.enabled {
             return None;
         }
-        return Some((user.id, user.email, user.roles));
+        identity.email = user.email;
+        identity.roles = user.roles;
     }
-    Some((claims.sub, claims.email, claims.roles))
-}
-
-/// The cookie half: the session is the credential, so it is loaded through the
-/// shared manager (which also refuses an expired/idle one) and then resolved to
-/// an identity the same way a token is.
-async fn authenticate_session(
-    auth: &ferris_auth::AuthState,
-    session_id: &str,
-) -> Option<(String, String, Vec<String>)> {
-    let session = auth
-        .session_manager
-        .touch_session(session_id)
-        .await
-        .ok()??;
-    if let Some(validator) = &auth.user_validator {
-        let user = validator.validate(&session.user_id).await?;
-        if !user.enabled {
-            return None;
-        }
-        return Some((user.id, user.email, user.roles));
-    }
-    // No source-of-truth lookup installed: report what the session recorded,
-    // which is the same fallback `GET /api/auth/session` uses.
-    let email = session
-        .get_data("email")
-        .and_then(|value| value.as_str())
-        .unwrap_or_default()
-        .to_string();
-    let roles = session
-        .get_data("roles")
-        .and_then(|value| value.as_array())
-        .map(|roles| {
-            roles
-                .iter()
-                .filter_map(|role| role.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    Some((session.user_id, email, roles))
+    Some(identity)
 }
 
 /// Regression tests for the connection lifecycle added with RT-01.
@@ -449,18 +355,39 @@ mod connection_lifecycle_tests {
     use crate::{PresenceManager, RoomManager};
     use std::sync::Arc;
 
-    fn auth_state() -> AuthState {
-        let jwt = ferris_auth::JwtManager::new(
-            ferris_auth::JwtConfig::new("ferris-realtime-test-secret-32-chars+")
-                .expect("valid test secret"),
-        )
-        .expect("jwt manager");
+    async fn auth_state() -> (AuthState, ferris_auth::login::DbSessionStore) {
+        let pool = ferris_db::memory_db().await.expect("in-memory db");
+        let store = ferris_auth::login::DbSessionStore::new(pool);
+        store.ensure_table().await.expect("session table");
         let config = ferris_auth::SessionConfig::default();
-        AuthState::new(
-            jwt,
-            ferris_auth::SessionManager::new(config.clone()),
-            config,
+        (
+            AuthState::new(config).with_session_store(store.clone()),
+            store,
         )
+    }
+
+    /// Write a live session record carrying the identity the login stamps.
+    async fn seed_session(store: &ferris_auth::login::DbSessionStore, user_id: &str) -> String {
+        use tower_sessions::SessionStore;
+        let mut record = tower_sessions::session::Record {
+            id: Default::default(),
+            data: std::collections::HashMap::new(),
+            expiry_date: time::OffsetDateTime::now_utc() + time::Duration::hours(1),
+        };
+        record.data.insert(
+            ferris_auth::login::keys::USER_ID_KEY.to_string(),
+            serde_json::json!(user_id),
+        );
+        record.data.insert(
+            ferris_auth::login::keys::EMAIL_KEY.to_string(),
+            serde_json::json!(user_id),
+        );
+        record.data.insert(
+            ferris_auth::login::keys::ROLES_KEY.to_string(),
+            serde_json::json!(["User"]),
+        );
+        store.create(&mut record).await.expect("session record");
+        record.id.to_string()
     }
 
     fn handler_with_auth(auth: AuthState) -> RealtimeHandler {
@@ -476,7 +403,6 @@ mod connection_lifecycle_tests {
         connection_id: &str,
         user_id: &str,
         session_id: Option<&str>,
-        token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
     ) {
         handler.connections.write().insert(
             connection_id.to_string(),
@@ -485,7 +411,6 @@ mod connection_lifecycle_tests {
                 user_name: user_id.to_string(),
                 roles: vec!["User".to_string()],
                 session_id: session_id.map(str::to_string),
-                token_expires_at,
             },
         );
     }
@@ -494,28 +419,11 @@ mod connection_lifecycle_tests {
     /// delete the row the next HTTP request reads.
     #[tokio::test]
     async fn disconnect_user_closes_every_socket_of_the_user() {
-        let handler = handler_with_auth(auth_state());
-        insert(
-            &handler,
-            "aaaaaaaaaaaaaaaa",
-            "ada@example.com",
-            Some("s1"),
-            None,
-        );
-        insert(
-            &handler,
-            "bbbbbbbbbbbbbbbb",
-            "ada@example.com",
-            Some("s2"),
-            None,
-        );
-        insert(
-            &handler,
-            "cccccccccccccccc",
-            "bob@example.com",
-            Some("s3"),
-            None,
-        );
+        let (auth, _store) = auth_state().await;
+        let handler = handler_with_auth(auth);
+        insert(&handler, "aaaaaaaaaaaaaaaa", "ada@example.com", Some("s1"));
+        insert(&handler, "bbbbbbbbbbbbbbbb", "ada@example.com", Some("s2"));
+        insert(&handler, "cccccccccccccccc", "bob@example.com", Some("s3"));
 
         assert_eq!(handler.disconnect_user("ada@example.com"), 2);
         let live = handler.connections.read();
@@ -529,21 +437,10 @@ mod connection_lifecycle_tests {
 
     #[tokio::test]
     async fn disconnect_session_closes_only_that_credential() {
-        let handler = handler_with_auth(auth_state());
-        insert(
-            &handler,
-            "aaaaaaaaaaaaaaaa",
-            "ada@example.com",
-            Some("s1"),
-            None,
-        );
-        insert(
-            &handler,
-            "bbbbbbbbbbbbbbbb",
-            "ada@example.com",
-            Some("s2"),
-            None,
-        );
+        let (auth, _store) = auth_state().await;
+        let handler = handler_with_auth(auth);
+        insert(&handler, "aaaaaaaaaaaaaaaa", "ada@example.com", Some("s1"));
+        insert(&handler, "bbbbbbbbbbbbbbbb", "ada@example.com", Some("s2"));
 
         assert_eq!(handler.disconnect_session("s1"), 1);
         let live = handler.connections.read();
@@ -555,19 +452,15 @@ mod connection_lifecycle_tests {
     /// documents; the maintenance pass closes it.
     #[tokio::test]
     async fn a_revoked_session_closes_its_socket() {
-        let auth = auth_state();
-        let session = auth
-            .session_manager
-            .create_session("ada@example.com".to_string(), None, None)
-            .await
-            .expect("session");
+        use tower_sessions::SessionStore;
+        let (auth, store) = auth_state().await;
+        let session_id = seed_session(&store, "ada@example.com").await;
         let handler = handler_with_auth(auth.clone());
         insert(
             &handler,
             "aaaaaaaaaaaaaaaa",
             "ada@example.com",
-            Some(&session.id),
-            None,
+            Some(&session_id),
         );
 
         assert_eq!(
@@ -576,25 +469,23 @@ mod connection_lifecycle_tests {
             "a live session keeps the socket open"
         );
 
-        auth.session_manager
-            .delete_session(&session.id)
-            .await
-            .expect("logout");
+        let id = session_id.parse().expect("session id");
+        store.delete(&id).await.expect("logout");
         assert_eq!(handler.revalidate_connections().await, 1);
         assert!(handler.connections.read().is_empty());
     }
 
-    /// RT-01: an access token that expired after the handshake closes its
-    /// socket, even for a connection with no session behind it.
+    /// A socket with no session record to prove cannot stay open: the
+    /// realtime path has no bearer fallback any more.
     #[tokio::test]
-    async fn an_expired_token_closes_its_socket() {
-        let handler = handler_with_auth(auth_state());
+    async fn a_connection_without_a_live_session_closes() {
+        let (auth, _store) = auth_state().await;
+        let handler = handler_with_auth(auth);
         insert(
             &handler,
             "aaaaaaaaaaaaaaaa",
             "ada@example.com",
-            None,
-            Some(Utc::now() - chrono::Duration::minutes(1)),
+            Some("not-a-session"),
         );
         assert_eq!(handler.revalidate_connections().await, 1);
     }
@@ -614,7 +505,8 @@ mod connection_lifecycle_tests {
             }
         }
 
-        let handler = handler_with_auth(auth_state().with_user_validator(Arc::new(CurrentRoles)));
+        let (auth, _store) = auth_state().await;
+        let handler = handler_with_auth(auth.with_user_validator(Arc::new(CurrentRoles)));
         handler.connections.write().insert(
             "aaaaaaaaaaaaaaaa".to_string(),
             ConnectionAuth {
@@ -622,7 +514,6 @@ mod connection_lifecycle_tests {
                 user_name: "Ada".to_string(),
                 roles: vec!["User".to_string(), "System Manager".to_string()],
                 session_id: None,
-                token_expires_at: None,
             },
         );
         assert_eq!(handler.revalidate_connections().await, 1);

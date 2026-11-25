@@ -126,7 +126,7 @@ pub(super) async fn reload_app(
 }
 
 /// Ambient identity bound to plugin HTTP requests. Resolved from the desk
-/// session (bearer token or cookie) before the plugin runs; `None` means the
+/// session cookie before the plugin runs; `None` means the
 /// caller was anonymous, which the plugin's `session` import reports as a
 /// guest rather than a fabricated identity — the `ferris-server` twin.
 #[derive(Clone)]

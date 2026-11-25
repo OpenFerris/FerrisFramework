@@ -16,30 +16,14 @@ pub(crate) use watch::{start_watcher, watch_and_reload};
 
 use crate::config::CliConfig;
 
-/// Clone the project config for `ferris dev`, filling an ephemeral JWT secret
-/// when the project has none.
+/// Clone the project config for `ferris dev`.
 ///
-/// `serve` and `run` stay fail-closed through [`CliConfig::require_jwt_secret`]:
-/// a production process never starts without the operator's secret. The dev
-/// server is the one place where the absence is not actionable, because
-/// `ferris new` must not invent a credential and a first `ferris dev` should not
-/// stop at a configuration error. The generated secret lives only in memory
-/// (never written to disk) and changes on every start, so sessions do not
-/// survive a restart; setting `FERRIS_JWT_SECRET` restores stable sessions.
+/// Sessions now live in `tab_session_store` and are protected by the random
+/// `tower-sessions` cookie id, so there is no signing secret to generate: the
+/// dev server and `serve` share the same fail-closed auth setup and the dev
+/// profile only changes the cookie to the plain (non-`Secure`) name.
 pub(crate) fn dev_config(config: &CliConfig) -> CliConfig {
-    let mut config = config.clone();
-    if config.auth.jwt_secret.is_none() {
-        // Two v4 UUIDs give 72 printable characters, comfortably above the
-        // 32-character minimum, from the OS CSPRNG.
-        let first = uuid::Uuid::new_v4();
-        let second = uuid::Uuid::new_v4();
-        config.auth.jwt_secret = Some(format!("{first}{second}"));
-        tracing::warn!(
-            "auth.jwt_secret is not configured; using an ephemeral development secret \
-             (sessions end when the dev server restarts). Set FERRIS_JWT_SECRET for stable sessions."
-        );
-    }
-    config
+    config.clone()
 }
 
 #[cfg(test)]

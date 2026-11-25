@@ -157,10 +157,22 @@ fn collection_key(segment: &str) -> Option<&'static str> {
 fn settings_section(segment: &str, i18n: &(impl crate::i18n::Translate + Sync)) -> String {
     match segment {
         "permissions" => i18n.t("desk.breadcrumb.permissions"),
+        "doctypes" => translated(i18n, "desk.breadcrumb.doctypes", "DocTypes"),
         "security" => i18n.t("desk.breadcrumb.security"),
         "about" => i18n.t("desk.breadcrumb.about"),
         "general" => i18n.t("desk.breadcrumb.general"),
         other => other.to_string(),
+    }
+}
+
+/// A catalogue label with an English fallback while the Core catalogue has not
+/// caught up with a new settings section.
+fn translated(i18n: &(impl crate::i18n::Translate + Sync), key: &str, fallback: &str) -> String {
+    let value = i18n.t(key);
+    if value == key {
+        fallback.to_string()
+    } else {
+        value
     }
 }
 

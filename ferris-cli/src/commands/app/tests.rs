@@ -38,6 +38,88 @@ fn package(parent: &Path, name: &str) -> PathBuf {
     dir
 }
 
+fn requested() -> GrantSet {
+    GrantSet::new(
+        vec!["process".to_string(), "http-unrestricted".to_string()],
+        vec!["api.example.com".to_string()],
+        vec!["bin/convert".to_string()],
+    )
+}
+
+fn options<'a>(yes: bool, grant: &'a [String]) -> InstallOptions<'a> {
+    InstallOptions {
+        trust: None,
+        allow_unsigned: false,
+        yes,
+        grant,
+    }
+}
+
+/// Without `--yes`/`--grant` the install stops before copying anything: there
+/// is no interactive prompt a non-TTY invocation could hang on.
+#[test]
+fn an_unsigned_package_is_refused_before_it_is_copied() {
+    let (root, catalogue) = scratch("unsigned");
+    let source = package(&root, "facturacion");
+    let error = install_package(&catalogue, &source, None, &options(false, &[]))
+        .expect_err("unsigned needs --allow-unsigned");
+    assert!(error.to_string().contains("--allow-unsigned"), "{error}");
+    assert!(
+        catalogue.global_apps().unwrap().is_empty(),
+        "a refused package never reaches the catalogue"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn approval_needs_a_flag_and_lists_the_request() {
+    let error = approve_grants("facturacion", &requested(), &options(false, &[]))
+        .expect_err("needs an explicit flag");
+    let text = error.to_string();
+    assert!(text.contains("--yes"), "{text}");
+    assert!(text.contains("process"), "{text}");
+    assert!(text.contains("api.example.com"), "{text}");
+    assert!(text.contains("bin/convert"), "{text}");
+}
+
+#[test]
+fn yes_approves_every_requested_grant() {
+    let approved =
+        approve_grants("facturacion", &requested(), &options(true, &[])).expect("approved");
+    assert_eq!(approved, requested());
+}
+
+#[test]
+fn grant_selects_individual_items() {
+    let wanted = vec![
+        "process".to_string(),
+        "http-unrestricted".to_string(),
+        "http:api.example.com".to_string(),
+        "process:bin/convert".to_string(),
+    ];
+    let approved =
+        approve_grants("facturacion", &requested(), &options(false, &wanted)).expect("approved");
+    assert_eq!(approved, requested());
+}
+
+#[test]
+fn an_unknown_grant_is_refused() {
+    let wanted = vec!["dns-server".to_string()];
+    let error = approve_grants("facturacion", &requested(), &options(false, &wanted))
+        .expect_err("not requested");
+    assert!(error.to_string().contains("dns-server"), "{error}");
+}
+
+#[test]
+fn approving_only_some_withholds_the_rest() {
+    let wanted = vec!["process".to_string()];
+    let approved =
+        approve_grants("facturacion", &requested(), &options(false, &wanted)).expect("approved");
+    assert!(approved.allows_capability("process"));
+    assert!(!approved.allows_http_host("api.example.com"));
+    assert!(!approved.allows_process_bin("bin/convert"));
+}
+
 #[test]
 fn an_empty_list_is_materialised_before_disabling() {
     let dir = std::env::temp_dir().join(format!("ferris-apps-{}", std::process::id()));

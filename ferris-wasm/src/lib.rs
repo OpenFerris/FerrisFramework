@@ -35,6 +35,7 @@ pub mod runtime;
 pub(crate) mod setup;
 pub mod store;
 pub mod tls;
+pub mod trust;
 
 pub use component::{ensure_component, is_component, load_component};
 pub use error::PluginErrorKind;
@@ -57,6 +58,12 @@ pub use http::sanitize_response_headers;
 pub use plugin::{PLUGIN_ROUTE_ID, Plugin};
 pub use runtime::{RuntimeConfig, SharedRuntime};
 pub use store::PluginStore;
+// Publisher trust: the signed manifest and the operator's key/grant sets. The
+// public `GrantSet` above is the runtime capability set; the operator approval
+// is exported as `OperatorGrantSet` to keep the two meanings apart.
+pub use trust::{
+    AppManifest as TrustManifest, GrantSet as OperatorGrantSet, PublisherKey, TrustStore,
+};
 
 // Bindings generated from `wit/ferris.wit` at compile time. The world
 // (`ferris-app`) defines the exports every plugin must provide and the

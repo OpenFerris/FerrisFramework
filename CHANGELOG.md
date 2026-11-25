@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Añadido
+
+- **Ventana de inactividad configurable**: `[auth] session_idle_timeout_minutes`
+  (30 por defecto) es la ventana deslizante; `session_timeout_minutes` sigue
+  siendo la vida absoluta.
+- **Política de contraseñas aplicada**: `password_min_length` y
+  `password_require_uppercase/lowercase/numbers/symbols` se comprueban al crear,
+  cambiar y restablecer una contraseña.
+- **Verificación de email exigible**: `[auth] require_email_verification`
+  (`false` por defecto) rechaza el login de una cuenta sin `email_verified`; un
+  email verificado por el proveedor OAuth satisface la política.
+- **Límite de fallos por clave de API**: tras 10 secretos incorrectos en 15
+  minutos la clave se rechaza aunque llegue el secreto correcto.
+- **Recuperación y verificación**: `POST /api/auth/password-reset/request`
+  (siempre `204`, sin enumeración), `POST /api/auth/password-reset/confirm`,
+  `POST /api/auth/email/verify/request` y `POST /api/auth/email/verify/confirm`.
+- **Invitaciones**: `POST/GET/DELETE /api/auth/invitations` (solo
+  `System Manager`) y `POST /api/auth/invitations/accept` (pública).
+- **Ciclo de vida de claves de API**: `POST/GET/DELETE /api/auth/api-keys`, por
+  cuenta; el secreto se devuelve una sola vez y nunca el digest.
+- **Auditoría de fallos**: `Activity Log` registra `login_failed` además de
+  `login` y `logout`.
+- **i18n**: etiquetas de `mfa_last_step`, `oauth_subject`, `email_verified`,
+  `email_verification_key`, `email_verification_expires_at`,
+  `reset_password_expires_at` y de los campos de `User Invitation`; se elimina
+  la clave huérfana `field.User Invitation.expires_on.label`.
+
+### Cambiado
+
+- **Cookie de sesión**: `__Host-ferris_session` con `Secure` cuando hay TLS
+  configurado **o** `[server] external_url` es `https://`; en caso contrario,
+  `ferris_session` sin `Secure` (solo desarrollo). El borrado usa el mismo
+  nombre, `Path`, `Secure` y `Domain`.
+- **MFA con re-autenticación**: `POST /api/auth/mfa/enable|activate|disable`
+  exigen la contraseña de la cuenta; `activate` y `disable` exigen además un
+  código TOTP o, en `disable`, un código de respaldo.
+- **OAuth2 + userinfo, no OIDC**: un `id_token` no se valida, un proveedor con
+  `oidc = true` se rechaza al arrancar y `require_verified_email` vale `true`
+  por defecto.
+- **Claves de API**: secreto guardado como digest `sha256:<64 hex>`; las filas
+  heredadas `$argon2...` se actualizan en el primer uso correcto; claves
+  caducadas o revocadas se rechazan. Las cuotas por clave quedan en la pasarela.
+- **Varias réplicas**: el bloqueo de login y el paso TOTP se persisten en la
+  fila del usuario, el `state` de OAuth en `tab_oauth_state` y la instantánea de
+  `User Permission` se refresca cada 30 s por instancia.
+
+### Seguridad
+
+- **Secreto TOTP cifrado**: `User.mfa_secret` es un campo `Secret` (AES-256-GCM);
+  sin clave `[secrets]`, habilitar o rotar MFA falla cerrado.
+- **Anti-replay compartido**: `User.mfa_last_step` se actualiza de forma
+  condicional y atómica, así que un TOTP no se repite ni contra otra réplica.
+- **Enlace de identidad OAuth**: el `sub` del proveedor se vincula a
+  `User.oauth_subject`; un email sin `email_verified: true` o un `sub` distinto
+  se rechazan.
+- **Sin enumeración**: la petición de restablecimiento responde igual para una
+  cuenta existente, una deshabilitada o una dirección desconocida.
+- La cookie de sesión ya no viaja sin `Secure` detrás de un proxy HTTPS.
+
 ## [0.4.0] - 2026-11-23
 
 **Minor bump** (`0.3.0 → 0.4.0`): `Cargo.toml`, `ferris-wasm/wit/ferris.wit` y la

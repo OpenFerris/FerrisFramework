@@ -39,7 +39,7 @@ pub(super) async fn bind_ambient_user(
 /// certificate** as the credential for RPC method calls (`/api/method/*`).
 ///
 /// H1 (plan Fase 2): a device that only holds a CA-issued certificate has no
-/// session and no bearer token, so the plain `require_auth` gate answered 401
+/// session and no API key, so the plain `require_auth` gate answered 401
 /// and the plugin was reachable only through `/plugins/{name}/*`. The
 /// certificate is bound by `bind_client_identity`, which must run **before**
 /// this layer (it is outermost on the API router). Device access is deliberately
