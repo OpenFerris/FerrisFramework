@@ -201,6 +201,78 @@ async fn path_log_rows_are_persisted_through_the_engine() {
     );
 }
 
+/// Retention deletes only `Path Log` rows older than the cutoff. `Error Log`
+/// and the other audit tables are deliberately outside its scope.
+#[tokio::test]
+async fn retention_removes_only_rows_older_than_the_cutoff() {
+    crate::doctypes::register_doctypes();
+    let pool = memory_pool().await;
+    let now = ferris_document::chrono::Utc::now().timestamp();
+    let old = write_doc(
+        &pool,
+        "Path Log",
+        serde_json::json!({
+            "method": "GET",
+            "path": "/old",
+            "status_code": 200,
+            "duration_ms": 1,
+            "user": "Administrator",
+            "ip_address": "",
+        }),
+    )
+    .await
+    .expect("old Path Log row");
+    let recent = write_doc(
+        &pool,
+        "Path Log",
+        serde_json::json!({
+            "method": "GET",
+            "path": "/recent",
+            "status_code": 200,
+            "duration_ms": 1,
+            "user": "Administrator",
+            "ip_address": "",
+        }),
+    )
+    .await
+    .expect("recent Path Log row");
+
+    // The engine stamped both rows with `now`; rewrite just the column under
+    // test, the same one retention compares against.
+    set_creation(&pool, &old, now - 40 * 86_400).await;
+    set_creation(&pool, &recent, now - 1 * 86_400).await;
+
+    let deleted = super::logs::purge_older_than(&pool, now - 30 * 86_400)
+        .await
+        .expect("retention runs");
+    assert_eq!(deleted, 1, "only the row past the cutoff was deleted");
+
+    let engine = DocumentEngine::new(pool.clone());
+    let ctx = system_ctx("Path Log");
+    let (rows, total) = engine
+        .list(&ctx, &ListQuery::default())
+        .await
+        .expect("Path Log can be listed");
+    assert_eq!(total, 1);
+    assert_eq!(
+        rows[0].get("name").and_then(Value::as_str),
+        Some(recent.as_str())
+    );
+}
+
+async fn set_creation(pool: &Db, name: &str, at: i64) {
+    let table = ferris_schema::migration::document_table("Path Log").expect("Path Log table");
+    let quoted = ferris_db::sql::Ident::new(&table)
+        .expect("valid table identifier")
+        .quote(pool.dialect());
+    pool.execute(&ferris_db::Stmt::new(
+        format!("UPDATE {quoted} SET creation = ? WHERE name = ?"),
+        vec![Value::from(at), Value::from(name)],
+    ))
+    .await
+    .expect("creation column updated");
+}
+
 /// SRV7 regression: the mirror path creates once and updates on the next tick
 /// instead of duplicating the row.
 #[tokio::test]
@@ -232,8 +304,8 @@ async fn mirrors_update_in_place() {
         .expect("RQ Job can be listed");
     assert_eq!(total, 1, "the second tick updates, it does not insert");
     assert_eq!(
-        rows[0].get("result").and_then(Value::as_i64),
-        Some(2),
+        rows[0].get("result").and_then(Value::as_str),
+        Some("2"),
         "the update carried the newest value"
     );
 }

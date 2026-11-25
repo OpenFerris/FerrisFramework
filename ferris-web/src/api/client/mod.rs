@@ -316,11 +316,14 @@ pub async fn api_call_method(
 }
 
 /// The role × custom-permission-type matrix of one DocType.
+///
+/// The permission routes have one client (`api::authz`); this keeps the
+/// historical entry point the `DocStore` facade calls without a second URL
+/// builder that could disagree with it.
 pub async fn api_permission_matrix(
     doctype: &str,
 ) -> Result<super::types::PermissionMatrix, String> {
-    let text = api_get_raw(&path("/api/doctype/permissions", &[doctype, "manage"])).await?;
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+    super::authz::permission_matrix(doctype).await
 }
 
 /// Grant or revoke one custom permission type for one role.
@@ -330,18 +333,7 @@ pub async fn api_set_custom_permission(
     perm_type: &str,
     granted: bool,
 ) -> Result<(), String> {
-    let body = serde_json::json!({
-        "role": role,
-        "perm_type": perm_type,
-        "granted": granted,
-    })
-    .to_string();
-    api_put_raw(
-        &path("/api/doctype/permissions", &[doctype, "manage"]),
-        &body,
-    )
-    .await
-    .map(|_| ())
+    super::authz::set_custom_permission(doctype, role, perm_type, granted).await
 }
 
 /// The Connections panel of one document.

@@ -12,6 +12,8 @@ pub mod list_view;
 pub mod plugin_page;
 pub mod report_view;
 pub mod services;
+pub mod settings_docperm;
+pub mod settings_doctype_builder;
 pub mod settings_permissions;
 pub mod settings_security;
 pub mod settings_view;

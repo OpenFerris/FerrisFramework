@@ -22,8 +22,8 @@
 //!
 //! There is deliberately **no prepared-report route**: the engine's `prepare`
 //! is synchronous and the async `Prepared Report` state machine does not exist,
-//! so `POST /api/report/{name}/prepare` answers `501 Not Implemented` instead of
-//! pretending a background job was queued.
+//! so the endpoint is not mounted (404) instead of pretending a background job
+//! was queued.
 
 use std::sync::Arc;
 
@@ -117,18 +117,6 @@ pub async fn list(State(state): State<Arc<ApiState>>, user: AuthenticatedUser) -
         Ok(reports) => Json(reports).into_response(),
         Err(error) => ferris_api::router::error_response(error),
     }
-}
-
-/// `POST /api/report/{name}/prepare` — explicitly not implemented.
-pub async fn prepare(_user: AuthenticatedUser, Path(_name): Path<String>) -> Response {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ferris_api::types::ApiError::new(
-            "not_implemented",
-            "prepared reports need an asynchronous job queue; use /run or /export",
-        )),
-    )
-        .into_response()
 }
 
 /// Run a saved report as `user`.
@@ -358,7 +346,6 @@ impl ferris_api::Module for ReportModule {
             .route("/report", axum::routing::get(list))
             .route("/report/{name}/run", axum::routing::post(run))
             .route("/report/{name}/export", axum::routing::get(export))
-            .route("/report/{name}/prepare", axum::routing::post(prepare))
     }
 
     fn openapi(&self) -> OpenApiFragment {
@@ -420,19 +407,6 @@ impl ferris_api::Module for ReportModule {
                             ],
                             "responses": {
                                 "200": { "description": "Exported file" }
-                            }
-                        }
-                    }),
-                ),
-                (
-                    "/api/report/{name}/prepare".to_string(),
-                    json!({
-                        "post": {
-                            "summary": "Prepare a report (not implemented)",
-                            "tags": ["report"],
-                            "parameters": [path_param("name")],
-                            "responses": {
-                                "501": { "description": "Asynchronous preparation is not implemented" }
                             }
                         }
                     }),
@@ -667,13 +641,6 @@ mod tests {
             ferris_api::router::error_response(error).status(),
             StatusCode::BAD_REQUEST
         );
-    }
-
-    #[tokio::test]
-    async fn prepare_is_explicitly_unimplemented() {
-        let (_state, name) = fixture_state().await;
-        let response = prepare(AuthenticatedUser(system()), Path(name)).await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
     }
 
     #[tokio::test]

@@ -425,7 +425,6 @@ mod tests {
             user_name: user_id.to_string(),
             roles: vec!["User".to_string()],
             session_id: Some("session-1".to_string()),
-            token_expires_at: None,
         }
     }
 

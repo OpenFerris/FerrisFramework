@@ -115,6 +115,17 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports: ["5432:5432"]
+      mysql:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: test
+          MARIADB_DATABASE: ferris_test
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ptest"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        ports: ["3306:3306"]
       redis:
         image: redis:7-alpine
         options: >-
@@ -125,6 +136,18 @@ jobs:
         ports: ["6379:6379"]
     env:
       CARGO_PROFILE_TEST_DEBUG: "0"
+      # The Postgres service below is the production engine; point the live
+      # dialect test at it so `?` → `$n` is exercised on every run.
+      FERRIS_TEST_PG_HOST: 127.0.0.1
+      FERRIS_TEST_PG_PORT: "5432"
+      FERRIS_TEST_PG_DB: ferris_test
+      FERRIS_TEST_PG_USER: test
+      FERRIS_TEST_PG_PASSWORD: test
+      FERRIS_TEST_MYSQL_HOST: 127.0.0.1
+      FERRIS_TEST_MYSQL_PORT: "3306"
+      FERRIS_TEST_MYSQL_DB: ferris_test
+      FERRIS_TEST_MYSQL_USER: root
+      FERRIS_TEST_MYSQL_PASSWORD: test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -141,6 +164,13 @@ jobs:
           workspaces: framework
       - run: cargo test --workspace -j 2 -- --test-threads=1
         working-directory: framework
+      # `ferris-db` lives in the sibling Core workspace, so the framework
+      # workspace run does not execute its tests. This is the live Postgres
+      # check the old CI never had.
+      - run: cargo test -p ferris-db --test postgres_live
+        working-directory: FerrisCore
+      - run: cargo test -p ferris-db --test mysql_live
+        working-directory: FerrisCore
 
   style:
     name: Tailwind

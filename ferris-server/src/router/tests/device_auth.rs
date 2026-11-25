@@ -6,7 +6,7 @@ use axum::{
     middleware::{from_fn, from_fn_with_state},
 };
 use ferris_auth::middleware::require_csrf;
-use ferris_auth::{AuthState, JwtConfig, JwtManager, SessionConfig, SessionManager};
+use ferris_auth::{AuthState, SessionConfig};
 use ferris_core::ClientIdentity;
 
 use super::super::auth_layers::require_auth_or_device;
@@ -16,12 +16,7 @@ use std::net::SocketAddr;
 use tower::ServiceExt;
 
 fn auth_state() -> AuthState {
-    AuthState::new(
-        JwtManager::new(JwtConfig::new("device-auth-test-secret-at-least-32-bytes").unwrap())
-            .unwrap(),
-        SessionManager::new(SessionConfig::default()),
-        SessionConfig::default(),
-    )
+    AuthState::new(SessionConfig::default())
 }
 
 fn identity() -> ClientIdentity {

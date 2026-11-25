@@ -20,6 +20,8 @@ use crate::components::ui::checkbox::Checkbox;
 use crate::components::ui::table as t;
 use crate::desk::session;
 use crate::i18n::use_i18n;
+use crate::views::settings_docperm::DocPermMatrix;
+use crate::views::settings_doctype_builder::DocTypeBuilder;
 use crate::views::settings_permissions::CustomPermissionManager;
 use crate::views::settings_security::SecuritySection;
 use crate::views::views_components::{Feedback, FeedbackKind, LoadingLines, PageHeader};
@@ -31,6 +33,19 @@ pub fn SettingsView() -> impl IntoView {
     let tr = move |key: &str| {
         i18n.try_with_value(|i| i.t(key))
             .unwrap_or_else(|| key.to_string())
+    };
+    // A new tab may introduce a key the Core catalogue does not carry yet; the
+    // fallback keeps it readable instead of printing the key.
+    let tr_or = move |key: &str, fallback: &str| {
+        i18n.try_with_value(|i| {
+            let value = i.t(key);
+            if value == key {
+                fallback.to_string()
+            } else {
+                value
+            }
+        })
+        .unwrap_or_else(|| fallback.to_string())
     };
     let section = Signal::derive(move || {
         params.with(|params| {
@@ -51,7 +66,7 @@ pub fn SettingsView() -> impl IntoView {
                 "general" => {
                     current.is_empty()
                         || current == "general"
-                        || !matches!(current, "permissions" | "about" | "security")
+                        || !matches!(current, "permissions" | "doctypes" | "about" | "security")
                 }
                 other => current == other,
             }
@@ -60,6 +75,7 @@ pub fn SettingsView() -> impl IntoView {
 
     let general = is("general");
     let permissions = is("permissions");
+    let doctypes = is("doctypes");
     let security = is("security");
     let about = is("about");
     view! {
@@ -79,6 +95,11 @@ pub fn SettingsView() -> impl IntoView {
                     label=tr("views.settings.tab_permissions")
                     active=permissions
                 />
+                <SettingsTab
+                    href="/settings/doctypes"
+                    label=tr_or("views.settings.tab_doctypes", "DocTypes")
+                    active=doctypes
+                />
                 <SettingsTab href="/settings/security" label=tr("views.settings.tab_security") active=security />
                 <SettingsTab href="/settings/about" label=tr("views.settings.tab_about") active=about />
             </nav>
@@ -87,7 +108,13 @@ pub fn SettingsView() -> impl IntoView {
                 <GeneralSection />
             </Show>
             <Show when=move || permissions.get()>
-                <CustomPermissionManager />
+                <div class="flex flex-col gap-4">
+                    <DocPermMatrix />
+                    <CustomPermissionManager />
+                </div>
+            </Show>
+            <Show when=move || doctypes.get()>
+                <DocTypeBuilder />
             </Show>
             <Show when=move || security.get()>
                 <SecuritySection />

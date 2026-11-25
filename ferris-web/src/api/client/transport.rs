@@ -97,7 +97,7 @@ async fn reqwest_request_raw(
             .body(body.to_owned());
     }
     // Mutating requests echo the session's CSRF token; the server
-    // exempts bearer-JWT callers, and this client authenticates by cookie.
+    // exempts API-key callers, and this client authenticates by cookie.
     if is_mutating(method)
         && let Some(token) = csrf_token()
     {

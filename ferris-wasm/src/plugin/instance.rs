@@ -72,6 +72,16 @@ impl Plugin {
         // Namespace host-owned per-app settings (`config` keys) under this
         // plugin's identity before the component can call any import.
         state.set_plugin_name(name.clone());
+        // The operator's approval (`grants.toml`) is the second gate on every
+        // non-primordial capability. Load it before the component can reach an
+        // import; a missing file is "nothing approved", a broken one fails the
+        // load instead of running the app half-approved.
+        state
+            .load_approved_grants()
+            .map_err(|source| WasmError::Instantiate {
+                name: name.clone(),
+                source,
+            })?;
         // The `threads` capability has no import to gate: the guest starts its
         // own threads, and the engine switch is what decides whether it can
         // instantiate at all. Record it so `platform::grants`/`features` answer

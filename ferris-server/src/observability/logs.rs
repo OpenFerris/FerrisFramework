@@ -1,13 +1,28 @@
 //! Event-driven observability: one finished request becomes its log rows, plus
 //! the explicit internal producers for the audit rows the request layer cannot
 //! see (login, logout, file access).
+//!
+//! The request path never touches the database. It hands the finished request
+//! to a process-wide bounded queue and the responsible worker batches the rows;
+//! when the queue is full the record is dropped (and counted) instead of making
+//! the caller wait. The same worker owns the daily retention task, so a process
+//! that logs also prunes.
 
 use std::net::{IpAddr, SocketAddr};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::{ConnectInfo, Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
+use ferris_core::Value;
+use ferris_db::sql::Ident;
+use ferris_db::{Db, Stmt};
+use ferris_document::chrono::Utc;
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::oneshot;
+use tracing::{debug, info, warn};
 
 use super::{
     RequestUser, api_request_is_external, http_logging_enabled, may_log, should_log,
@@ -15,6 +30,46 @@ use super::{
 };
 use crate::router::AppState;
 use crate::tls::TlsClientInfo;
+
+/// How many finished requests may wait for the logger worker.
+///
+/// Bounded on purpose: an unresponsive database must cost log rows, never
+/// request latency or unbounded memory. 4096 records is a few hundred KiB and
+/// covers a short database hiccup at normal traffic.
+const REQUEST_LOG_QUEUE_CAPACITY: usize = 4096;
+
+/// Largest batch drained before the worker writes and returns to the channel.
+const REQUEST_LOG_BATCH_SIZE: usize = 64;
+
+/// How long the worker waits for a batch to fill once it has one record.
+const REQUEST_LOG_BATCH_WINDOW: Duration = Duration::from_millis(50);
+
+/// How often the retention task deletes expired request-log rows.
+const LOG_RETENTION_INTERVAL: Duration = Duration::from_hours(24);
+
+/// `FERRIS_LOG_RETENTION_DAYS` default; `0` disables retention.
+const LOG_RETENTION_DEFAULT_DAYS: i64 = 30;
+
+/// Row tables retention may prune. `Error Log` is operator evidence and stays
+/// until a separate switch exists.
+const RETENTION_DOCTYPES: &[&str] = &["Path Log", "API Request Log"];
+
+/// Requests dropped because the queue was full, since process start.
+static DROPPED_REQUESTS: AtomicU64 = AtomicU64::new(0);
+
+/// The active worker and the channel the request path writes into.
+///
+/// One process-wide slot is enough and keeps a single writer per database. A
+/// request from a different `Db` (a second install in the same process, a test)
+/// replaces the worker; the old sender drops, its worker drains and exits, and
+/// its retention task is signalled through [`Self::_retention_stop`].
+struct RequestLogWorker {
+    db_id: u64,
+    sender: Sender<FinishedRequest>,
+    _retention_stop: oneshot::Sender<()>,
+}
+
+static REQUEST_LOG_WORKER: OnceLock<Mutex<Option<RequestLogWorker>>> = OnceLock::new();
 
 /// The TCP peer, when the listener inserted `ConnectInfo` for it.
 ///
@@ -34,8 +89,8 @@ fn request_peer(request: &Request) -> Option<IpAddr> {
 /// Axum layer: turn one finished request into its System log rows.
 ///
 /// The request is only inspected, never consumed; the user is resolved from the
-/// same headers the auth middleware uses (a session cookie or bearer token) so
-/// the row names the actual caller. The recorded address is the TCP peer, and
+/// same `AuthState` the gates use (a session cookie or API key) so the row names
+/// the actual caller. The recorded address is the TCP peer, and
 /// `X-Forwarded-For`/`X-Real-IP` are read only when that peer is listed in
 /// `[server] trusted_proxies` (SEC-08).
 pub async fn record_request(
@@ -64,14 +119,28 @@ pub async fn record_request(
     // before any credential work; the status half still runs after `next`.
     let logging_enabled = http_logging_enabled() && may_log(&path);
     // An upstream layer may have resolved the caller already. Reusing that
-    // extension keeps the logger from repeating a session lookup; when it is
-    // absent the headers are cloned only for a request that can still be
-    // logged, so `next.run` can consume the original request.
+    // extension keeps the logger from repeating a session lookup. Otherwise the
+    // principal is resolved **before** `next.run` consumes the request: the
+    // session and `axum-login` live in request extensions, not in a header the
+    // logger could parse afterwards. Only a request that can still produce a row
+    // pays for the lookup.
     let cached_user = request
         .extensions()
         .get::<RequestUser>()
         .map(|user| user.0.clone());
-    let headers = (logging_enabled && cached_user.is_none()).then(|| request.headers().clone());
+    let user = if !logging_enabled {
+        None
+    } else if let Some(user) = cached_user {
+        Some(user)
+    } else {
+        ferris_auth::middleware::resolve_principal(
+            request.headers(),
+            request.extensions(),
+            &state.auth,
+        )
+        .await
+        .map(|user| user.id)
+    };
 
     let response = next.run(request).await;
     let status = response.status().as_u16();
@@ -80,18 +149,7 @@ pub async fn record_request(
         return response;
     }
 
-    let user = match cached_user {
-        Some(user) => Some(user),
-        None => match headers {
-            Some(headers) => ferris_auth::middleware::resolve_principal(&headers, &state.auth)
-                .await
-                .map(|user| user.id),
-            None => None,
-        },
-    };
-
     let duration_ms = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
-    let pool = state.api.pool.clone();
     let finished = FinishedRequest {
         method,
         path,
@@ -103,12 +161,211 @@ pub async fn record_request(
         external_api,
     };
 
-    tokio::spawn(async move { write_request_rows(&pool, finished).await });
+    enqueue_request(&state.api.pool, finished);
 
     response
 }
 
+/// Hand one finished request to the logger worker without waiting.
+///
+/// `try_send` is the whole contract: never block, never await. A full queue
+/// drops the record and bumps [`DROPPED_REQUESTS`]; a dead worker (a panic) is
+/// noticed as a closed channel and recreated lazily by the next request.
+///
+/// The lock is held across `try_send` on purpose: the restart decision and the
+/// channel write must see the same worker, and neither call awaits. Releasing
+/// the lock between them would let two requests replace a worker under each
+/// other and drop a live channel.
+#[allow(clippy::significant_drop_tightening)]
+fn enqueue_request(pool: &Db, request: FinishedRequest) {
+    let state = REQUEST_LOG_WORKER.get_or_init(|| Mutex::new(None));
+    let mut state = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut request = request;
+    let mut restarted = false;
+    loop {
+        if state
+            .as_ref()
+            .is_none_or(|worker| worker.db_id != pool.id())
+        {
+            *state = Some(start_worker(pool));
+        }
+        let Some(worker) = state.as_ref() else {
+            continue;
+        };
+        match try_enqueue(&worker.sender, request) {
+            EnqueueOutcome::Queued => return,
+            EnqueueOutcome::Dropped => {
+                let dropped = DROPPED_REQUESTS.fetch_add(1, Ordering::Relaxed) + 1;
+                debug!(dropped, "request log queue is full; row dropped");
+                return;
+            }
+            EnqueueOutcome::Closed(returned) => {
+                *state = None;
+                request = returned;
+                if restarted {
+                    // The freshly spawned worker died immediately (or cannot be
+                    // started). Do not spin on a broken runtime: drop instead.
+                    let dropped = DROPPED_REQUESTS.fetch_add(1, Ordering::Relaxed) + 1;
+                    warn!(dropped, "request log worker stopped again; row dropped");
+                    return;
+                }
+                restarted = true;
+                debug!("request log worker stopped; restarting it");
+            }
+        }
+    }
+}
+
+/// What `try_send` did with one record.
+#[derive(Debug)]
+enum EnqueueOutcome {
+    Queued,
+    Dropped,
+    /// The receiver is gone; the record comes back so a restart can retry it.
+    Closed(FinishedRequest),
+}
+
+fn try_enqueue(sender: &Sender<FinishedRequest>, request: FinishedRequest) -> EnqueueOutcome {
+    match sender.try_send(request) {
+        Ok(()) => EnqueueOutcome::Queued,
+        Err(mpsc::error::TrySendError::Full(_)) => EnqueueOutcome::Dropped,
+        Err(mpsc::error::TrySendError::Closed(request)) => EnqueueOutcome::Closed(request),
+    }
+}
+
+/// Create the channel, the batching worker and the retention task for `pool`.
+fn start_worker(pool: &Db) -> RequestLogWorker {
+    let (sender, receiver) = mpsc::channel(REQUEST_LOG_QUEUE_CAPACITY);
+    tokio::spawn(run_request_log_worker(receiver, pool.clone()));
+
+    let (retention_stop, retention_stopped) = oneshot::channel();
+    tokio::spawn(run_retention(retention_stopped, pool.clone()));
+
+    RequestLogWorker {
+        db_id: pool.id(),
+        sender,
+        _retention_stop: retention_stop,
+    }
+}
+
+/// Consume finished requests, batching up to [`REQUEST_LOG_BATCH_SIZE`] records
+/// or [`REQUEST_LOG_BATCH_WINDOW`] before writing them.
+///
+/// Order within a batch is irrelevant; the rows carry their own timestamps.
+/// Writes stay sequential so a backlog cannot open dozens of connections at
+/// once and starve the request path's own queries.
+async fn run_request_log_worker(mut receiver: Receiver<FinishedRequest>, pool: Db) {
+    let mut batch = Vec::with_capacity(REQUEST_LOG_BATCH_SIZE);
+    loop {
+        let Some(first) = receiver.recv().await else {
+            return;
+        };
+        batch.push(first);
+        let deadline = tokio::time::Instant::now() + REQUEST_LOG_BATCH_WINDOW;
+        while batch.len() < REQUEST_LOG_BATCH_SIZE {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, receiver.recv()).await {
+                Ok(Some(request)) => batch.push(request),
+                Ok(None) | Err(_) => break,
+            }
+        }
+        // Batch order is irrelevant (the rows carry their own timestamps), and
+        // popping keeps the allocation for the next batch.
+        while let Some(request) = batch.pop() {
+            write_request_rows(&pool, request).await;
+        }
+    }
+}
+
+/// Delete expired request-log rows once per day until the worker is replaced.
+async fn run_retention(mut stop: oneshot::Receiver<()>, pool: Db) {
+    let mut ticker = tokio::time::interval(LOG_RETENTION_INTERVAL);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => match retention_once(&pool).await {
+                Ok(deleted) => info!(deleted, "request log retention finished"),
+                Err(error) => warn!(%error, "request log retention failed"),
+            },
+            _ = &mut stop => return,
+        }
+    }
+}
+
+/// Parse `FERRIS_LOG_RETENTION_DAYS`; `0` (or a negative value) disables it.
+///
+/// An unparsable value falls back to the default instead of silently keeping
+/// rows forever.
+fn retention_days_from(raw: Option<&str>) -> Option<i64> {
+    match raw.map(str::trim) {
+        None | Some("") => Some(LOG_RETENTION_DEFAULT_DAYS),
+        Some(value) => match value.parse::<i64>() {
+            Ok(days) if days > 0 => Some(days),
+            Ok(_) => None,
+            Err(_) => {
+                warn!(
+                    value = value,
+                    "invalid FERRIS_LOG_RETENTION_DAYS; using the default"
+                );
+                Some(LOG_RETENTION_DEFAULT_DAYS)
+            }
+        },
+    }
+}
+
+fn retention_days() -> Option<i64> {
+    let raw = std::env::var("FERRIS_LOG_RETENTION_DAYS").ok();
+    retention_days_from(raw.as_deref())
+}
+
+/// Run retention with the configured window.
+async fn retention_once(pool: &Db) -> ferris_core::Result<u64> {
+    let Some(days) = retention_days() else {
+        return Ok(0);
+    };
+    let cutoff = Utc::now()
+        .timestamp()
+        .saturating_sub(days.saturating_mul(86_400));
+    purge_older_than(pool, cutoff).await
+}
+
+/// Delete rows whose `creation` (Unix seconds) is older than `cutoff`.
+///
+/// The `creation` column is duplicated out of the JSON body by the engine, so
+/// this needs no JSON extraction and works identically on all three dialects.
+pub(super) async fn purge_older_than(pool: &Db, cutoff: i64) -> ferris_core::Result<u64> {
+    let mut deleted = 0_u64;
+    for doctype in RETENTION_DOCTYPES {
+        deleted += purge_doctype(pool, doctype, cutoff).await?;
+    }
+    Ok(deleted)
+}
+
+async fn purge_doctype(pool: &Db, doctype: &str, cutoff: i64) -> ferris_core::Result<u64> {
+    let table = ferris_schema::migration::document_table(doctype)?;
+    // Both tables are created lazily by the engine, not at boot: an install
+    // that never saw an external API call has no `tabAPIRequestLog`. No table
+    // means no rows to prune, not a retention failure repeated every day.
+    if !pool.table_exists(&table).await? {
+        return Ok(0);
+    }
+    let quoted = Ident::new(&table)?.quote(pool.dialect());
+    let affected = pool
+        .execute(&Stmt::new(
+            format!("DELETE FROM {quoted} WHERE creation < ?"),
+            vec![Value::from(cutoff)],
+        ))
+        .await?;
+    Ok(affected.rows())
+}
+
 /// Everything one request captured for its log rows, after the decision to log.
+#[derive(Debug)]
 struct FinishedRequest {
     method: String,
     path: String,
@@ -125,7 +382,7 @@ struct FinishedRequest {
 ///
 /// Split out of [`record_request`] so the middleware stays a decision layer and
 /// its length does not grow with each new row the System section gains.
-async fn write_request_rows(pool: &ferris_db::Db, request: FinishedRequest) {
+async fn write_request_rows(pool: &Db, request: FinishedRequest) {
     let FinishedRequest {
         method,
         path,
@@ -277,5 +534,67 @@ async fn write_audit(pool: &ferris_db::Db, doctype: &str, data: serde_json::Valu
             | Error::Database(DatabaseError::Constraint(_)),
         ) => {}
         Err(error) => tracing::debug!(doctype, %error, "audit log write failed"),
+    }
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::{EnqueueOutcome, FinishedRequest, REQUEST_LOG_QUEUE_CAPACITY, mpsc, try_enqueue};
+
+    fn finished(path: &str) -> FinishedRequest {
+        FinishedRequest {
+            method: "GET".to_string(),
+            path: path.to_string(),
+            query: String::new(),
+            status: 200,
+            duration_ms: 1,
+            ip: String::new(),
+            user: None,
+            external_api: false,
+        }
+    }
+
+    /// The request path uses `try_send`, so a full queue must report a drop —
+    /// never block the caller and never grow past the capacity.
+    #[tokio::test]
+    async fn a_full_queue_drops_the_record() {
+        let (sender, _receiver) = mpsc::channel(REQUEST_LOG_QUEUE_CAPACITY);
+        for index in 0..REQUEST_LOG_QUEUE_CAPACITY {
+            assert!(
+                matches!(
+                    try_enqueue(&sender, finished(&format!("/queued/{index}"))),
+                    EnqueueOutcome::Queued
+                ),
+                "record {index} within capacity must be queued"
+            );
+        }
+        assert!(
+            matches!(
+                try_enqueue(&sender, finished("/overflow")),
+                EnqueueOutcome::Dropped
+            ),
+            "the record past capacity is dropped, not queued or awaited"
+        );
+    }
+
+    /// A dead worker (panic) leaves the sender closed; the record comes back so
+    /// `enqueue_request` can restart the worker and retry it.
+    #[tokio::test]
+    async fn a_closed_queue_returns_the_record_for_a_retry() {
+        let (sender, receiver) = mpsc::channel(1);
+        drop(receiver);
+        match try_enqueue(&sender, finished("/retry")) {
+            EnqueueOutcome::Closed(request) => assert_eq!(request.path, "/retry"),
+            other => panic!("expected a closed channel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn retention_days_parse_disables_on_zero_and_defaults_on_garbage() {
+        assert_eq!(super::retention_days_from(None), Some(30));
+        assert_eq!(super::retention_days_from(Some(" 7 ")), Some(7));
+        assert_eq!(super::retention_days_from(Some("0")), None);
+        assert_eq!(super::retention_days_from(Some("-3")), None);
+        assert_eq!(super::retention_days_from(Some("forever")), Some(30));
     }
 }

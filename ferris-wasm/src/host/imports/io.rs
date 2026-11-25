@@ -53,6 +53,17 @@ impl crate::ferris::framework::io::Host for HostState {
         }
         let mut outbound = OutboundHttpRequest::from(request.clone());
         outbound.unrestricted = unrestricted;
+        // The manifest's `allowed-hosts` list is the request; the operator's
+        // `grants.toml` is the grant. A sandboxed call needs both to name the
+        // host. `http-unrestricted` keeps its documented meaning of skipping
+        // the host allow-list, and is already operator-gated above.
+        if !unrestricted
+            && let Some(host) = reqwest::Url::parse(outbound.url.trim())
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string))
+        {
+            self.require_http_host(&host, &outbound.allowed_hosts)?;
+        }
         // Resolve the TLS material *here*: reading a `secret` key is a
         // capability check on the app's config store, and the transport that
         // builds the config has no database identity of its own.

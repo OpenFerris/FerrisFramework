@@ -29,3 +29,8 @@ tower-http = { workspace = true }
 # Implementing `ferris_auth::middleware::UserValidator` in the handshake tests
 # needs the same proc-macro the trait is declared with (already a workspace dep).
 async-trait = { workspace = true }
+# The handshake tests write and delete real session records: the socket reads the
+# same store the HTTP auth layers write.
+tower-sessions = "0.15"
+time = { workspace = true }
+ferris-db = { path = "../../FerrisCore/ferris-db" }

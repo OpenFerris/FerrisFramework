@@ -7,7 +7,7 @@ use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use super::api::HostApi;
-use super::grants::{Capability, GrantSet};
+use super::grants::{ApprovedGrants, Capability, GrantSet};
 
 // -- THE single bridge -------------------------------------------------------
 //
@@ -54,8 +54,13 @@ pub struct HostState {
     pub(super) plugin_name: String,
     /// What this app may reach at all (its capabilities). Starts at the
     /// internal set and is replaced by the intersection of the app's
-    /// description once `describe()` has run.
+    /// description once `describe()` has run. This is the manifest request;
+    /// [`Self::approved`] is the operator's decision.
     pub(super) grants: GrantSet,
+    /// The operator-approved grants (`grants.toml`), loaded at instantiation.
+    /// Missing means nothing is approved: every non-primordial capability is
+    /// denied until `ferris app install` writes the file.
+    pub(super) approved: ApprovedGrants,
     /// The pubsub channels the app declared, `None` while it has not described
     /// itself. `Some(set)` is enforcement: `io::publish` refuses a channel the
     /// declaration does not name.
@@ -114,6 +119,7 @@ impl HostState {
             table: ResourceTable::new(),
             plugin_name: String::new(),
             grants: GrantSet::primordial(),
+            approved: ApprovedGrants::default(),
             subscriptions: None,
             secret_config_keys: BTreeSet::new(),
             declared_doctypes: Vec::new(),
@@ -279,9 +285,58 @@ impl HostState {
     /// Replace the grant (descriptor installation, tests).
     ///
     /// `describe()` recomputes it from the component that is actually running;
-    /// there is no operator input to preserve across a reload.
+    /// the operator approval is separate and survives a reload.
     pub fn set_grants(&mut self, grants: GrantSet) {
         self.grants = grants;
+    }
+
+    /// Load the operator's approval for this app from its directory
+    /// (`<worlds root>/<plugin name>`), preferring `grants.toml` and falling
+    /// back to `world/grants.toml`.
+    ///
+    /// Called once at instantiation, after [`Self::set_plugin_name`]. Without a
+    /// worlds root (a tool or a test that hosts no apps) no file can be found,
+    /// so nothing is approved. A file that exists but cannot be read or parsed
+    /// fails the instance load: a broken approval must not degrade into
+    /// "nothing approved" silently, because the operator would not know why
+    /// every specific capability stopped working.
+    ///
+    /// # Errors
+    ///
+    /// The app name is not a safe path segment, or the grants file cannot be
+    /// read or parsed.
+    pub fn load_approved_grants(&mut self) -> wasmtime::Result<()> {
+        let Some(root) = self.worlds_root.as_deref() else {
+            self.approved = ApprovedGrants::default();
+            return Ok(());
+        };
+        let app_dir =
+            ferris_core::plugins::world_root_at(root, &self.plugin_name).map_err(|e| {
+                wasmtime::Error::msg(format!(
+                    "cannot resolve the app directory for the approved grants of `{}`: {e}",
+                    self.plugin_name
+                ))
+            })?;
+        self.approved = ApprovedGrants::load(&app_dir).map_err(|error| {
+            wasmtime::Error::msg(format!(
+                "cannot read the approved grants for app `{}` in {}: {error}",
+                self.plugin_name,
+                app_dir.display()
+            ))
+        })?;
+        Ok(())
+    }
+
+    /// Install an approval explicitly (a test, a tool, or a host that loaded it
+    /// from another layout). `None` is the fail-closed "no file" state.
+    pub fn set_approved_grants(&mut self, grants: Option<crate::trust::GrantSet>) {
+        self.approved = grants.map_or_else(ApprovedGrants::default, ApprovedGrants::from_set);
+    }
+
+    /// The operator-approved grants loaded for this app, if any.
+    #[must_use]
+    pub fn approved_grants(&self) -> Option<&crate::trust::GrantSet> {
+        self.approved.grant_set()
     }
 
     /// Record the pubsub channels the app declared, so `io::publish` can
@@ -318,21 +373,133 @@ impl HostState {
     /// `permission-denied` variant names the capability, so a guest can branch
     /// on it and an operator can read the log.
     ///
+    /// Two gates apply:
+    ///
+    /// * The **manifest** request must contain the capability — the pre-trust
+    ///   rule, unchanged.
+    /// * For every **non-primordial** capability, the operator's
+    ///   [`ApprovedGrants`] must also name it. A manifest request is not a
+    ///   grant; a missing `grants.toml` denies with the app and the files the
+    ///   host looked for.
+    ///
+    /// **Primordial** capabilities (`routes`, `http`, `docstore-read`,
+    /// `docstore-write`, `filesystem`, `config`, `schema`, `scheduler`,
+    /// `notifications`, `pubsub`) keep the old rule — the manifest alone —
+    /// because they are the services an app needs to exist and the host's own
+    /// policy already bounds them. Requiring a per-app approval for them would
+    /// duplicate that policy, not add one.
+    ///
     /// # Errors
     ///
-    /// Returns the WIT `permission-denied` variant when `capability` is not in
-    /// the effective grant.
+    /// Returns the WIT `permission-denied` variant when the manifest does not
+    /// grant `capability`, or when it is non-primordial and not approved.
     pub(crate) fn require(
         &self,
         capability: Capability,
     ) -> Result<(), crate::ferris::framework::types::Error> {
-        if self.grants.contains(capability) {
+        if !self.grants.contains(capability) {
+            return Err(crate::ferris::framework::types::Error::PermissionDenied(
+                format!("capability `{capability}` is not granted to this app"),
+            ));
+        }
+        if capability.primordial() || self.approved.allows_capability(capability) {
             return Ok(());
         }
         Err(crate::ferris::framework::types::Error::PermissionDenied(
-            format!("capability `{capability}` is not granted to this app"),
+            self.approval_denial(capability),
         ))
     }
+
+    /// The message for a non-primordial capability the operator did not
+    /// approve, naming the app and either the file that withheld it or every
+    /// file the host looked for.
+    fn approval_denial(&self, capability: Capability) -> String {
+        if self.approved.grant_set().is_none() {
+            return format!(
+                "capability `{capability}` is denied for app `{}`: no approved {} (looked at {})",
+                self.plugin_name,
+                crate::trust::GRANTS_FILE,
+                self.approved.candidates_label()
+            );
+        }
+        match self.approved.loaded_from() {
+            Some(path) => format!(
+                "capability `{capability}` is not approved for app `{}` in {}",
+                self.plugin_name,
+                path.display()
+            ),
+            None => format!(
+                "capability `{capability}` is not approved for app `{}` by the operator",
+                self.plugin_name
+            ),
+        }
+    }
+
+    /// Refuse an outbound HTTP target the app did not declare or the operator
+    /// did not approve.
+    ///
+    /// The request's `http-policy.allowed-hosts` list (`declared`) is the
+    /// manifest's narrowing and is checked first; an empty list means "no
+    /// narrowing", matching the transport. The operator approval must then name
+    /// the host in `grants.toml` — exact match, exactly like
+    /// [`crate::trust::GrantSet::allows_http_host`].
+    ///
+    /// `http-unrestricted` keeps its documented meaning of skipping the host
+    /// allow-list, so the bridge does not call this for an unrestricted call;
+    /// the capability itself is still operator-gated by [`Self::require`].
+    ///
+    /// # Errors
+    ///
+    /// `permission-denied` when the host is outside the declaration, or when
+    /// the operator's approval does not name it (including a missing file).
+    pub fn require_http_host(
+        &self,
+        host: &str,
+        declared: &[String],
+    ) -> Result<(), crate::ferris::framework::types::Error> {
+        if !declared.is_empty() && !declared_host(declared, host) {
+            return Err(crate::ferris::framework::types::Error::PermissionDenied(
+                format!("host `{host}` is outside this app's declared `allowed-hosts`"),
+            ));
+        }
+        if self.approved.allows_http_host(host) {
+            return Ok(());
+        }
+        let detail = if self.approved.grant_set().is_none() {
+            format!(
+                "app `{}` has no approved {} (looked at {})",
+                self.plugin_name,
+                crate::trust::GRANTS_FILE,
+                self.approved.candidates_label()
+            )
+        } else {
+            match self.approved.loaded_from() {
+                Some(path) => format!("the operator did not approve it in {}", path.display()),
+                None => "the operator did not approve it".to_string(),
+            }
+        };
+        Err(crate::ferris::framework::types::Error::PermissionDenied(
+            format!(
+                "outbound http host `{host}` is not approved for app `{}`: {detail}",
+                self.plugin_name
+            ),
+        ))
+    }
+}
+
+/// Whether `host` matches a declared `allowed-hosts` entry: exact or
+/// `*.suffix`, case-insensitive — the vocabulary `types.http-policy` documents
+/// and the transport enforces. Duplicated from the transport's matcher because
+/// this crate's host layer must not depend on the server-side HTTP stack.
+fn declared_host(declared: &[String], host: &str) -> bool {
+    let host = host.to_lowercase();
+    declared.iter().any(|entry| {
+        let entry = entry.trim().to_lowercase();
+        entry.strip_prefix("*.").map_or_else(
+            || host == entry,
+            |suffix| host == suffix || host.ends_with(&format!(".{suffix}")),
+        )
+    })
 }
 
 impl std::fmt::Debug for HostState {
@@ -347,7 +514,23 @@ mod tests {
     use crate::host::NullHost;
 
     fn host() -> HostState {
-        HostState::new(std::sync::Arc::new(NullHost))
+        let mut host = HostState::new(std::sync::Arc::new(NullHost));
+        host.set_plugin_name("demo");
+        host
+    }
+
+    fn approval(capabilities: &[&str], http_hosts: &[&str]) -> crate::trust::GrantSet {
+        crate::trust::GrantSet::new(
+            capabilities
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
+            http_hosts
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
+            Vec::new(),
+        )
     }
 
     /// A specific capability the app has not declared is refused, and the
@@ -387,13 +570,130 @@ mod tests {
         }
     }
 
-    /// A specific capability is granted the moment the app declares it.
+    /// A specific capability needs both halves: the manifest request and the
+    /// operator approval.
     #[test]
     fn a_declared_specific_capability_is_granted() {
         let mut host = host();
         host.set_grants(GrantSet::for_declaration([Capability::TlsClient]));
+        host.set_approved_grants(Some(approval(&["tls-client"], &[])));
         assert!(host.require(Capability::TlsClient).is_ok());
         assert!(host.require(Capability::TlsServer).is_err());
+    }
+
+    /// The manifest capability alone is not a grant: an approval with empty
+    /// lists withholds it.
+    #[test]
+    fn a_manifest_capability_with_empty_grants_is_denied() {
+        let mut host = host();
+        host.set_grants(GrantSet::for_declaration([Capability::Process]));
+        host.set_approved_grants(Some(approval(&[], &[])));
+        let error = host
+            .require(Capability::Process)
+            .expect_err("the operator approved nothing");
+        match error {
+            crate::ferris::framework::types::Error::PermissionDenied(message) => {
+                assert!(message.contains("`process`"), "{message}");
+                assert!(message.contains("not approved"), "{message}");
+            }
+            other => panic!("expected permission-denied, got {other:?}"),
+        }
+    }
+
+    /// The approval unlocks a requested capability; the manifest still has to
+    /// request it, so the other order remains denied.
+    #[test]
+    fn an_approved_capability_requires_the_manifest_request_too() {
+        let mut host = host();
+        host.set_approved_grants(Some(approval(&["process"], &[])));
+        assert!(
+            host.require(Capability::Process).is_err(),
+            "approval without a manifest request is not a grant"
+        );
+        host.set_grants(GrantSet::for_declaration([Capability::Process]));
+        assert!(host.require(Capability::Process).is_ok());
+    }
+
+    /// Missing `grants.toml`: non-primordial capabilities fail closed with the
+    /// app and the files the host looked for; primordial ones keep working.
+    #[test]
+    fn a_missing_grants_file_denies_a_specific_capability() {
+        let mut host = host();
+        host.set_grants(GrantSet::for_declaration([Capability::Process]));
+        host.set_approved_grants(None);
+        let error = host
+            .require(Capability::Process)
+            .expect_err("no approval file means nothing is approved");
+        match error {
+            crate::ferris::framework::types::Error::PermissionDenied(message) => {
+                assert!(message.contains("app `demo`"), "{message}");
+                assert!(message.contains("grants.toml"), "{message}");
+                assert!(message.contains("`process`"), "{message}");
+            }
+            other => panic!("expected permission-denied, got {other:?}"),
+        }
+        assert!(
+            host.require(Capability::Http).is_ok(),
+            "primordial capabilities keep the pre-trust rule"
+        );
+    }
+
+    /// The outbound allow-list intersects the manifest's declared hosts with
+    /// the operator approval: neither half can widen the other.
+    #[test]
+    fn an_http_host_needs_the_declaration_and_the_approval() {
+        let mut host = host();
+        let declared = vec!["manifest.test".to_string()];
+        host.set_approved_grants(Some(approval(&["http"], &["approved.test"])));
+
+        let error = host
+            .require_http_host("approved.test", &declared)
+            .expect_err("approved by the operator but outside the manifest declaration");
+        match error {
+            crate::ferris::framework::types::Error::PermissionDenied(message) => {
+                assert!(message.contains("declared `allowed-hosts`"), "{message}");
+            }
+            other => panic!("expected permission-denied, got {other:?}"),
+        }
+
+        let error = host
+            .require_http_host("manifest.test", &declared)
+            .expect_err("declared by the app but not approved by the operator");
+        match error {
+            crate::ferris::framework::types::Error::PermissionDenied(message) => {
+                assert!(message.contains("not approved"), "{message}");
+                assert!(message.contains("`manifest.test`"), "{message}");
+            }
+            other => panic!("expected permission-denied, got {other:?}"),
+        }
+
+        host.set_approved_grants(Some(approval(&["http"], &["manifest.test"])));
+        assert!(
+            host.require_http_host("manifest.test", &declared).is_ok(),
+            "both halves name the host"
+        );
+        assert!(
+            host.require_http_host("manifest.test", &[]).is_ok(),
+            "an empty declaration is no narrowing, not a denial"
+        );
+    }
+
+    /// A missing approval denies outbound HTTP too, naming the app and the
+    /// missing file.
+    #[test]
+    fn a_missing_grants_file_denies_an_http_host() {
+        let mut host = host();
+        host.set_approved_grants(None);
+        let error = host
+            .require_http_host("api.test", &[])
+            .expect_err("no approval file");
+        match error {
+            crate::ferris::framework::types::Error::PermissionDenied(message) => {
+                assert!(message.contains("app `demo`"), "{message}");
+                assert!(message.contains("grants.toml"), "{message}");
+            }
+            other => panic!("expected permission-denied, got {other:?}"),
+        }
     }
 
     /// Before the app describes itself there is no declaration to enforce, and

@@ -254,7 +254,7 @@ fn watch_until_stable(mut attempt: impl FnMut() -> Result<()>) -> Result<()> {
 const DEV_ENV_PREFIX: &str = "FERRIS_DEV_";
 
 /// Forwards the resolved project configuration to the cargo-leptos SSR child so
-/// it joins the same database and uses the same JWT secret as `ferris serve`.
+/// it joins the same database and session store as `ferris serve`.
 fn forward_dev_env(settings: &ferris_server::ServerSettings) {
     let database = &settings.database;
     let set = |key: &str, value: String| {
@@ -288,12 +288,7 @@ fn forward_dev_env(settings: &ferris_server::ServerSettings) {
             SslMode::VerifyFull => "verify_full".to_string(),
         },
     );
-    set(
-        "JWT_SECRET",
-        settings.config.auth.jwt_secret.clone().unwrap_or_default(),
-    );
-
-    info!("forwarded database + auth config to the frontend dev server");
+    info!("forwarded database config to the frontend dev server");
 }
 
 /// Build the app to wasm and return the compiled core module path.

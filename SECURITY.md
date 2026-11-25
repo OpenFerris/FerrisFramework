@@ -39,9 +39,9 @@ Thank you for helping keep Ferris secure!
 
 `Secret` fields (OAuth client secrets, webhook signing keys, SMTP/IMAP
 passwords) are encrypted at rest with AES-256-GCM. The key is **not** derived
-from `auth.jwt_secret`: rotating the token signing key must not make every
-stored integration credential undecryptable. Configure it explicitly, as 32
-bytes of hex or base64:
+from any authentication setting: rotating a login credential must not make
+every stored integration credential undecryptable. Configure it explicitly, as
+32 bytes of hex or base64:
 
 ```toml
 [secrets]

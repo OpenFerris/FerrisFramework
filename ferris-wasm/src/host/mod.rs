@@ -30,7 +30,7 @@ pub use globals::{
     realtime_broadcaster, set_method_resolver, set_notification_sender, set_pki_provider,
     set_process_service, set_realtime_broadcaster, set_stream_service, stream_service,
 };
-pub use grants::{Capability, GrantSet};
+pub use grants::{ApprovedGrants, Capability, GrantSet};
 pub use null::NullHost;
 pub use state::HostState;
 pub use types::{

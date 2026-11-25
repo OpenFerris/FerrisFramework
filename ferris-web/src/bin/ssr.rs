@@ -6,9 +6,11 @@
 //! `ferris-server` web+API profile: same shell, hydration scripts, `/pkg`
 //! static serving and the REST/auth layer underneath the desk.
 //!
-//! The database + JWT secret are injected by the supervisor (`ferris-cli`) as
+//! The database is injected by the supervisor (`ferris-cli`) as
 //! `FERRIS_DEV_*` env vars, resolved from the project's own configuration, so
-//! the SDK uses the exact same store as the production server.
+//! the SDK uses the exact same store as the production server. Sessions use the
+//! same `tower-sessions` + `axum-login` stack (plain `ferris_session` cookie in
+//! dev, `__Host-ferris_session` behind TLS).
 //!
 //! The binary root only declares the pieces: [`startup`] assembles the router,
 //! [`state`] owns the shared extractors, [`auth`] the ambient-user layer and

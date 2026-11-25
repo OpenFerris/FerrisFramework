@@ -21,9 +21,8 @@ use super::seed::seed_dev_admin;
 use super::watch::{start_watcher, watch_and_reload};
 
 pub fn run(args: DevArgs, config: &CliConfig, verbose: bool) -> Result<()> {
-    // `serve`/`run` refuse to boot without a JWT secret; development fills an
-    // ephemeral one instead (see `dev_config`), once, before either the
-    // supervisor child or this process builds its settings.
+    // Development shares `serve`/`run` auth settings; `dev_config` only
+    // clones them and the dev profile relaxes the cookie to the plain name.
     let mut config = super::dev_config(config);
 
     // A site rewrites the process-wide data locations before anything reads

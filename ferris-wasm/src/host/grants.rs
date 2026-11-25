@@ -1,28 +1,39 @@
-//! Capability grants: what an app may reach, without operator configuration.
+//! Capability grants: what an app may reach, and who approved it.
 //!
-//! A grant is computed from two lists:
+//! A grant has two halves:
 //!
-//! * **Primordial** — always granted, not configurable: the app's world
-//!   (`filesystem`, which *is* its files, blobs and `secrets/.env`), its own
-//!   HTTP routes (`routes`, including HTTPS served by the host), outbound HTTP
-//!   under policy (`http`), the document store, config, schema, scheduler,
-//!   notifications and pubsub.
-//! * **Specific** — granted when the app declares them: the egress privileges
-//!   that widen a host boundary (`http-unrestricted`, `tls-client`,
-//!   `tls-server`, `streams`, `streams-listen`, `udp`, `raw-sockets`,
-//!   `dns-server`, `process`, `threads`, `pki`) and `overrides` (replacing a
-//!   framework API). `threads` is specific because a thread pool multiplies the
-//!   guest's memory and CPU footprint; it has no import and is reported only
-//!   (`platform::grants`, `platform::features`).
+//! * **The manifest** ([`GrantSet`]) is the app's *request*. It is computed
+//!   from the WIT declaration and has two tiers:
+//!   - **Primordial** — always granted, not configurable: the app's world
+//!     (`filesystem`, which *is* its files, blobs and `secrets/.env`), its own
+//!     HTTP routes (`routes`, including HTTPS served by the host), outbound HTTP
+//!     under policy (`http`), the document store, config, schema, scheduler,
+//!     notifications and pubsub. Primordial capabilities are gated only by the
+//!     manifest: they keep the pre-trust rule and need no operator approval.
+//!   - **Specific** — requested when the app declares them: the egress
+//!     privileges that widen a host boundary (`http-unrestricted`,
+//!     `tls-client`, `tls-server`, `streams`, `streams-listen`, `udp`,
+//!     `raw-sockets`, `dns-server`, `process`, `threads`, `pki`) and
+//!     `overrides` (replacing a framework API). `threads` is specific because a
+//!     thread pool multiplies the guest's memory and CPU footprint; it has no
+//!     import and is reported only (`platform::grants`, `platform::features`).
+//! * **The approval** ([`ApprovedGrants`]) is the operator's decision, written
+//!   by `ferris app install` to `grants.toml`. Every specific capability must
+//!   appear in both halves; a manifest request alone is not a grant.
 //!
-//! There is no `[apps] trusted/capabilities/grants` table: declaring a specific
-//! capability is the request *and* the grant, and every refusal is the host's
-//! own enforcement (the capability gates the import). The operator config is
-//! not a second policy system.
+//! Primordial capabilities deliberately skip the approval half. They are the
+//! services an app needs to exist at all (world, routes, docstore, config,
+//! schema, scheduler, notifications, pubsub) plus outbound HTTP under the
+//! host's policy; making an operator approve them per app would only duplicate
+//! the host's own policy. A missing `grants.toml` therefore fails **closed for
+//! specific capabilities only**, naming the app and the files the host looked
+//! for.
 
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use crate::ferris::framework::types as wit;
+use crate::trust::{self, TrustError};
 
 /// One WIT `types.capability`, mirrored host-side so [`HostApi`](super::HostApi)
 /// and the bridges never depend on the generated bindings.
@@ -143,6 +154,11 @@ impl Capability {
     /// framework services that never leave the process, plus the routes and
     /// outbound HTTP it needs to be an app at all.
     ///
+    /// Primordial capabilities are gated by the manifest alone; they are the
+    /// one exception to the operator approval in [`ApprovedGrants`], because
+    /// the host's own policy already bounds them; [`HostState::require`]
+    /// documents and enforces the split.
+    ///
     /// `filesystem` is primordial and not just a convenience: the app owns its
     /// directory (files, blobs, `secrets/.env`) and the preopen is the boundary.
     #[must_use]
@@ -239,8 +255,9 @@ impl std::fmt::Display for Capability {
 /// capabilities it declared.
 ///
 /// Built once per instantiation and re-installed on every `describe()`, so a
-/// reload re-computes it from the component that is actually running. There is
-/// no operator input and no profile: `for_declaration` is the whole policy.
+/// reload re-computes it from the component that is actually running. This is
+/// the app's **request**; a specific capability is not usable until
+/// [`ApprovedGrants`] names it too.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GrantSet {
     capabilities: BTreeSet<Capability>,
@@ -294,6 +311,115 @@ impl GrantSet {
                 .map(|capability| capability.to_wit())
                 .collect(),
         }
+    }
+}
+
+/// The operator-approved grant set for one app, loaded from `grants.toml`.
+///
+/// The manifest is the app's request ([`GrantSet`]); this is the operator's
+/// decision. Every non-primordial capability must appear in both, and outbound
+/// HTTP hosts must be approved here in addition to the manifest's host list.
+///
+/// `grants: None` means no file was found: nothing is approved. That is the
+/// fail-closed default for an app installed before trust existed, or one whose
+/// approval was removed; it is never an implicit grant.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ApprovedGrants {
+    grants: Option<trust::GrantSet>,
+    /// Files consulted, in preference order (root, then `world/` fallback).
+    candidates: Vec<PathBuf>,
+    /// The file the approval was read from, when one was found.
+    loaded_from: Option<PathBuf>,
+}
+
+impl ApprovedGrants {
+    /// Load the approval for the app whose directory is `app_dir`.
+    ///
+    /// Prefers `<app dir>/grants.toml` and falls back to
+    /// `<app dir>/world/grants.toml`, the two layouts `ferris app install` and
+    /// `ferris site install-app` produce. A missing file is an empty approval
+    /// (the [`trust::GrantSet::load`] semantics), never an error and never a
+    /// grant; a file that exists but cannot be read or parsed is an error, so a
+    /// broken approval fails the load instead of being silently ignored.
+    ///
+    /// # Errors
+    ///
+    /// [`TrustError`] from [`trust::GrantSet::load`].
+    pub fn load(app_dir: &Path) -> Result<Self, TrustError> {
+        let candidates = vec![
+            app_dir.join(trust::GRANTS_FILE),
+            app_dir.join("world").join(trust::GRANTS_FILE),
+        ];
+        for path in &candidates {
+            // `exists`, not `is_file`: a directory or special file named
+            // `grants.toml` must surface as a read error, not look absent.
+            if path.exists() {
+                let grants = trust::GrantSet::load(path)?;
+                let loaded_from = path.clone();
+                return Ok(Self {
+                    grants: Some(grants),
+                    candidates,
+                    loaded_from: Some(loaded_from),
+                });
+            }
+        }
+        Ok(Self {
+            grants: None,
+            candidates,
+            loaded_from: None,
+        })
+    }
+
+    /// An approval backed by `grants` with no file behind it (a tool or a test
+    /// that installed the decision elsewhere).
+    #[must_use]
+    pub fn from_set(grants: trust::GrantSet) -> Self {
+        Self {
+            grants: Some(grants),
+            ..Self::default()
+        }
+    }
+
+    /// The approved set, or `None` when no grants file was found.
+    #[must_use]
+    pub fn grant_set(&self) -> Option<&trust::GrantSet> {
+        self.grants.as_ref()
+    }
+
+    /// Whether the operator approved `capability`.
+    #[must_use]
+    pub fn allows_capability(&self, capability: Capability) -> bool {
+        self.grants
+            .as_ref()
+            .is_some_and(|grants| grants.allows_capability(capability.name()))
+    }
+
+    /// Whether the operator approved outbound HTTP to `host`. Matching is
+    /// exact, exactly like [`trust::GrantSet::allows_http_host`].
+    #[must_use]
+    pub fn allows_http_host(&self, host: &str) -> bool {
+        self.grants
+            .as_ref()
+            .is_some_and(|grants| grants.allows_http_host(host))
+    }
+
+    /// The file the approval was read from, when one was found.
+    #[must_use]
+    pub fn loaded_from(&self) -> Option<&Path> {
+        self.loaded_from.as_deref()
+    }
+
+    /// The files the host looked at, for the fail-closed message.
+    #[must_use]
+    pub fn candidates_label(&self) -> String {
+        if self.candidates.is_empty() {
+            return trust::GRANTS_FILE.to_string();
+        }
+        self.candidates
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(" or ")
     }
 }
 

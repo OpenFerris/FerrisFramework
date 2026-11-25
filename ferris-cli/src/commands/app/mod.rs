@@ -24,6 +24,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use ferris_core::plugins::{WORLD_DIRS, ensure_world_at, is_valid_app_name};
 use ferris_core::site::{AppManifest, SiteManager};
+use ferris_wasm::trust::{self, GrantSet, TrustStore};
 use toml_edit::{Array, DocumentMut, Item, Table, Value};
 
 use super::AppArgs;
@@ -57,9 +58,22 @@ pub fn run(args: AppArgs, config: &CliConfig) -> Result<()> {
                 Ok(())
             }
         }
-        AppCommand::Install { path, name } => {
+        AppCommand::Install {
+            path,
+            name,
+            trust,
+            allow_unsigned,
+            yes,
+            grant,
+        } => {
+            let options = InstallOptions {
+                trust: trust.as_deref(),
+                allow_unsigned,
+                yes,
+                grant: &grant,
+            };
             if global {
-                install_package(&catalogue, &path, name.as_deref())
+                install_package(&catalogue, &path, name.as_deref(), &options)
             } else {
                 install(
                     &dir,
@@ -67,9 +81,12 @@ pub fn run(args: AppArgs, config: &CliConfig) -> Result<()> {
                     &config.apps.enabled,
                     &path,
                     name.as_deref(),
+                    &options,
                 )
             }
         }
+        AppCommand::Sign { app, key } => sign_package(&app, &key),
+        AppCommand::Verify { app, trust } => verify_package(&app, &trust),
         AppCommand::Remove { name, purge } => {
             if global {
                 remove_from_catalogue(&catalogue, &name, purge)
@@ -101,6 +118,255 @@ pub fn run(args: AppArgs, config: &CliConfig) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// Signing, verification and operator approval
+// ---------------------------------------------------------------------------
+
+/// The install-time trust inputs, shared by the catalogue and flat layouts.
+struct InstallOptions<'a> {
+    /// Trust store for a signed package.
+    trust: Option<&'a Path>,
+    /// Explicit escape hatch for a package with no `app.sig`.
+    allow_unsigned: bool,
+    /// Approve every grant the manifest requests.
+    yes: bool,
+    /// Approve individual grants (repeatable).
+    grant: &'a [String],
+}
+
+/// Verify a package before anything is copied.
+///
+/// A signed package needs `--trust`; an unsigned one needs `--allow-unsigned`.
+/// Both refusals happen here, so the caller's copy path is never reached with a
+/// package that failed trust. Signing binds `plugin.toml`'s trust fields and
+/// the component hash, so [`trust::verify_package`] rebuilds the manifest from
+/// disk before checking the signature.
+fn verify_source(
+    source: &Path,
+    options: &InstallOptions<'_>,
+) -> Result<Option<trust::VerifiedManifest>> {
+    let signature = source.join(trust::SIGNATURE_FILE);
+    if !signature.is_file() {
+        if options.allow_unsigned {
+            println!(
+                "warning: {} is unsigned; installing it unattributable because --allow-unsigned was given",
+                source.display()
+            );
+            return Ok(None);
+        }
+        anyhow::bail!(
+            "{} has no {}: a package must be signed by a trusted publisher. \
+             Pass --trust <trust.toml> for a signed package, or --allow-unsigned to \
+             accept an unattributable one",
+            source.display(),
+            trust::SIGNATURE_FILE
+        );
+    }
+    let trust_path = options.trust.ok_or_else(|| {
+        anyhow::anyhow!(
+            "{} is signed; pass --trust <trust.toml> so the signature can be verified",
+            source.display()
+        )
+    })?;
+    let store = TrustStore::from_path(trust_path)
+        .with_context(|| format!("cannot read the trust store {}", trust_path.display()))?;
+    let verified = trust::verify_package(source, &store)
+        .with_context(|| format!("cannot verify {}", source.display()))?;
+    println!(
+        "signed app: {} {}",
+        verified.manifest.name, verified.manifest.version
+    );
+    println!("  publisher: {}", publisher_label(&verified.publisher));
+    println!("  key:       {}", verified.key_id);
+    describe_grants("requested grants", &verified.grants);
+    Ok(Some(verified))
+}
+
+/// Turn the manifest's request into the operator's approval.
+///
+/// `--yes` approves everything. `--grant` approves one item at a time; a grant
+/// that matches nothing is an error, and whatever is left unapproved is printed
+/// so the operator sees the difference. With neither flag, the install stops
+/// before copying and lists the request. There is no blocking prompt, so a
+/// non-TTY invocation fails loudly instead of hanging.
+fn approve_grants(
+    app: &str,
+    requested: &GrantSet,
+    options: &InstallOptions<'_>,
+) -> Result<GrantSet> {
+    if requested.is_empty() {
+        return Ok(GrantSet::default());
+    }
+    if options.yes {
+        return Ok(requested.clone());
+    }
+    if options.grant.is_empty() {
+        anyhow::bail!(
+            "{} requests grants the operator must approve:\n{}\n\
+             Re-run with --yes to approve all of them, or --grant <GRANT> \
+             (repeatable) to approve only some",
+            app,
+            grant_lines(requested)
+        );
+    }
+
+    let mut approved = GrantSet::default();
+    for raw in options.grant {
+        let item = raw.trim();
+        let host = item
+            .strip_prefix("http:")
+            .or_else(|| item.strip_prefix("http-host:"))
+            .unwrap_or(item);
+        let bin = item.strip_prefix("process:").unwrap_or(item);
+        if requested.allows_capability(item) {
+            approved.capabilities.push(item.to_string());
+        } else if requested.allows_http_host(host) {
+            approved.http_hosts.push(host.to_string());
+        } else if requested.allows_process_bin(bin) {
+            approved.process_bins.push(bin.to_string());
+        } else {
+            anyhow::bail!(
+                "`{item}` is not a grant {} requests. Requested:\n{}",
+                app,
+                grant_lines(requested)
+            );
+        }
+    }
+    approved.normalize();
+    if approved != *requested {
+        describe_grants("withheld grants", &requested_withheld(requested, &approved));
+    }
+    Ok(approved)
+}
+
+fn requested_withheld(requested: &GrantSet, approved: &GrantSet) -> GrantSet {
+    GrantSet::new(
+        requested
+            .capabilities
+            .iter()
+            .filter(|entry| !approved.capabilities.contains(*entry))
+            .cloned()
+            .collect(),
+        requested
+            .http_hosts
+            .iter()
+            .filter(|entry| !approved.http_hosts.contains(*entry))
+            .cloned()
+            .collect(),
+        requested
+            .process_bins
+            .iter()
+            .filter(|entry| !approved.process_bins.contains(*entry))
+            .cloned()
+            .collect(),
+    )
+}
+
+fn publisher_label(publisher: &str) -> &str {
+    if publisher.trim().is_empty() {
+        "(unspecified)"
+    } else {
+        publisher
+    }
+}
+
+fn describe_grants(label: &str, grants: &GrantSet) {
+    println!("  {label}:");
+    println!("    capabilities: {}", join_or_none(&grants.capabilities));
+    println!("    http hosts:   {}", join_or_none(&grants.http_hosts));
+    println!("    process bins: {}", join_or_none(&grants.process_bins));
+}
+
+fn grant_lines(grants: &GrantSet) -> String {
+    format!(
+        "  capabilities: {}\n  http hosts:   {}\n  process bins: {}",
+        join_or_none(&grants.capabilities),
+        join_or_none(&grants.http_hosts),
+        join_or_none(&grants.process_bins)
+    )
+}
+
+fn join_or_none(values: &[String]) -> String {
+    if values.is_empty() {
+        "(none)".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
+/// Persist the approval next to the installed app.
+///
+/// Catalogue: `apps/<app>/grants.toml`, and a copy at
+/// `apps/<app>/world/grants.toml` so `ferris site install-app` carries it into
+/// every instance world the host actually reads (`plugins/<app>/grants.toml` in
+/// the flat layout). [`trust::GrantSet::load`] reads it back; a missing file
+/// means "nothing approved".
+fn write_grants(app_dir: &Path, grants: &GrantSet) -> Result<()> {
+    let path = app_dir.join(trust::GRANTS_FILE);
+    grants
+        .save(&path)
+        .with_context(|| format!("cannot write the approved grants to {}", path.display()))?;
+    println!("  approved grants: {}", path.display());
+    Ok(())
+}
+
+/// `ferris app sign`: write the key id into `plugin.toml`, hash the component
+/// and write `app.sig`.
+fn sign_package(app: &Path, key_path: &Path) -> Result<()> {
+    if !app.is_dir() {
+        anyhow::bail!("{} is not a package directory", app.display());
+    }
+    let key = trust::SigningKey::from_pkcs8_file(key_path).with_context(|| {
+        format!(
+            "cannot read {} as a PKCS#8 Ed25519 private key",
+            key_path.display()
+        )
+    })?;
+    let manifest_path = app.join(trust::PLUGIN_MANIFEST);
+    let text = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("cannot read {}", manifest_path.display()))?;
+    let mut doc: DocumentMut = text.parse().map_err(|error| {
+        anyhow::anyhow!("{} is not valid TOML: {error}", manifest_path.display())
+    })?;
+    let key_id = key.key_id();
+    doc["key_id"] = toml_edit::value(key_id.as_str());
+    fs::write(&manifest_path, doc.to_string())
+        .with_context(|| format!("cannot write {}", manifest_path.display()))?;
+
+    let manifest = trust::AppManifest::from_package(app)
+        .with_context(|| format!("cannot describe the package {}", app.display()))?;
+    let signature = trust::sign_manifest(&manifest, &key)
+        .with_context(|| format!("cannot sign {}", manifest_path.display()))?;
+    let signature_path = app.join(trust::SIGNATURE_FILE);
+    fs::write(&signature_path, format!("{signature}\n"))
+        .with_context(|| format!("cannot write {}", signature_path.display()))?;
+
+    println!("signed {} {}", manifest.name, manifest.version);
+    println!("  publisher: {}", publisher_label(&manifest.publisher));
+    println!("  key:       {key_id}");
+    println!("  public key: {}", key.public_key_base64());
+    println!("  wrote:     {}", signature_path.display());
+    describe_grants("signed grants", &manifest.grants());
+    Ok(())
+}
+
+/// `ferris app verify`: check an installed or packaged app against a trust
+/// store and print the signed description.
+fn verify_package(app: &Path, trust_path: &Path) -> Result<()> {
+    let store = TrustStore::from_path(trust_path)
+        .with_context(|| format!("cannot read the trust store {}", trust_path.display()))?;
+    let verified = trust::verify_package(app, &store)
+        .with_context(|| format!("cannot verify {}", app.display()))?;
+    println!(
+        "verified {} {}",
+        verified.manifest.name, verified.manifest.version
+    );
+    println!("  publisher: {}", publisher_label(&verified.publisher));
+    println!("  key:       {}", verified.key_id);
+    describe_grants("signed grants", &verified.grants);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Global catalogue (`apps/<app>/`)
 // ---------------------------------------------------------------------------
 
@@ -111,13 +377,25 @@ pub fn run(args: AppArgs, config: &CliConfig) -> Result<()> {
 /// throw-away package is assembled in the temporary directory — manifest, the
 /// component and an empty world template — installed from there and deleted.
 /// Nothing of that package survives: the catalogue only keeps what it copies.
-fn install_package(catalogue: &SiteManager, source: &Path, name: Option<&str>) -> Result<()> {
+fn install_package(
+    catalogue: &SiteManager,
+    source: &Path,
+    name: Option<&str>,
+    options: &InstallOptions<'_>,
+) -> Result<()> {
     let known = catalogue.global_apps()?;
     let manifest = if source.is_dir() {
+        // Trust is checked before any copy: a failed signature or an
+        // unapproved grant leaves the catalogue byte-for-byte untouched.
+        let verified = verify_source(source, options)?;
         // Validate before publishing: a component that cannot instantiate
         // against this binary must not replace a working one and take every
         // site down on its next boot.
         let package = AppManifest::read(source)?;
+        let requested = verified
+            .as_ref()
+            .map_or_else(GrantSet::default, |verified| verified.grants.clone());
+        let approved = approve_grants(&package.name, &requested, options)?;
         let described = validate_component(&package.wasm, &package.name)?;
         // Declared locales and shipped catalogues must agree before the
         // catalogue (and every site that copies it) is touched.
@@ -132,9 +410,35 @@ fn install_package(catalogue: &SiteManager, source: &Path, name: Option<&str>) -
         if !tags.is_empty() {
             tracing::info!("Package ships catalogues for: {}", tags.join(", "));
         }
-        catalogue.install_global_app(source)?
+        let manifest = catalogue.install_global_app(source)?;
+        let destination = catalogue.global_app_dir(&manifest.name)?;
+        if verified.is_some() {
+            fs::copy(
+                source.join(trust::SIGNATURE_FILE),
+                destination.join(trust::SIGNATURE_FILE),
+            )
+            .with_context(|| format!("cannot copy the signature into {}", destination.display()))?;
+        }
+        write_grants(&destination, &approved)?;
+        write_grants(&destination.join("world"), &approved)?;
+        manifest
     } else {
-        install_component(catalogue, source, name)?
+        if !options.allow_unsigned {
+            anyhow::bail!(
+                "{} is a bare component with no signed manifest. Install a package \
+                 directory (with plugin.toml, <app>.wasm and app.sig), or pass \
+                 --allow-unsigned to accept an unattributable component",
+                source.display()
+            );
+        }
+        let manifest = install_component(catalogue, source, name)?;
+        let destination = catalogue.global_app_dir(&manifest.name)?;
+        // No signature means no trusted request: approve nothing. Runtime
+        // capabilities still come from the WIT declaration and the host's
+        // grant computation; this file is the operator's additional approval.
+        write_grants(&destination, &GrantSet::default())?;
+        write_grants(&destination.join("world"), &GrantSet::default())?;
+        manifest
     };
     let action = if known.iter().any(|app| app == &manifest.name) {
         "re-installed"
@@ -389,7 +693,47 @@ fn install(
     enabled: &[String],
     source: &Path,
     name: Option<&str>,
+    options: &InstallOptions<'_>,
 ) -> Result<()> {
+    // A package directory keeps its manifest and signature in the flat layout
+    // too: trust is checked before the first byte is published.
+    if source.is_dir() {
+        let verified = verify_source(source, options)?;
+        let package = AppManifest::read(source)?;
+        let requested = verified
+            .as_ref()
+            .map_or_else(GrantSet::default, |verified| verified.grants.clone());
+        let approved = approve_grants(&package.name, &requested, options)?;
+        let bytes = fs::read(&package.wasm)
+            .with_context(|| format!("cannot read {}", package.wasm.display()))?;
+        if !ferris_wasm::is_component(&bytes) {
+            anyhow::bail!(
+                "{} is not a Ferris component (a WebAssembly component of the `ferris-app` world)",
+                package.wasm.display()
+            );
+        }
+        publish_component(dir, &package.name, &bytes)?;
+        ensure_world_at(dir, &package.name)?;
+        let world = dir.join(&package.name);
+        if verified.is_some() {
+            fs::copy(
+                source.join(trust::SIGNATURE_FILE),
+                world.join(trust::SIGNATURE_FILE),
+            )
+            .with_context(|| format!("cannot copy the signature into {}", world.display()))?;
+        }
+        write_grants(&world, &approved)?;
+        return finish_install(dir, config_path, enabled, &package.name);
+    }
+
+    if !options.allow_unsigned {
+        anyhow::bail!(
+            "{} is a bare component with no signed manifest. Install a package \
+             directory (with plugin.toml, <app>.wasm and app.sig), or pass \
+             --allow-unsigned to accept an unattributable component",
+            source.display()
+        );
+    }
     let bytes = fs::read(source)
         .with_context(|| format!("cannot read the component {}", source.display()))?;
     if !ferris_wasm::is_component(&bytes) {
@@ -411,21 +755,35 @@ fn install(
     if !is_valid_app_name(&name) {
         anyhow::bail!("invalid app name `{name}`: use letters, digits, `-` or `_` (at most 64)");
     }
+    publish_component(dir, &name, &bytes)?;
+    ensure_world_at(dir, &name)?;
+    write_grants(&dir.join(&name), &GrantSet::default())?;
+    finish_install(dir, config_path, enabled, &name)
+}
+
+/// Write the component with a temporary file and a rename.
+fn publish_component(dir: &Path, name: &str, bytes: &[u8]) -> Result<()> {
     fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
     let target = dir.join(format!("{name}.wasm"));
     // Write-then-rename: a crash mid-copy never leaves a half component that
     // the next boot would try to compile.
     let temporary = dir.join(format!(".{name}.wasm.tmp"));
-    fs::write(&temporary, &bytes)
+    fs::write(&temporary, bytes)
         .with_context(|| format!("cannot write {}", temporary.display()))?;
     fs::rename(&temporary, &target)
         .with_context(|| format!("cannot publish {}", target.display()))?;
-    ensure_world_at(dir, &name)?;
-    if !enabled.is_empty() && !enabled.iter().any(|item| item == &name) {
-        add_enabled(config_path, &name)?;
+    Ok(())
+}
+
+fn finish_install(dir: &Path, config_path: &Path, enabled: &[String], name: &str) -> Result<()> {
+    if !enabled.is_empty() && !enabled.iter().any(|item| item == name) {
+        add_enabled(config_path, name)?;
         println!("installed {name} and added it to [apps] enabled");
     } else {
-        println!("installed {name} at {}", target.display());
+        println!(
+            "installed {name} at {}",
+            dir.join(format!("{name}.wasm")).display()
+        );
     }
     Ok(())
 }

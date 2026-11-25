@@ -70,7 +70,7 @@ pub(in crate::commands) fn manager(config: &CliConfig) -> TenantManager {
 /// The deployment model is **one instance per tenant**: `ferris serve --tenant`
 /// / `ferris run --tenant` rewrite the database, files root, Redis URL and the
 /// app list here, and the server then runs as that tenant for its whole life.
-/// Requests are not routed to a tenant by `Host` and the JWT `tenant` claim is
+/// Requests are not routed to a tenant by `Host` and no session claim is
 /// not compared — isolation comes from the process, its pool and its files
 /// root, never from a per-request switch.
 ///

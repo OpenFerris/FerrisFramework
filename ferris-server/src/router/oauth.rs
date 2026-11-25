@@ -37,6 +37,11 @@ pub(super) fn oauth_config_from_settings(
             pkce_enabled: true,
             pkce_method: PkceMethod::S256,
             redirect_uris: vec![format!("{base}/{}/callback", p.name)],
+            // The login path only trusts a provider-verified address; a
+            // deployment whose provider omits `email_verified` has to opt out.
+            require_verified_email: true,
+            // This flow is OAuth2 + userinfo; an `id_token` is not validated.
+            oidc: false,
         })
         .collect();
     Ok(ferris_auth::OAuthConfig {

@@ -22,7 +22,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use ferris_api::SessionHandlers;
-use ferris_auth::{ApiKeyManager, AuthState, JwtManager, SessionConfig, SessionManager, UserStore};
+use ferris_auth::login::{Backend, DbSessionStore, SessionConfig};
+use ferris_auth::{ApiKeyManager, AuthState, InvitationStore, UserStore};
 #[cfg(feature = "jobs")]
 use ferris_jobs::WorkerPool;
 use tracing::{info, warn};
@@ -38,7 +39,7 @@ use crate::tls::{
 
 #[cfg(feature = "wasm")]
 use super::boot::start_plugin_clock;
-use super::boot::{bootstrap_authz, install_secret_keyring, jwt_secret};
+use super::boot::{bootstrap_authz, install_secret_keyring};
 use super::gating::{gate_roles, validate_compiled_features};
 use super::settings::ServerSettings;
 
@@ -139,44 +140,68 @@ impl Server {
             None => None,
         };
 
-        // Build AuthState for authentication middleware. The session manager
-        // shares the database so sessions survive restarts and are visible to
-        // the public login endpoint.
-        //
-        // The Desk can authenticate with DB-backed session cookies alone, but
-        // the JWT manager is still part of `AuthState` (API tokens, plugin
-        // calls), so a missing secret is an actionable boot error naming the
-        // variable — not the raw `JwtConfig::new("")` failure from inside
-        // `ferris-auth` (SRV16).
-        let jwt_secret = jwt_secret(&settings.config)?;
-        let jwt_manager = JwtManager::new(ferris_auth::JwtConfig::new(jwt_secret)?)?;
-        // With TLS termination configured, session cookies are marked `Secure`
-        // so browsers never send them over a plaintext hop. Without it the Desk
-        // runs over plain HTTP in dev, where a `Secure` cookie would be refused
-        //.
-        let session_config = SessionConfig {
-            secure_cookies: settings.config.server.tls.is_some(),
-            max_sessions_per_user: settings.config.auth.max_sessions_per_user,
-            ..SessionConfig::default()
-        };
-        let session_manager = SessionManager::with_db(session_config.clone(), pool.clone());
-        session_manager.init().await?;
+        // The single session stack: `tower-sessions` over `tab_session_store`
+        // plus the `axum-login` backend. There is no JWT and no second store.
+        // The cookie is `__Host-ferris_session` whenever TLS is configured, or
+        // whenever the public origin is `https://` (a proxy that terminates TLS
+        // forwards plain HTTP to this process). Only the plain-HTTP/plain-dev
+        // profile gets the plain name, because a `Secure` cookie is dropped
+        // there. `detect_secure` keeps that decision in one testable place.
+        let session_config = SessionConfig::default()
+            .with_secure(SessionConfig::detect_secure(
+                settings.config.server.tls.is_some(),
+                settings.config.server.external_url.as_deref(),
+            ))
+            .with_timeout_minutes(settings.config.auth.session_timeout_minutes)
+            .with_idle_timeout_minutes(settings.config.auth.session_idle_timeout_minutes)
+            .with_max_sessions_per_user(settings.config.auth.max_sessions_per_user);
+        let session_store = DbSessionStore::new(pool.clone());
+        session_store.ensure_table().await?;
+        // AUTH-03: expired rows used to accumulate until the concurrent-session
+        // cap counted them as live. The first tick also sweeps at boot.
+        let _ = session_store.spawn_cleanup_task(std::time::Duration::from_secs(600));
+        // The `[auth]` password policy is installed *before* `Backend::init`
+        // (which calls `UserStore::init`): that call also tries to install the
+        // default hasher, but `set_password_hasher` keeps the first function
+        // pointer, so the configured policy wins. The backend gets the same
+        // `PasswordConfig`, or its rehash check would disagree with the hasher
+        // and every login would rehash forever.
+        let password_config = ferris_auth::PasswordConfig::from_auth_config(&settings.config.auth);
+        if !ferris_auth::password::install_password_policy(password_config.clone()) {
+            warn!("a password policy was already installed; keeping the first one");
+        }
+        if !ferris_core::password::set_password_hasher(
+            ferris_auth::password::hash_password_configured,
+        ) {
+            warn!(
+                "a password hasher was already installed; the configured policy will not be \
+                 used for `Password` document fields"
+            );
+        }
+        let backend = Backend::new(pool.clone()).with_password_config(password_config);
+        // Creates the user table and keeps the hasher installed above.
+        backend.init().await?;
         let api_key_manager = ApiKeyManager::with_db(pool.clone());
         api_key_manager.init().await?;
-        let auth_state =
-            AuthState::new(jwt_manager, session_manager.clone(), session_config.clone())
-                // Resolve users (roles included) from the users table on every request
-                // so REST writes authorise as the real caller with real roles.
-                .with_user_validator(Arc::new(UserStore::new(pool.clone())))
-                // Accept the Frappe `Authorization: token <key>:<secret>` scheme
-                // (AUTH2). Keys are documents, so the same table backs issue and
-                // verify.
-                .with_api_keys(Arc::new(api_key_manager));
-        let session_handlers = SessionHandlers::new(session_config, session_manager, pool.clone())
-            // Wire the login gate + MFA self-service to the operator's policy
-            // (`max_login_attempts`, `lockout_duration_minutes`,
-            // `mfa_enabled`, `mfa_issuer`).
-            .with_auth_config(&settings.config.auth);
+        // Invitations are documents too; `init` registers the declaration and
+        // refreshes the table so a release that added a column is picked up.
+        InvitationStore::new(pool.clone()).init().await?;
+        let auth_state = AuthState::new(session_config.clone())
+            .with_session_store(session_store.clone())
+            // Resolve API-key owners (roles included) from the users table so a
+            // key authenticates as the real caller; the cookie path resolves
+            // through the backend instead.
+            .with_user_validator(Arc::new(UserStore::new(pool.clone())))
+            // Accept the Frappe `Authorization: token <key>:<secret>` scheme
+            // (AUTH2). Keys are documents, so the same table backs issue and
+            // verify.
+            .with_api_keys(Arc::new(api_key_manager));
+        let session_handlers =
+            SessionHandlers::new(session_config, session_store.clone(), pool.clone())
+                // Wire the login gate + MFA self-service to the operator's policy
+                // (`max_login_attempts`, `lockout_duration_minutes`,
+                // `mfa_issuer`).
+                .with_auth_config(&settings.config.auth);
 
         // Native modules: the registry is built before the authz bootstrap so
         // the DocTypes declared by optional verticals are part of the same
@@ -285,6 +310,16 @@ impl Server {
                             &user,
                             &ip,
                             "Signed out",
+                        )
+                        .await;
+                    }
+                    ferris_core::audit::AuditEvent::LoginFailed { user, ip } => {
+                        crate::observability::record_activity(
+                            &pool,
+                            "login_failed",
+                            &user,
+                            &ip,
+                            "Login refused",
                         )
                         .await;
                     }
@@ -402,6 +437,14 @@ impl Server {
             }
         }
 
+        // Recovery and invitation links leave through the host mailer. It only
+        // exists once the email hub registered it, so attach it to the owned
+        // session handlers here, before `build_router` consumes them.
+        let session_handlers = match handles.mailer() {
+            Some(mailer) => session_handlers.with_mailer(mailer),
+            None => session_handlers,
+        };
+
         let service_ctx = ferris_api::ServiceContext {
             db: pool.clone(),
             auth: auth_state.clone(),
@@ -426,7 +469,15 @@ impl Server {
         // with; `build_router` consumes its copy below.
         #[cfg(feature = "wasm")]
         let auth_state_for_network = auth_state.clone();
-        let app = build_router(settings, pool, auth_state, session_handlers, &modules);
+        let app = build_router(
+            settings,
+            pool,
+            auth_state,
+            session_handlers,
+            backend,
+            session_store,
+            &modules,
+        );
 
         // The sockets an app declared. Registered before the listener
         // accepts, so an `io::connect-stream` from a request never finds the

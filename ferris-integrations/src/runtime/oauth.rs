@@ -157,6 +157,11 @@ fn build_config(
         } else {
             vec![redirect_uri]
         },
+        // A DocType-declared provider gets the secure default; a row whose
+        // userinfo omits `email_verified` is refused at login rather than
+        // trusted. OIDC is not implemented, so the token is never validated.
+        require_verified_email: true,
+        oidc: false,
     })
 }
 

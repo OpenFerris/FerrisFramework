@@ -155,31 +155,6 @@ enabled = ["my-app"]
 }
 
 #[test]
-fn jwt_secret_has_no_usable_default() {
-    let config = CliConfig::default();
-    assert_eq!(config.auth.jwt_secret, None);
-    assert!(
-        config.require_jwt_secret().is_err(),
-        "a missing JWT secret must fail closed, never fall back to a placeholder"
-    );
-}
-
-#[test]
-fn rejects_placeholder_jwt_secret() {
-    let mut bad = CliConfig::default();
-    bad.auth.jwt_secret = Some("change-me-in-production".to_string());
-    assert!(bad.reject_insecure_jwt_secret().is_err());
-
-    let mut good = CliConfig::default();
-    good.auth.jwt_secret = Some("a-very-long-random-secret-0123456789".to_string());
-    assert!(good.reject_insecure_jwt_secret().is_ok());
-    assert_eq!(
-        good.require_jwt_secret().unwrap(),
-        "a-very-long-random-secret-0123456789"
-    );
-}
-
-#[test]
 fn parses_postgres_url_into_structured_config() {
     let mut db = DatabaseConfig {
         r#type: "sqlite".into(),
@@ -203,7 +178,7 @@ fn parses_postgres_url_into_structured_config() {
     assert_eq!(db.name, "app");
 }
 
-/// N3: the derived `Debug` dumped `database.password` and `auth.jwt_secret`
+/// N3: the derived `Debug` dumped `database.password`
 /// in plaintext — a panic path or a stray `{:?}` leaked credentials while
 /// `ferris config show` redacted them at display time. `Debug` now redacts
 /// at the type level, so there is no formatting call that can leak.
@@ -212,7 +187,6 @@ fn debug_redacts_secrets_at_the_type_level() {
     let mut config = CliConfig::default();
     config.database.password = "db-p4ssw0rd".to_string();
     config.database.user = "bob".to_string();
-    config.auth.jwt_secret = Some("s3cr3t-jwt-zzz".to_string());
     config.redis.url = "redis://user:rd-p4ss@cache.internal:6379".to_string();
     config.secrets.key = Some("ab".repeat(32));
     config.custom.insert(
@@ -225,10 +199,6 @@ fn debug_redacts_secrets_at_the_type_level() {
     assert!(
         !dump.contains("db-p4ssw0rd"),
         "database password leaked: {dump}"
-    );
-    assert!(
-        !dump.contains("s3cr3t-jwt-zzz"),
-        "JWT secret leaked: {dump}"
     );
     assert!(!dump.contains("rd-p4ss"), "redis password leaked: {dump}");
     assert!(

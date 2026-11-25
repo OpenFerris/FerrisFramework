@@ -5,18 +5,17 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use axum::{
     Router, middleware,
     routing::{get, post},
 };
 use ferris_api::{
-    ApiState, SessionHandlers, api_router_with_app_state, login, logout, session_me, verify_mfa,
+    ApiState, SessionHandlers, api_router_with_app_state, login, logout, logout_all, session_me,
+    set_language, verify_mfa,
 };
-use ferris_auth::{
-    ApiKeyManager, AuthState, JwtConfig, JwtManager, SessionConfig, SessionManager, UserStore,
-    require_auth, require_csrf,
-};
+use ferris_auth::login::{Backend, DbSessionStore, SessionConfig};
+use ferris_auth::{ApiKeyManager, AuthState, UserStore, require_auth, require_csrf};
 use ferris_wasm::{PluginStore, RuntimeConfig, SharedRuntime};
 use leptos::config::get_configuration;
 use leptos::prelude::*;
@@ -44,31 +43,35 @@ pub(super) async fn run() -> Result<()> {
     // Config comes from the `ferris dev --hot-reload front` supervisor, which
     // resolves the project's `config/ferris.toml` and forwards it here.
     let database = database_config_from_env()?;
-    let jwt_secret = env::var("FERRIS_DEV_JWT_SECRET")
-        .with_context(|| "FERRIS_DEV_JWT_SECRET is not set: run `ferris dev --hot-reload front` inside a Ferris project")?;
 
     let pool = ferris_db::create_pool(&database).await?;
     seed_dev_admin(&pool).await;
 
-    // Auth + session store, identical to `ferris-server` (plain HTTP in dev, so
-    // session cookies must not be `Secure` or browsers would drop them).
-    let jwt_manager = JwtManager::new(JwtConfig::new(jwt_secret)?)?;
-    let session_config = SessionConfig {
-        secure_cookies: false,
-        ..SessionConfig::default()
-    };
-    let session_manager = SessionManager::with_db(session_config.clone(), pool.clone());
-    session_manager.init().await?;
+    // The one session stack, identical to `ferris-server` (plain HTTP in dev,
+    // so the cookie must not be `Secure` or browsers would drop it).
+    //
+    // This is the SSR **dev** binary launched by `ferris dev --hot-reload
+    // front`; production traffic is served by `ferris-server`, which derives
+    // `Secure` from TLS or an `https://` external URL. Keep the dev profile
+    // insecure on purpose.
+    let session_config = SessionConfig::default().with_secure(false);
+    let session_store = DbSessionStore::new(pool.clone());
+    session_store.ensure_table().await?;
+    let _ = session_store.spawn_cleanup_task(std::time::Duration::from_secs(600));
+    let backend = Backend::new(pool.clone());
+    backend.init().await?;
     let api_key_manager = ApiKeyManager::with_db(pool.clone());
     api_key_manager.init().await?;
-    let auth_state = AuthState::new(jwt_manager, session_manager.clone(), session_config.clone())
-        // Resolve users (roles included) from the users table so REST writes
-        // authorise as the real caller.
+    let auth_state = AuthState::new(session_config.clone())
+        .with_session_store(session_store.clone())
+        // Resolve API-key owners (roles included) from the users table so a key
+        // authenticates as the real caller.
         .with_user_validator(Arc::new(UserStore::new(pool.clone())))
         // Accept the Frappe `Authorization: token <key>:<secret>` scheme (AUTH2).
         .with_api_keys(Arc::new(api_key_manager));
-    let session_handlers = SessionHandlers::new(session_config, session_manager, pool.clone())
-        .with_auth_config(&ferris_core::AuthConfig::default());
+    let session_handlers =
+        SessionHandlers::new(session_config.clone(), session_store.clone(), pool.clone())
+            .with_auth_config(&ferris_core::AuthConfig::default());
 
     // Framework-owned DocTypes are available on every boot, not only when an
     // app declares them. Each crate declares its own; `ferris-web`'s ssr binary
@@ -117,6 +120,8 @@ pub(super) async fn run() -> Result<()> {
         .merge(
             Router::new()
                 .route("/api/auth/logout", post(logout))
+                .route("/api/auth/logout-all", post(logout_all))
+                .route("/api/auth/language", axum::routing::put(set_language))
                 .route_layer(middleware::from_fn_with_state(
                     auth_state.clone(),
                     require_csrf,
@@ -186,6 +191,14 @@ pub(super) async fn run() -> Result<()> {
         )
         .nest_service("/pkg", pkg_service)
         .fallback_service(ServeDir::new(&site_root))
+        // The one session stack, outside every gate: the login route needs the
+        // session record, and `require_auth` reads `AuthSession` from the
+        // request extensions it installs.
+        .layer(ferris_auth::login::auth_layer(
+            &session_config,
+            session_store,
+            backend,
+        ))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

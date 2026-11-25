@@ -5,7 +5,6 @@ use ferris_core::FeatureFlags;
 #[cfg(feature = "wasm")]
 use ferris_wasm::{PluginStore, RuntimeConfig, SharedRuntime};
 
-use super::boot::jwt_secret;
 #[cfg(feature = "wasm")]
 use super::boot::start_plugin_clock;
 use super::{bootstrap_authz, gate_roles};
@@ -250,24 +249,6 @@ async fn c4_no_clock_without_plugins_or_with_interrupts_disabled() {
         ferris_db::memory_db().await.unwrap(),
     ));
     assert!(start_plugin_clock(Some(&store)).is_none());
-}
-
-/// SRV16 regression: a missing secret names the environment variable and
-/// the config key, instead of surfacing an empty-secret error later.
-#[test]
-fn missing_jwt_secret_names_the_setting() {
-    let config = ferris_core::Config::default();
-    let error = jwt_secret(&config).expect_err("no secret is configured");
-    let message = error.to_string();
-    assert!(message.contains("FERRIS_JWT_SECRET"), "{message}");
-    assert!(message.contains("[auth] jwt_secret"), "{message}");
-}
-
-#[test]
-fn a_configured_jwt_secret_is_returned_unchanged() {
-    let mut config = ferris_core::Config::default();
-    config.auth.jwt_secret = Some("a".repeat(32));
-    assert_eq!(jwt_secret(&config).unwrap(), "a".repeat(32));
 }
 
 #[test]

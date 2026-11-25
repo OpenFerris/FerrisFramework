@@ -200,8 +200,6 @@ fn build_i18n(config: &crate::config::I18nConfig, catalogues: Option<&std::path:
 }
 
 fn build_core_config(cli_config: &CliConfig) -> Result<CoreConfig> {
-    let jwt_secret = cli_config.require_jwt_secret()?.to_string();
-
     Ok(CoreConfig {
         database: database_config(&cli_config.database)?,
         redis: ferris_core::RedisConfig {
@@ -225,22 +223,18 @@ fn build_core_config(cli_config: &CliConfig) -> Result<CoreConfig> {
             roles: cli_config.server.roles.clone(),
         },
         auth: ferris_core::AuthConfig {
-            jwt_secret: Some(jwt_secret),
-            jwt_expiry_hours: cli_config.auth.jwt_expiry_hours,
-            refresh_expiry_days: cli_config.auth.refresh_expiry_days,
             password_min_length: cli_config.auth.password_min_length,
-            password_require_uppercase: true,
-            password_require_lowercase: true,
-            password_require_numbers: true,
-            password_require_symbols: false,
-            max_login_attempts: 5,
-            lockout_duration_minutes: 15,
-            mfa_enabled: cli_config.auth.mfa_enabled,
-            mfa_issuer: "Ferris".into(),
-            session_timeout_minutes: 60,
-            // The CLI config does not expose this knob yet; the core default is
-            // five concurrent sessions (see `Config::default` in `ferris-core`).
-            max_sessions_per_user: 5,
+            password_require_uppercase: cli_config.auth.password_require_uppercase,
+            password_require_lowercase: cli_config.auth.password_require_lowercase,
+            password_require_numbers: cli_config.auth.password_require_numbers,
+            password_require_symbols: cli_config.auth.password_require_symbols,
+            max_login_attempts: cli_config.auth.max_login_attempts,
+            lockout_duration_minutes: cli_config.auth.lockout_duration_minutes,
+            mfa_issuer: cli_config.auth.mfa_issuer.clone(),
+            session_timeout_minutes: cli_config.auth.session_timeout_minutes,
+            session_idle_timeout_minutes: cli_config.auth.session_idle_timeout_minutes,
+            max_sessions_per_user: cli_config.auth.max_sessions_per_user,
+            require_email_verification: cli_config.auth.require_email_verification,
             oauth: cli_config.auth.oauth.clone(),
         },
         files: cli_config.files.to_core(),
@@ -391,7 +385,6 @@ mod tests {
         use ferris_core::StorageBackend;
 
         let mut cli = CliConfig::default();
-        cli.auth.jwt_secret = Some("a".repeat(32));
         cli.server.body_limit_mb = 64;
         cli.files.backend = StorageBackend::Memory;
         cli.files.local_path = "/srv/files".to_string();
@@ -454,7 +447,6 @@ mod tests {
     #[test]
     fn settings_for_applies_body_limit_and_keeps_the_requested_roles() {
         let mut cli = CliConfig::default();
-        cli.auth.jwt_secret = Some("a".repeat(32));
         cli.server.body_limit_mb = 96;
         cli.server.request_timeout_secs = 12;
 
@@ -474,7 +466,6 @@ mod tests {
     #[test]
     fn a_zero_body_limit_is_rejected() {
         let mut cli = CliConfig::default();
-        cli.auth.jwt_secret = Some("a".repeat(32));
         cli.server.body_limit_mb = 0;
         let roles = ServerRoles::parse(&["api".to_string()]).unwrap();
         let err = settings_for("127.0.0.1".into(), 0, roles, &cli)
@@ -488,7 +479,6 @@ mod tests {
     #[test]
     fn a_minimal_build_with_every_gate_off_starts() {
         let mut cli = CliConfig::default();
-        cli.auth.jwt_secret = Some("a".repeat(32));
         quiet_gates(&mut cli);
 
         let roles = ServerRoles::parse(&["api".to_string()]).unwrap();
@@ -506,7 +496,6 @@ mod tests {
     #[test]
     fn feature_flags_gate_roles_without_adding_any() {
         let mut cli = CliConfig::default();
-        cli.auth.jwt_secret = Some("a".repeat(32));
         cli.features.realtime = false;
 
         let roles = ServerRoles::parse(&["api".to_string(), "realtime".to_string()]).unwrap();
@@ -572,7 +561,6 @@ mod tests {
         let base = CliConfig::default();
         let cli = CliConfig {
             auth: crate::config::AuthConfig {
-                jwt_secret: Some("a".repeat(32)),
                 ..base.auth.clone()
             },
             apps: ferris_core::AppsConfig {
@@ -629,6 +617,49 @@ mod tests {
             vec!["erp.example.com".to_string()]
         );
         let _ = std::fs::remove_file(path);
+    }
+
+    /// The `[auth]` password policy is the operator's, not hardcoded: every
+    /// knob and the idle timeout must reach the core config unchanged. Before
+    /// this, `serve` wrote `true/true/true/false` and ignored the file.
+    #[test]
+    fn maps_the_auth_password_policy_into_the_core_config() {
+        let mut cli = CliConfig::default();
+        cli.auth.password_min_length = 12;
+        cli.auth.password_require_uppercase = false;
+        cli.auth.password_require_lowercase = false;
+        cli.auth.password_require_numbers = false;
+        cli.auth.password_require_symbols = true;
+        cli.auth.session_idle_timeout_minutes = 45;
+        cli.auth.require_email_verification = true;
+
+        let core = build_core_config(&cli).unwrap();
+        assert_eq!(core.auth.password_min_length, 12);
+        assert!(!core.auth.password_require_uppercase);
+        assert!(!core.auth.password_require_lowercase);
+        assert!(!core.auth.password_require_numbers);
+        assert!(core.auth.password_require_symbols);
+        assert_eq!(core.auth.session_idle_timeout_minutes, 45);
+        assert!(core.auth.require_email_verification);
+    }
+
+    /// A config written before Wave 3c has no `password_require_*` or
+    /// `session_idle_timeout_minutes` keys; it must keep today's effective
+    /// policy instead of failing to parse.
+    #[test]
+    fn absent_auth_keys_keep_the_historical_defaults() {
+        let auth: crate::config::AuthConfig = toml::from_str("password_min_length = 10\n")
+            .expect("an [auth] block without the new keys still parses");
+        assert_eq!(auth.password_min_length, 10);
+        assert!(auth.password_require_uppercase);
+        assert!(auth.password_require_lowercase);
+        assert!(auth.password_require_numbers);
+        assert!(!auth.password_require_symbols);
+        assert_eq!(auth.session_idle_timeout_minutes, 30);
+        assert!(
+            !auth.require_email_verification,
+            "the gate is opt-in: a legacy [auth] block must not enable it"
+        );
     }
 
     fn temp_config(contents: &str) -> std::path::PathBuf {
